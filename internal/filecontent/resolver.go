@@ -33,6 +33,13 @@ func NewCompilerContentResolver(client *transport.Client, endpoint *url.URL) *Co
 	return &CompilerContentResolver{client: client, baseURL: endpoint}
 }
 
+// fileContentAcceptHeader is the Accept header sent with every
+// file_content request. The file-content indirection serves only the
+// binary format, so application/octet-stream is the single acceptable
+// value -- offering application/json here would trade a rejected
+// missing-Accept request for a rejected unacceptable-format one.
+const fileContentAcceptHeader = "application/octet-stream"
+
 // Digest implements ContentRetriever. It resolves reference (a Puppet
 // File `source` value) into a DigestEvidence by retrieving the
 // referenced bytes through the compiler's documented v3 file_content
@@ -61,6 +68,12 @@ func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, 
 	if err != nil {
 		return DigestEvidence{}, fmt.Errorf("filecontent: building content retrieval request: %w", err)
 	}
+	// Non-optional: the v3 file_content endpoint is served by the
+	// compiler's embedded Ruby Puppet request handler, which rejects a
+	// request carrying no Accept header ("Missing required Accept
+	// header") before serving anything. application/octet-stream is the
+	// only content type this endpoint serves (see doc.go).
+	req.Header.Set("Accept", fileContentAcceptHeader)
 
 	resp, err := r.client.Do(req, 0)
 	if err != nil {

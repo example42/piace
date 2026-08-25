@@ -37,10 +37,19 @@ func TestParsePuppetSourceURI(t *testing.T) {
 func TestCompilerContentResolver_Digest_Success(t *testing.T) {
 	const raw = "the quick brown fox"
 	fixture := newTLSFixture(t, "127.0.0.1")
-	var gotPath, gotQuery string
+	var gotPath, gotQuery, gotAccept string
 	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotQuery = r.URL.RawQuery
+		gotAccept = r.Header.Get("Accept")
+		// Mirrors the compiler's embedded Ruby Puppet request handler,
+		// which rejects any /puppet/v3/ request with no Accept header
+		// before serving anything (see doc.go).
+		if gotAccept == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Bad Request: Missing required Accept header"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(raw))
 	})
@@ -63,6 +72,9 @@ func TestCompilerContentResolver_Digest_Success(t *testing.T) {
 	}
 	if !strings.Contains(gotQuery, "environment=production") {
 		t.Errorf("request query = %q, want environment=production", gotQuery)
+	}
+	if gotAccept != "application/octet-stream" {
+		t.Errorf("Accept = %q, want application/octet-stream", gotAccept)
 	}
 	if strings.Contains(digest.Digest, raw) {
 		t.Errorf("digest leaks raw content: %q", digest.Digest)

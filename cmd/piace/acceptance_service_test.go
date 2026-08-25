@@ -147,8 +147,15 @@ type fakeCompiler struct {
 	// v3Status behaves the same way for POST /puppet/v3/catalog/:certname.
 	v3Status int
 	// catalogs is keyed by certname and holds the compiler wire-format
-	// catalog body to return from whichever endpoint is used.
+	// catalog *document* to return. serveCatalog wraps it in whichever
+	// envelope the answering endpoint uses.
 	catalogs map[string]any
+	// rawBodies is keyed by certname and, when set, is returned verbatim
+	// with status 200 in place of any catalog — no endpoint envelope
+	// applied. It exists so a test can exercise the adapter's
+	// semantic-rejection probe, which reads the outer response body
+	// before any envelope is unwrapped.
+	rawBodies map[string]any
 	// fileContent is keyed by the mount path segment the resolver builds
 	// from a `puppet://` source reference.
 	fileContent map[string]string
@@ -159,7 +166,7 @@ type fakeCompiler struct {
 }
 
 func newFakeCompiler() *fakeCompiler {
-	return &fakeCompiler{catalogs: map[string]any{}, fileContent: map[string]string{}}
+	return &fakeCompiler{catalogs: map[string]any{}, rawBodies: map[string]any{}, fileContent: map[string]string{}}
 }
 
 func (f *fakeCompiler) handler() http.Handler {
@@ -178,14 +185,14 @@ func (f *fakeCompiler) handler() http.Handler {
 				return
 			}
 			certname, _ := body["certname"].(string)
-			f.serveCatalog(w, certname)
+			f.serveCatalog(w, certname, apiV4)
 		case strings.HasPrefix(r.URL.Path, "/puppet/v3/catalog/"):
 			if f.v3Status != 0 {
 				w.WriteHeader(f.v3Status)
 				writeJSON(w, map[string]any{"error": "forced status"})
 				return
 			}
-			f.serveCatalog(w, strings.TrimPrefix(r.URL.Path, "/puppet/v3/catalog/"))
+			f.serveCatalog(w, strings.TrimPrefix(r.URL.Path, "/puppet/v3/catalog/"), apiV3)
 		case strings.HasPrefix(r.URL.Path, "/puppet/v3/file_content/"):
 			content, ok := f.fileContent[strings.TrimPrefix(r.URL.Path, "/puppet/v3/file_content/")]
 			if !ok {
@@ -200,10 +207,31 @@ func (f *fakeCompiler) handler() http.Handler {
 	})
 }
 
-func (f *fakeCompiler) serveCatalog(w http.ResponseWriter, certname string) {
+// catalogAPI selects which endpoint's response envelope serveCatalog
+// wraps a catalog document in. The two endpoints differ: v3 returns the
+// document as the whole body, v4 returns `{"catalog": <document>}` (see
+// internal/compiler/doc.go for the primary sources). Serving one shape
+// from both endpoints, as this fixture originally did, hides that
+// difference from every acceptance test that exercises the v4 path.
+type catalogAPI int
+
+const (
+	apiV3 catalogAPI = iota
+	apiV4
+)
+
+func (f *fakeCompiler) serveCatalog(w http.ResponseWriter, certname string, api catalogAPI) {
+	if raw, ok := f.rawBodies[certname]; ok {
+		writeJSON(w, raw)
+		return
+	}
 	catalog, ok := f.catalogs[certname]
 	if !ok {
 		http.Error(w, "no catalog", http.StatusNotFound)
+		return
+	}
+	if api == apiV4 {
+		writeJSON(w, map[string]any{"catalog": catalog})
 		return
 	}
 	writeJSON(w, catalog)

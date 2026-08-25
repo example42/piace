@@ -264,12 +264,17 @@ func compilerCatalog(certname, environment string, resources []resourceSpec, edg
 			"file": "/etc/puppetlabs/code/site.pp", "line": 42, "exported": false,
 		})
 	}
+	// A compiler serializes each edge vertex as a `Type[title]` reference
+	// string (Puppet::Relationship#to_data_hash calls source.to_s /
+	// target.to_s), not as the `{type, title}` object of PuppetDB's wire
+	// format v8. Emitting the object form here — as this fixture
+	// originally did — exercises a shape no compiler ever sends. See
+	// internal/normalize/wire.go's resourceSpecWire.
 	edgeList := make([]map[string]any, 0, len(edges))
 	for _, e := range edges {
 		edgeList = append(edgeList, map[string]any{
-			"source":       map[string]any{"type": e.SourceType, "title": e.SourceTitle},
-			"target":       map[string]any{"type": e.TargetType, "title": e.TargetTitle},
-			"relationship": "contains",
+			"source": e.SourceType + "[" + e.SourceTitle + "]",
+			"target": e.TargetType + "[" + e.TargetTitle + "]",
 		})
 	}
 	return map[string]any{

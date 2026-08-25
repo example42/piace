@@ -360,3 +360,105 @@ func TestCatalog_LargeIntegerPreservesAllDigits(t *testing.T) {
 		t.Errorf("Parameters[serial] = %#v, want model.Number(%q)", got.Resources[0].Parameters["serial"], bigDigits)
 	}
 }
+
+// TestCatalog_CompilerShape_StringResourceReferenceEdges covers the edge
+// vertex form a real compiler actually returns: a `Type[title]` reference
+// string, not a `{type, title}` object. Puppet::Relationship#to_data_hash
+// serializes each vertex as `source.to_s`/`target.to_s`, so this is what
+// every v3/v4 catalog response and every `capture catalog` snapshot
+// carries — the object form only appears in a terminus-submitted wire
+// format v8 catalog.
+func TestCatalog_CompilerShape_StringResourceReferenceEdges(t *testing.T) {
+	raw := compilerShapedCatalog("web-01.example.test", "production",
+		`[
+			{"type":"File","title":"/etc/motd","parameters":{"ensure":"file"}},
+			{"type":"Notify","title":"hello","parameters":{"message":"hi"}}
+		]`,
+		`[
+			{"source":"Notify[hello]","target":"File[/etc/motd]"},
+			{"source":"Class[Main]","target":"Notify[hello]"}
+		]`,
+	)
+
+	got, diag := Catalog(raw)
+	if diag != nil {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+	want := []model.Edge{
+		{Source: "Class[Main]", Target: "Notify[hello]"},
+		{Source: "Notify[hello]", Target: "File[/etc/motd]"},
+	}
+	if len(got.Edges) != len(want) {
+		t.Fatalf("Edges = %+v, want %+v", got.Edges, want)
+	}
+	for i := range want {
+		if got.Edges[i] != want[i] {
+			t.Errorf("Edges[%d] = %+v, want %+v", i, got.Edges[i], want[i])
+		}
+	}
+}
+
+// TestCatalog_ResourceReferenceCompositeTitle pins the split semantics
+// ported from the PuppetDB terminus's resource_ref_to_hash regex: the
+// type stops at the first bracket and the title runs to the last one, so
+// a title that itself contains brackets survives intact. A naive split on
+// the first "]" would truncate it, and the resulting identity would not
+// match the same resource's identity on the PuppetDB side of the
+// comparison.
+func TestCatalog_ResourceReferenceCompositeTitle(t *testing.T) {
+	raw := compilerShapedCatalog("web-01.example.test", "production",
+		`[]`,
+		`[{"source":"Class[Main]","target":"File[/etc/foo[bar]]"}]`,
+	)
+
+	got, diag := Catalog(raw)
+	if diag != nil {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+	want := model.Edge{Source: "Class[Main]", Target: "File[/etc/foo[bar]]"}
+	if len(got.Edges) != 1 || got.Edges[0] != want {
+		t.Fatalf("Edges = %+v, want [%+v]", got.Edges, want)
+	}
+}
+
+// TestCatalog_MixedEdgeVertexForms covers one edge carrying one vertex of
+// each form. The terminus converts per vertex (`%w[source target].each`),
+// so a half-converted edge is representable and must not be rejected.
+func TestCatalog_MixedEdgeVertexForms(t *testing.T) {
+	raw := compilerShapedCatalog("web-01.example.test", "production",
+		`[]`,
+		`[{"source":"Class[Main]","target":{"type":"Notify","title":"hello"}}]`,
+	)
+
+	got, diag := Catalog(raw)
+	if diag != nil {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+	want := model.Edge{Source: "Class[Main]", Target: "Notify[hello]"}
+	if len(got.Edges) != 1 || got.Edges[0] != want {
+		t.Fatalf("Edges = %+v, want [%+v]", got.Edges, want)
+	}
+}
+
+// TestCatalog_RejectsUnparseableResourceReference asserts a reference
+// string that does not match Type[title] is a reported normalization
+// failure. The Ruby original silently yields {nil, nil} there; this
+// package's contract forbids a silently empty result.
+func TestCatalog_RejectsUnparseableResourceReference(t *testing.T) {
+	for _, ref := range []string{"Notify hello", "Notify[]", "[hello]", ""} {
+		body, err := json.Marshal(map[string]any{"source": ref, "target": "Notify[hello]"})
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		raw := compilerShapedCatalog("web-01.example.test", "production", `[]`, "["+string(body)+"]")
+
+		_, diag := Catalog(raw)
+		if diag == nil {
+			t.Errorf("ref %q: expected a diagnostic, got none", ref)
+			continue
+		}
+		if diag.Operation != model.OperationNormalize {
+			t.Errorf("ref %q: Operation = %q, want %q", ref, diag.Operation, model.OperationNormalize)
+		}
+	}
+}

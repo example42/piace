@@ -94,7 +94,7 @@ func (a *Adapter) requestV3(ctx context.Context, target resolve.Target, flatFact
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, &diag
 	}
 
-	cat, diag := processResponse(resp, a.client.Host(), target.Certname, target.Candidate.Environment)
+	cat, diag := processResponse(resp, a.client.Host(), target.Certname, target.Candidate.Environment, config.CatalogAPIv3)
 	if diag != nil {
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, diag
 	}
@@ -151,7 +151,7 @@ func (a *Adapter) requestV4WithFallback(ctx context.Context, target resolve.Targ
 		return cat, prov, nil, nil
 	}
 
-	cat, diag := processResponse(resp, host, target.Certname, target.Candidate.Environment)
+	cat, diag := processResponse(resp, host, target.Certname, target.Candidate.Environment, config.CatalogAPIv4)
 	if diag != nil {
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, diag
 	}

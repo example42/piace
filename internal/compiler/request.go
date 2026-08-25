@@ -59,6 +59,16 @@ func decideTrustedFacts(flatFacts map[string]json.RawMessage, compilerLookupConf
 	return trustedFactsDecision{available: false}
 }
 
+// v3CatalogAcceptHeader is the Accept header sent with every v3 catalog
+// request. `application/json` is one of the catalog indirection's
+// supported formats and is the only response encoding this package's
+// response decoding handles; text/pson is deliberately not offered. The
+// agent's richer `application/vnd.puppet.rich+json` list is deliberately
+// not requested either: measured against a deployed compiler, it selects
+// only the response Content-Type, not the catalog's rich-data encoding.
+// See doc.go's v3 rich-data bullet.
+const v3CatalogAcceptHeader = "application/json"
+
 // buildV4Request constructs the POST /puppet/v4/catalog request. See
 // doc.go for the documented v4 request-shape assumption.
 func buildV4Request(ctx context.Context, client *transport.Client, baseURL *url.URL, certname, environment string, flatFacts map[string]json.RawMessage, decision trustedFactsDecision) (*http.Request, error) {
@@ -98,7 +108,9 @@ func buildV4Request(ctx context.Context, client *transport.Client, baseURL *url.
 // buildV3Request constructs the POST /puppet/v3/catalog/:certname
 // request. See doc.go for the documented v3 request-shape assumption:
 // form-encoded body with environment, facts_format, facts (a JSON string
-// of {"name", "values"}), and transaction_uuid.
+// of {"name", "values"}), and transaction_uuid, plus an explicit Accept
+// header, which the v3 endpoint requires (see doc.go's v3 request
+// bullet: the request is rejected outright without one).
 func buildV3Request(ctx context.Context, client *transport.Client, baseURL *url.URL, certname, environment string, flatFacts map[string]json.RawMessage) (*http.Request, error) {
 	factsJSON, err := json.Marshal(v3Facts{Name: certname, Values: flatFacts})
 	if err != nil {
@@ -125,5 +137,11 @@ func buildV3Request(ctx context.Context, client *transport.Client, baseURL *url.
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// Non-optional for v3: the endpoint is served by the compiler's
+	// embedded Ruby Puppet request handler, which rejects a catalog
+	// request carrying no Accept header before it ever compiles
+	// ("Missing required Accept header"). The v4 endpoint has no such
+	// requirement, which is why only this builder sets it.
+	req.Header.Set("Accept", v3CatalogAcceptHeader)
 	return req, nil
 }

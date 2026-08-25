@@ -35,3 +35,6 @@ coverage.*
 *.swp
 .idea/
 .vscode/
+
+# Local files test snapshots
+local/

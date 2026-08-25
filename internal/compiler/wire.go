@@ -34,11 +34,28 @@ func (v *wireVersion) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// wireCatalog is the compiler's direct (unwrapped) v3/v4 catalog response
-// shape, per doc.go's documented assumption: `{"name", "environment",
-// "code_id", "catalog_uuid", "transaction_uuid", "resources", "edges",
-// ...}`. Unlike internal/puppetdb's query-API Catalog carrier, the
-// identity field here is `name`, not `certname`, and resources/edges are
+// v4CatalogEnvelope is the POST /puppet/v4/catalog response wrapper.
+// Unlike v3, which returns the catalog document directly, the v4
+// endpoint returns it under a "catalog" member (alongside an optional
+// "logs" member when the request asked for captured logs, which PIACE
+// never does). See doc.go's wire-shape section for the primary sources:
+// puppetserver's compiler.rb returns `{ catalog: ... }` and its
+// master_core.clj v4 handler JSON-encodes that hash verbatim as the
+// response body.
+//
+// Logs is intentionally not declared: PIACE never sets
+// options.capture_logs, and a compiler that returned logs anyway would
+// have them dropped rather than mistaken for catalog content.
+type v4CatalogEnvelope struct {
+	Catalog json.RawMessage `json:"catalog"`
+}
+
+// wireCatalog is the compiler's catalog document shape: `{"name",
+// "environment", "code_id", "catalog_uuid", "transaction_uuid",
+// "resources", "edges", ...}`. It is the whole v3 response body, and the
+// value of a v4 response's "catalog" member (see v4CatalogEnvelope).
+// Unlike internal/puppetdb's query-API Catalog carrier, the identity
+// field here is `name`, not `certname`, and resources/edges are
 // plain JSON arrays, not a `{href, data}` expansion. Fields this package
 // does not consume (tags, classes, catalog_format, metadata,
 // recursive_metadata) are intentionally not declared and are dropped by
@@ -174,7 +191,7 @@ type v4Request struct {
 
 // v3Facts is the JSON value the v3 catalog request's form-encoded `facts`
 // parameter carries: `{"name": <node>, "values": {...}}`, per doc.go's
-// documented assumption from OpenVox's v3 catalog API.
+// v3 request bullet.
 type v3Facts struct {
 	Name   string                     `json:"name"`
 	Values map[string]json.RawMessage `json:"values"`
