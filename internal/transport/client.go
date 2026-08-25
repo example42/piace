@@ -38,6 +38,12 @@ type Client struct {
 	host         string // authority (host:port) this client is dedicated to
 	timeout      time.Duration
 	maxBodyBytes int64
+	// observer, when non-nil, receives one Event per executed request.
+	// See debug.go for the seam and its redaction boundary.
+	observer Observer
+	// captureBodies makes each emitted Event carry raw request/response
+	// bodies. Off unless a caller opted in with WithBodyCapture.
+	captureBodies bool
 }
 
 // Option customizes a Client at construction time. Callers building the
@@ -217,23 +223,91 @@ func (c *Client) Do(req *http.Request, timeout time.Duration) (*Response, error)
 	defer cancel()
 	req = req.WithContext(ctx)
 
+	// The request body is snapshotted before the request is sent, while
+	// req.GetBody still can replay it; net/http consumes the original
+	// reader. Only done when a caller opted into body capture.
+	var requestBody []byte
+	if c.observer != nil && c.captureBodies {
+		requestBody = snapshotRequestBody(req)
+	}
+	started := time.Now()
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, classifyDoErr(req.URL.Host, err)
+		classified := classifyDoErr(req.URL.Host, err)
+		c.observe(req, requestBody, nil, 0, "", time.Since(started), classified)
+		return nil, classified
 	}
 	defer resp.Body.Close()
 
 	limited := &io.LimitedReader{R: resp.Body, N: c.maxBodyBytes + 1}
 	body, readErr := io.ReadAll(limited)
 	if readErr != nil {
-		return nil, newError(KindUnknown, req.URL.Host, "reading response body", readErr)
+		wrapped := newError(KindUnknown, req.URL.Host, "reading response body", readErr)
+		c.observe(req, requestBody, nil, resp.StatusCode, resp.Header.Get("Content-Type"), time.Since(started), wrapped)
+		return nil, wrapped
 	}
 	if int64(len(body)) > c.maxBodyBytes {
-		return nil, newError(KindResponseTooLarge, req.URL.Host,
+		tooLarge := newError(KindResponseTooLarge, req.URL.Host,
 			fmt.Sprintf("response body exceeded the %d byte limit", c.maxBodyBytes), nil)
+		c.observe(req, requestBody, nil, resp.StatusCode, resp.Header.Get("Content-Type"), time.Since(started), tooLarge)
+		return nil, tooLarge
 	}
 
+	c.observe(req, requestBody, body, resp.StatusCode, resp.Header.Get("Content-Type"), time.Since(started), nil)
 	return &Response{StatusCode: resp.StatusCode, Header: resp.Header, Body: body}, nil
+}
+
+// snapshotRequestBody replays req's body via GetBody, which
+// http.NewRequestWithContext populates for the in-memory readers this
+// package's callers use. It returns nil for a request with no body, or
+// one whose body cannot be replayed — debug observation must never
+// change what is sent or fail a request.
+func snapshotRequestBody(req *http.Request) []byte {
+	if req.GetBody == nil {
+		return nil
+	}
+	rc, err := req.GetBody()
+	if err != nil {
+		return nil
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// observe emits one Event to the configured Observer, if any. It is the
+// only place this package derives anything from a response body, and it
+// derives only the body's outermost shape and top-level member names
+// (see debug.go). Raw bodies are attached solely when the Client was
+// built WithBodyCapture.
+func (c *Client) observe(req *http.Request, requestBody, responseBody []byte, statusCode int, contentType string, elapsed time.Duration, err error) {
+	if c.observer == nil {
+		return
+	}
+	shape, keys, truncated := describeBody(responseBody)
+	ev := Event{
+		Method:            req.Method,
+		URL:               req.URL.String(),
+		Host:              req.URL.Host,
+		StatusCode:        statusCode,
+		Duration:          elapsed,
+		RequestBodyBytes:  req.ContentLength,
+		ResponseBodyBytes: len(responseBody),
+		ContentType:       contentType,
+		Shape:             shape,
+		TopLevelKeys:      keys,
+		KeysTruncated:     truncated,
+		Err:               err,
+	}
+	if c.captureBodies {
+		ev.RequestBody = requestBody
+		ev.ResponseBody = responseBody
+	}
+	c.observer(ev)
 }
 
 // Host returns the authority (host:port) this Client is dedicated to, safe

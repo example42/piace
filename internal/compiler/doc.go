@@ -48,15 +48,14 @@
 // on their own documented compatibility contract with that compiler, not
 // on any OpenVox-specific behavior this package invents.
 //
-// # Documented assumptions: wire shapes (unverified against a live
-// service; see tasks.md's Notes section)
+// # Wire shapes
 //
 // Per tasks.md's Notes ("Protocol adapters remain the compatibility
 // boundary. Their exact requests and responses must be demonstrated with
 // fixtures from the deployed service versions before declaring a
 // compiler/PuppetDB combination supported"), this package is built from
-// the publicly documented v3/v4 catalog HTTP APIs, not from a fixture
-// capture against a live Puppet Server/OpenVox instance:
+// the v3/v4 catalog HTTP APIs as documented and as implemented in the
+// compilers' own source:
 //
 //   - v3 request: POST /puppet/v3/catalog/<node>, form-encoded body with
 //     `environment`, `facts_format=application/json`, a JSON-encoded
@@ -65,20 +64,36 @@
 //     catalog API (api/docs/http_catalog.md in openvoxproject/openvox),
 //     which Puppet Server's v3 endpoint is wire-compatible with per
 //     requirements.md section 7.
-//   - v3/v4 response: both endpoints return the same catalog document
-//     shape directly (not wrapped): `{"name": <node>, "environment":
-//     ..., "code_id": ..., "catalog_uuid": ..., "resources": [...],
-//     "edges": [...], ...}`. Critically, this uses `name`, not
-//     `certname` — unlike internal/puppetdb's query-API responses. This
-//     package's wireCatalog type reflects that; RequestCandidate maps
+//   - catalog document: `{"name": <node>, "environment": ..., "code_id":
+//     ..., "catalog_uuid": ..., "resources": [...], "edges": [...],
+//     ...}`. Critically, this uses `name`, not `certname` — unlike
+//     internal/puppetdb's query-API responses. This package's
+//     wireCatalog type reflects that; RequestCandidate maps
 //     wireCatalog.Name into the returned puppetdb.Catalog's Certname
 //     field so the rest of the codebase (which already keys everything
 //     on Certname) does not need a second identity field name. Version
 //     is accepted as either a JSON string or number (the OpenVox example
 //     response shows a bare integer; PuppetDB's own query-API catalog
 //     responses show a string) via wireCatalog's custom decoding.
-//   - v3/v4 `resources`/`edges` are plain JSON arrays in the compiler's
-//     response, not the `{href, data}` expansion internal/puppetdb's
+//   - v3 response envelope: none. `POST /puppet/v3/catalog/<node>`
+//     returns the catalog document as the entire response body. Source:
+//     the example response in OpenVox's api/docs/http_catalog.md (and
+//     puppetlabs/puppet's identical copy of that file).
+//   - v4 response envelope: `{"catalog": <document>}` — the v4 endpoint
+//     wraps it, v3 does not. Source: puppetserver's own implementation,
+//     src/ruby/puppetserver-lib/puppet/server/compiler.rb, whose
+//     `compile` returns `{ catalog: catalog }` (or `{ catalog:, logs: }`
+//     when options.capture_logs is set, which PIACE never sets), and
+//     src/clj/puppetlabs/services/master/master_core.clj, whose
+//     v4-catalog-fn JSON-encodes that hash verbatim as the 200 response
+//     body. catalogDocument (response.go) unwraps it, keyed on the API
+//     version of the request that produced the response — never sniffed
+//     from the body. This difference is silent if unhandled: a v4 body
+//     decodes cleanly into wireCatalog with every field absent, so an
+//     unwrapped read reports "malformed response" for a compilation the
+//     compiler's own log records as successful.
+//   - `resources`/`edges` are plain JSON arrays in the compiler's
+//     catalog document, not the `{href, data}` expansion internal/puppetdb's
 //     doc.go documents for a PuppetDB *query-API* catalog response. This
 //     package passes them through as-is (puppetdb.Catalog.Resources/
 //     Edges are already typed json.RawMessage precisely so a later stage
@@ -88,8 +103,8 @@
 //     PuppetDB-sourced baseline and a compiler-sourced candidate.
 //   - v4 request body: `{"certname", "persistence": {"facts": false,
 //     "catalog": false}, "environment", "facts": {"values": {...}},
-//     "trusted_facts": {"values": {...}}}`, per Puppet Server's
-//     documented v4 catalog API. `persistence` is always `{false,
+//     "trusted_facts": {"values": {...}}}`, matching Puppet Server's
+//     CatalogRequestV4 schema in master_core.clj. `persistence` is always `{false,
 //     false}` in every request this package builds — requirements.md
 //     1.6 ("SHALL not persist candidate facts or candidate catalogs to
 //     PuppetDB") makes this non-negotiable, not a configurable option.

@@ -38,15 +38,31 @@
 //     [{"relationship", "source_title", "source_type", "target_title",
 //     "target_type"}, ...]}` (PuppetDB catalogs endpoint documentation,
 //     https://puppet.com/docs/puppetdb/8/catalogs.html).
+//
 //   - The compiler's v3/v4 catalog response (candidate catalogs, and any
 //     snapshot captured via `capture catalog`) uses the plain-array
 //     catalog interchange format: `resources: [{"type", "title",
 //     "aliases", "exported", "file", "line", "tags", "parameters"}, ...]`
-//     and `edges: [{"source": {"type", "title"}, "target": {"type",
-//     "title"}, "relationship"}, ...]` (PuppetDB's documented catalog
-//     wire format v8, which internal/compiler/doc.go's own documented
-//     assumption states the compiler's direct response matches:
-//     https://puppet.com/docs/puppetdb/8/catalog_format_v8.html).
+//     and `edges: [{"source", "target", "relationship"}, ...]`.
+//
+//     An edge vertex takes either of two forms there, and both are
+//     accepted (see resourceSpecWire in wire.go for the full rationale
+//     and the primary sources):
+//
+//     A compiler's own response carries each vertex as a `Type[title]`
+//     *reference string* — Puppet::Relationship#to_data_hash serializes
+//     `source.to_s`/`target.to_s`, and Puppet::Resource#to_s is its ref.
+//     PIACE splits it with a Go port of the PuppetDB terminus's own
+//     resource_ref_to_hash regex, which is the same function that
+//     produced the source_type/source_title of the PuppetDB baseline
+//     being compared against — so the two sides line up by construction.
+//
+//     PuppetDB's documented catalog wire format v8 defines the vertex as
+//     a `<resource-spec>` *object*, `{"type", "title"}`
+//     (https://puppet.com/docs/puppetdb/8/catalog_format_v8.html); that
+//     is what the terminus submits, and the terminus itself converts
+//     reference strings into it (munge_edges). A plain-array catalog can
+//     therefore legitimately carry either form.
 //
 // Catalog auto-detects which shape it was given (an object vs. an array
 // at the top level of each field) rather than requiring the caller to say

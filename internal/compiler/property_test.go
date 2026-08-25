@@ -66,15 +66,27 @@ func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 
 		wantAccept := returnedCertname == requestedCertname && returnedEnv == requestedEnv
 
+		// Alternate the candidate API across iterations: identity
+		// integrity is a property of both endpoints, and the two do not
+		// share a response envelope (v4 wraps the catalog document, v3
+		// does not — see doc.go), so exercising only one would leave the
+		// other's identity check unproven.
+		useV4 := i%2 == 0
+		body := wireCatalogBody(returnedCertname, returnedEnv)
+		target := v3Target(requestedCertname, requestedEnv)
+		if useV4 {
+			body = v4CatalogBody(returnedCertname, returnedEnv)
+			target = v4Target(requestedCertname, requestedEnv, false, false)
+		}
+
 		fixture := newTLSFixture(t, "127.0.0.1")
 		srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write(wireCatalogBody(returnedCertname, returnedEnv))
+			w.Write(body)
 		})
 		adapter := newAdapter(t, fixture, srv)
 
-		fs := factsetWithTrusted(requestedCertname, requestedEnv, false)
-		target := v3Target(requestedCertname, requestedEnv)
+		fs := factsetWithTrusted(requestedCertname, requestedEnv, useV4)
 
 		cat, _, _, diag := adapter.RequestCandidate(context.Background(), target, fs)
 

@@ -1,10 +1,12 @@
 package compiler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
 
+	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/puppetdb"
 	"github.com/example42/piace/internal/transport"
@@ -73,7 +75,7 @@ func isVerifiedUnsupportedV4(statusCode int) bool {
 // (model.OperationLoadFacts/OperationLoadBaseline, both operational),
 // rather than forcing every response-shape problem into the same
 // compilation-failure bucket as a verified rejection.
-func processResponse(resp *transport.Response, host, certname, environment string) (puppetdb.Catalog, *model.Diagnostic) {
+func processResponse(resp *transport.Response, host, certname, environment string, effectiveAPI config.CatalogAPI) (puppetdb.Catalog, *model.Diagnostic) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		diag := compilationFailureDiagnostic(certname, host, resp.StatusCode,
 			"compiler returned a non-2xx status for the candidate catalog request")
@@ -96,8 +98,13 @@ func processResponse(resp *transport.Response, host, certname, environment strin
 		return puppetdb.Catalog{}, &diag
 	}
 
+	document, diag := catalogDocument(resp, host, certname, effectiveAPI)
+	if diag != nil {
+		return puppetdb.Catalog{}, diag
+	}
+
 	var wc wireCatalog
-	if err := json.Unmarshal(resp.Body, &wc); err != nil || wc.Name == "" {
+	if err := json.Unmarshal(document, &wc); err != nil || wc.Name == "" {
 		diag := operationalResponseDiagnostic(certname, host, resp.StatusCode,
 			"malformed or unparseable compiler catalog response")
 		return puppetdb.Catalog{}, &diag
@@ -124,6 +131,48 @@ func processResponse(resp *transport.Response, host, certname, environment strin
 		Resources:       wc.Resources,
 		Edges:           wc.Edges,
 	}, nil
+}
+
+// catalogDocument extracts the catalog document from a 2xx compiler
+// response according to the API version that actually served it.
+//
+// The two endpoints do not share a response envelope, and the difference
+// is silent rather than loud: a v4 body decodes cleanly into wireCatalog
+// with every field absent, which is why an unhandled v4 envelope
+// surfaces as "malformed or unparseable response" against a compiler
+// whose own log records a successful compilation. See doc.go's wire-shape
+// section for the primary sources.
+//
+//   - v3 returns the catalog document as the whole response body.
+//   - v4 returns `{"catalog": <document>}`.
+//
+// The version is taken from the caller rather than sniffed from the
+// body. A "top-level `name`, else look under `catalog`" heuristic would
+// accept either shape from either endpoint, which is exactly the
+// speculative-probing behavior design.md section 5 rules out — and it
+// would also mask a compiler that started returning the wrong envelope.
+//
+// effectiveAPI is the API of the request that produced this very
+// response, never target.Candidate.CatalogAPI: on the permitted
+// v4-to-v3 fallback path (design.md section 3.1) the target is
+// configured for v4 while the response in hand came from v3.
+func catalogDocument(resp *transport.Response, host, certname string, effectiveAPI config.CatalogAPI) (json.RawMessage, *model.Diagnostic) {
+	if effectiveAPI != config.CatalogAPIv4 {
+		return resp.Body, nil
+	}
+	// A present-but-null "catalog" member is treated the same as a
+	// missing one: json.RawMessage("null") is four non-empty bytes, so
+	// without this it would slip through to wireCatalog decoding and
+	// report the generic malformed-response message instead of the
+	// specific one naming the envelope.
+	var envelope v4CatalogEnvelope
+	if err := json.Unmarshal(resp.Body, &envelope); err != nil ||
+		len(envelope.Catalog) == 0 || bytes.Equal(envelope.Catalog, []byte("null")) {
+		diag := operationalResponseDiagnostic(certname, host, resp.StatusCode,
+			`malformed or unparseable compiler catalog response: v4 response has no "catalog" member`)
+		return nil, &diag
+	}
+	return envelope.Catalog, nil
 }
 
 // compilationFailureDiagnostic builds a model.Diagnostic classified as

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,8 +61,26 @@ func v3Target(certname, environment string) resolve.Target {
 	}
 }
 
+// wireCatalogBody is a v3 response body: the catalog document, with no
+// envelope around it.
 func wireCatalogBody(name, environment string) []byte {
-	body, _ := json.Marshal(map[string]any{
+	body, _ := json.Marshal(catalogDocumentFixture(name, environment))
+	return body
+}
+
+// v4CatalogBody is a v4 response body: the same catalog document wrapped
+// in the endpoint's `{"catalog": ...}` envelope. The two helpers are
+// deliberately separate rather than one shape reused for both endpoints
+// — that conflation is what
+// TestAdapter_RequestCandidate_V4RejectsUnwrappedCatalogBody guards
+// against reappearing.
+func v4CatalogBody(name, environment string) []byte {
+	body, _ := json.Marshal(map[string]any{"catalog": catalogDocumentFixture(name, environment)})
+	return body
+}
+
+func catalogDocumentFixture(name, environment string) map[string]any {
+	return map[string]any{
 		"name":             name,
 		"version":          "1",
 		"environment":      environment,
@@ -70,8 +89,7 @@ func wireCatalogBody(name, environment string) []byte {
 		"transaction_uuid": "aff261a2-1a34-4647-8c20-ff662ec11c4c",
 		"resources":        []any{},
 		"edges":            []any{},
-	})
-	return body
+	}
 }
 
 func TestAdapter_RequestCandidate_V3Success(t *testing.T) {
@@ -118,7 +136,7 @@ func TestAdapter_RequestCandidate_V4Success_ProvidedTrustedFacts(t *testing.T) {
 			t.Fatalf("decoding request body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write(wireCatalogBody("web-01.example.test", "production"))
+		w.Write(v4CatalogBody("web-01.example.test", "production"))
 	})
 	adapter := newAdapter(t, fixture, srv)
 
@@ -152,7 +170,7 @@ func TestAdapter_RequestCandidate_V4Success_CompilerLookupOmitsField(t *testing.
 			t.Fatalf("decoding request body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write(wireCatalogBody("web-01.example.test", "production"))
+		w.Write(v4CatalogBody("web-01.example.test", "production"))
 	})
 	adapter := newAdapter(t, fixture, srv)
 
@@ -318,7 +336,7 @@ func TestAdapter_RequestCandidate_IdentityMismatchNeverFallsBack(t *testing.T) {
 			t.Error("v3 fallback request made after a v4 identity mismatch")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write(wireCatalogBody("some-other-node.example.test", "production"))
+		w.Write(v4CatalogBody("some-other-node.example.test", "production"))
 	})
 	adapter := newAdapter(t, fixture, srv)
 
@@ -374,7 +392,7 @@ func TestAdapter_RequestCandidate_ProvenanceNeverCarriesTrustedFactValues(t *tes
 	fixture := newTLSFixture(t, "127.0.0.1")
 	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write(wireCatalogBody("web-01.example.test", "production"))
+		w.Write(v4CatalogBody("web-01.example.test", "production"))
 	})
 	adapter := newAdapter(t, fixture, srv)
 
@@ -427,5 +445,107 @@ func TestAdapter_RequestCandidate_UnsupportedCatalogAPIFails(t *testing.T) {
 	_, _, _, diag := adapter.RequestCandidate(context.Background(), target, fs)
 	if diag == nil {
 		t.Fatal("expected a diagnostic for an unsupported catalog_api, got nil")
+	}
+}
+
+// TestAdapter_RequestCandidate_V4RejectsUnwrappedCatalogBody pins the
+// v4 response envelope. A bare catalog document (the v3 shape) decodes
+// into wireCatalog with every field absent rather than failing, so
+// reading a v4 response unwrapped produced a "malformed response"
+// diagnostic against a compiler that had just logged a successful
+// compilation. This asserts the adapter requires the documented
+// `{"catalog": ...}` envelope on v4 instead of tolerating either shape.
+func TestAdapter_RequestCandidate_V4RejectsUnwrappedCatalogBody(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/puppet/v3/catalog/web-01.example.test" {
+			t.Error("v3 fallback request made after an unwrapped v4 200 response")
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(wireCatalogBody("web-01.example.test", "production"))
+	})
+	adapter := newAdapter(t, fixture, srv)
+
+	fs := factsetWithTrusted("web-01.example.test", "production", true)
+	_, _, _, diag := adapter.RequestCandidate(context.Background(), v4Target("web-01.example.test", "production", true, false), fs)
+	if diag == nil {
+		t.Fatal("expected a diagnostic for a v4 response with no catalog envelope, got nil")
+	}
+	if diag.Operation != model.OperationRequestCandidateTransport {
+		t.Errorf("Operation = %q, want %q", diag.Operation, model.OperationRequestCandidateTransport)
+	}
+}
+
+// TestAdapter_RequestCandidate_V3RejectsWrappedCatalogBody is the mirror
+// of the above: v3 has no envelope, so a v4-shaped body from the v3
+// endpoint must fail rather than be unwrapped opportunistically.
+func TestAdapter_RequestCandidate_V3RejectsWrappedCatalogBody(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(v4CatalogBody("web-01.example.test", "production"))
+	})
+	adapter := newAdapter(t, fixture, srv)
+
+	fs := factsetWithTrusted("web-01.example.test", "production", false)
+	_, _, _, diag := adapter.RequestCandidate(context.Background(), v3Target("web-01.example.test", "production"), fs)
+	if diag == nil {
+		t.Fatal("expected a diagnostic for a v3 response carrying a v4 envelope, got nil")
+	}
+}
+
+// TestAdapter_RequestCandidate_V4FallbackReadsV3ShapeNotV4 covers the
+// case the envelope selection is easiest to get wrong: on the permitted
+// v4-to-v3 fallback the target is configured for v4, but the response in
+// hand came from the v3 endpoint and carries no envelope. The unwrap
+// must key on the API that served the response, not on the target's
+// configured candidate.catalog_api.
+func TestAdapter_RequestCandidate_V4FallbackReadsV3ShapeNotV4(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/puppet/v4/catalog":
+			w.WriteHeader(http.StatusNotFound)
+		case "/puppet/v3/catalog/web-01.example.test":
+			w.WriteHeader(http.StatusOK)
+			w.Write(wireCatalogBody("web-01.example.test", "production"))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	})
+	adapter := newAdapter(t, fixture, srv)
+
+	fs := factsetWithTrusted("web-01.example.test", "production", true)
+	cat, prov, _, diag := adapter.RequestCandidate(context.Background(), v4Target("web-01.example.test", "production", true, false), fs)
+	if diag != nil {
+		t.Fatalf("RequestCandidate returned diagnostic: %+v", diag)
+	}
+	if cat.Certname != "web-01.example.test" {
+		t.Errorf("catalog = %+v", cat)
+	}
+	if !prov.FellBackFromV4 || prov.EffectiveAPI != config.CatalogAPIv3 {
+		t.Errorf("provenance = %+v, want a v3 fallback", prov)
+	}
+}
+
+// TestAdapter_RequestCandidate_V4NullCatalogMember pins the null-member
+// case: `{"catalog": null}` is a present member whose raw JSON is four
+// non-empty bytes, so it must be rejected by the envelope check rather
+// than slipping through to catalog decoding.
+func TestAdapter_RequestCandidate_V4NullCatalogMember(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"catalog": null}`))
+	})
+	adapter := newAdapter(t, fixture, srv)
+
+	fs := factsetWithTrusted("web-01.example.test", "production", true)
+	_, _, _, diag := adapter.RequestCandidate(context.Background(), v4Target("web-01.example.test", "production", false, false), fs)
+	if diag == nil {
+		t.Fatal(`expected a diagnostic for a v4 response with a null "catalog" member, got nil`)
+	}
+	if !strings.Contains(diag.Message, `no "catalog" member`) {
+		t.Errorf("Message = %q, want the envelope-specific message", diag.Message)
 	}
 }

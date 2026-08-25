@@ -233,7 +233,10 @@ func TestAcceptance_OutcomePrecedence(t *testing.T) {
 			// override for the whole compiler when that target is in play.
 			for _, certname := range tc.targets {
 				if certname == "compilefail.example.test" {
-					h.compiler.catalogs["compilefail.example.test"] = map[string]any{
+					// A semantic rejection is served as the whole
+					// response body, with no catalog envelope around it:
+					// the adapter's error probe reads the outer body.
+					h.compiler.rawBodies["compilefail.example.test"] = map[string]any{
 						"error": "Evaluation Error: Unknown class site::missing",
 					}
 				}

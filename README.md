@@ -82,6 +82,34 @@ the production/default environment, captured after merge, so development-branch
 runs baseline against a frozen catalog rather than a later one from another
 environment.
 
+### Debugging a service request
+
+Every subcommand accepts two options for inspecting what PIACE actually sent
+and received. They are separate because they sit on opposite sides of the
+redaction boundary in [Output and secrecy](#output-and-secrecy).
+
+```
+--debug                print one line per compiler/PuppetDB request to stderr
+--debug-dump-dir DIR   additionally write raw request/response bodies to DIR
+```
+
+`--debug` prints metadata only — method, URL, status, duration, body sizes,
+content type, and the response body's top-level JSON *member names*:
+
+```
+piace capture catalog: debug #002 POST https://compiler.example.test:8140/puppet/v4/catalog   -> 200 in 1.069s (request 24580 B, response 18362 B, content-type application/json,   body object, top-level keys: catalog)
+```
+
+Those top-level keys are the fastest way to spot a wire-shape mismatch between
+PIACE and a compiler or PuppetDB version, and they contain no catalog values,
+so the output is safe for a CI log.
+
+`--debug-dump-dir` writes the verbatim request and response bodies to `0600`
+files in a `0700` directory, never to stdout or stderr. Those bodies are
+**unredacted**: they can contain Puppet `Sensitive` values and managed file
+content. Use it on a workstation, not in CI, and delete the directory
+afterwards.
+
 ## Configuration
 
 Two files, deliberately separate: the reviewable selection/policy file, and the
@@ -198,6 +226,11 @@ and two distinct sensitive values never merge into one aggregate group. Puppet
 exact type and parameter name. No report carries credentials, private key
 material, managed file content bytes, or unredacted sensitive values — asserted
 end to end over all three formats in `cmd/piace/acceptance_disclosure_test.go`.
+
+That boundary holds for `--debug` too, which reports only request metadata and
+response top-level member names. `--debug-dump-dir` is the one deliberate
+exception: an operator-requested dump of verbatim bodies to `0600` files, never
+to a console or a report.
 
 ## Snapshots
 

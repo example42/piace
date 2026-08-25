@@ -75,7 +75,14 @@ func usage() string {
   [--text-out PATH] [--json-out PATH] [--html-out PATH]
 piace capture facts --targets TARGETS.yaml --services SERVICES.yaml
 piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
-  --environment ENVIRONMENT`
+  --environment ENVIRONMENT
+
+Every subcommand also accepts:
+  --debug                print one line per service request to stderr (method,
+                         URL, status, duration, body sizes, response top-level
+                         JSON keys); no body content is printed
+  --debug-dump-dir DIR   additionally write raw request/response bodies to 0600
+                         files in DIR; they may contain sensitive catalog values`
 }
 
 // compareFlags holds the parsed --compare flags. Kept as a struct so tests
@@ -86,6 +93,7 @@ type compareFlags struct {
 	textOut  string
 	jsonOut  string
 	htmlOut  string
+	debug    debugFlags
 }
 
 func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
@@ -97,6 +105,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.textOut, "text-out", "", "path to write the text report (default: stdout)")
 	fs.StringVar(&f.jsonOut, "json-out", "", "path to write the versioned JSON report")
 	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the static HTML report")
+	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
 	}
@@ -111,7 +120,13 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	workflow, err := newCompareWorkflow(cfg)
+	debugOpts, err := f.debug.transportOptions("compare", stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace compare: %s\n", err)
+		return exitcode.OperationalError
+	}
+
+	workflow, err := newCompareWorkflow(cfg, debugOpts)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
 		return exitcode.OperationalError
@@ -139,20 +154,20 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 // The compiler and PuppetDB clients are built independently from their
 // own resolved endpoints, per design.md section 2.2, so neither service's
 // credentials can reach the other.
-func newCompareWorkflow(cfg resolve.Config) (*compare.Workflow, error) {
-	puppetDBAdapter, err := newPuppetDBAdapter(cfg)
+func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*compare.Workflow, error) {
+	puppetDBAdapter, err := newPuppetDBAdapter(cfg, debugOpts)
 	if err != nil {
 		return nil, err
 	}
-	compilerAdapter, err := newCompilerAdapter(cfg)
+	compilerAdapter, err := newCompilerAdapter(cfg, debugOpts)
 	if err != nil {
 		return nil, err
 	}
-	compilerClient, err := transport.NewClient(cfg.Services.Compiler)
+	compilerClient, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("building compiler content client: %w", err)
 	}
-	puppetDBClient, err := transport.NewClient(cfg.Services.PuppetDB)
+	puppetDBClient, err := transport.NewClient(cfg.Services.PuppetDB, debugOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("building puppetdb impact client: %w", err)
 	}
@@ -233,6 +248,7 @@ type captureFlags struct {
 	services    string
 	environment string
 	replace     bool
+	debug       debugFlags
 }
 
 func runCapture(args []string, stdout, stderr *os.File) exitcode.Code {
@@ -259,6 +275,7 @@ func runCaptureFacts(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.targets, "targets", "", "path to the target YAML file (required)")
 	fs.StringVar(&f.services, "services", "", "path to the services YAML file (required)")
 	fs.BoolVar(&f.replace, "replace", false, "overwrite an existing snapshot")
+	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
 	}
@@ -273,7 +290,13 @@ func runCaptureFacts(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	puppetDBFacts, err := newPuppetDBAdapter(cfg)
+	debugOpts, err := f.debug.transportOptions("capture facts", stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace capture facts: %s\n", err)
+		return exitcode.OperationalError
+	}
+
+	puppetDBFacts, err := newPuppetDBAdapter(cfg, debugOpts)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture facts: %s\n", err)
 		return exitcode.OperationalError
@@ -297,6 +320,7 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.services, "services", "", "path to the services YAML file (required)")
 	fs.StringVar(&f.environment, "environment", "", "candidate environment to request the catalog from (required)")
 	fs.BoolVar(&f.replace, "replace", false, "overwrite an existing snapshot")
+	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
 	}
@@ -311,13 +335,19 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	puppetDBFacts, err := newPuppetDBAdapter(cfg)
+	debugOpts, err := f.debug.transportOptions("capture catalog", stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
 	}
 
-	compilerAdapter, err := newCompilerAdapter(cfg)
+	puppetDBFacts, err := newPuppetDBAdapter(cfg, debugOpts)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
+		return exitcode.OperationalError
+	}
+
+	compilerAdapter, err := newCompilerAdapter(cfg, debugOpts)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
@@ -337,8 +367,8 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 // newPuppetDBAdapter builds the PuppetDB-backed fact/baseline source
 // adapter (task 4) from cfg's resolved PuppetDB service endpoint, per
 // task 3's hardened mTLS transport construction.
-func newPuppetDBAdapter(cfg resolve.Config) (*puppetdb.Adapter, error) {
-	client, err := transport.NewClient(cfg.Services.PuppetDB)
+func newPuppetDBAdapter(cfg resolve.Config, debugOpts []transport.Option) (*puppetdb.Adapter, error) {
+	client, err := transport.NewClient(cfg.Services.PuppetDB, debugOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("building puppetdb client: %w", err)
 	}
@@ -352,8 +382,8 @@ func newPuppetDBAdapter(cfg resolve.Config) (*puppetdb.Adapter, error) {
 // way, so they share the exact same request/policy implementation
 // (design.md section 5: "Capture catalog uses the exact same adapter and
 // policy as comparison").
-func newCompilerAdapter(cfg resolve.Config) (*compiler.Adapter, error) {
-	client, err := transport.NewClient(cfg.Services.Compiler)
+func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*compiler.Adapter, error) {
+	client, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("building compiler client: %w", err)
 	}
