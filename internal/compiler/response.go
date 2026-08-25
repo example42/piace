@@ -23,10 +23,11 @@ import (
 //
 //   - 404 is the literal, unambiguous signal that `POST
 //     /puppet/v4/catalog` is not a registered route at all — the case a
-//     Puppet Server build older than 6.3.0 (which introduced the v4
-//     endpoint; see doc.go) or an OpenVox compiler (which documents only
-//     v3; see doc.go) would produce, since neither server has any route
-//     bound to that path. This is exactly "unsupported-endpoint."
+//     Puppet Server or OpenVox build predating the v4 catalog endpoint
+//     would produce, since such a server has no route bound to that
+//     path. This is exactly "unsupported-endpoint." Current builds of
+//     both serve v4, so this signal means "too old", not "wrong
+//     product".
 //   - 501 is the standard HTTP status a server uses to say "the server
 //     does not support the functionality required to fulfill the
 //     request" — the natural status for a server that recognizes the

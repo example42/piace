@@ -174,10 +174,15 @@
 // Per tasks.md's Notes section ("Protocol adapters remain the
 // compatibility boundary. Their exact requests and responses must be
 // demonstrated with fixtures from the deployed service versions before
-// declaring a compiler/PuppetDB combination supported"), the exact
-// endpoint shape below is a documented assumption, not yet verified
-// against a live Puppet Server/OpenVox instance — the same caveat tasks
-// 4 and 6 already carry for their own documented wire-shape assumptions:
+// declaring a compiler/PuppetDB combination supported"), what follows
+// separates the two. Verified against a deployed OpenVox compiler on
+// 2026-08-25: the request path and query shape, the 200 response with
+// Content-Type application/octet-stream and raw bytes, and the whole
+// Accept contract (400 without the header, 200 with
+// application/octet-stream, 406 with application/json), exercised over
+// one `puppet:///modules/<MODULE>/<file>` reference. Still documented-
+// only, and marked as such below: the 404 response body for a missing
+// file, and the treatment of non-`puppet:` source schemes.
 //
 //   - GET /puppet/v3/file_content/<mount-point>/<name>?environment=<env>
 //     returns the raw bytes of the referenced file with Content-Type
@@ -185,10 +190,29 @@
 //     file_content endpoint (puppetlabs/puppet, api/docs/http_file_content.md):
 //     "The file_content endpoint returns the contents of the specified
 //     file." A 404 response ("Not Found: Could not find file_content
-//     <path>") is documented for a missing file; this package treats any
-//     non-2xx response as a retrieval failure (step 4b), never
+//     <path>") is documented for a missing file but was not exercised
+//     against a live compiler; nothing depends on the body text, because
+//     this package treats any non-2xx response as a retrieval failure
+//     (step 4b), never
 //     inspecting the response body for meaning, matching this package's
 //     "never render bytes, never trust echoed content" posture.
+//   - The request carries `Accept: application/octet-stream`, and the
+//     header is mandatory. Every /puppet/v3/ route is served by the
+//     compiler's embedded Ruby Puppet request handler, whose
+//     Puppet::Network::HTTP::Request#response_formatters_for raises
+//     "Missing required Accept header" when no Accept header is present
+//     — the request is rejected before any file is served. Verified
+//     against a deployed OpenVox server (2026-08-25) on this exact
+//     endpoint: no Accept header returns HTTP 400
+//     "Bad Request: Missing required Accept header", and
+//     `Accept: application/octet-stream` returns HTTP 200 with the
+//     file's raw bytes. The value is endpoint-specific and cannot be
+//     shared with the catalog endpoint's: the file-content indirection
+//     serves only the binary format, and the same verified request with
+//     `Accept: application/json` returns HTTP 406
+//     "Not Acceptable: No supported formats are acceptable". Reusing the
+//     catalog's Accept value here would trade one rejected request for
+//     another.
 //   - A Puppet File resource's `source` value in the form
 //     `puppet:///<mount-point>/<name>` (the documented form for the
 //     `modules/<MODULE>` and other file-serving mount points; see
@@ -197,9 +221,10 @@
 //     with its leading slash trimmed, is exactly the endpoint's
 //     `<mount-point>/<name>` path segment — see parsePuppetSourceURI in
 //     resolver.go.
-//   - A `source` value using any other URI scheme (a bare local
-//     filesystem path, a `file:` URI, or an `http(s):` URI) is not
-//     retrievable through this endpoint at all — Puppet's own File type
+//   - Documented-only, not exercised: a `source` value using any other
+//     URI scheme (a bare local filesystem path, a `file:` URI, or an
+//     `http(s):` URI) is not retrievable through this endpoint at all —
+//     Puppet's own File type
 //     documentation describes those as resolved directly by the agent,
 //     not proxied through the compiler's file-serving API. This package
 //     reports that case as a retrieval failure (step 4b:

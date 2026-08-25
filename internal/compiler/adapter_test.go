@@ -125,6 +125,39 @@ func TestAdapter_RequestCandidate_V3Success(t *testing.T) {
 	}
 }
 
+// TestAdapter_RequestCandidate_V3RequiresAcceptHeader pins the one v3
+// request detail no other test in this file covers: the endpoint is
+// served by the compiler's embedded Ruby Puppet request handler, which
+// rejects a request carrying no Accept header ("Missing required Accept
+// header", logged as a 400) before compiling anything. The handler below
+// mirrors that behavior, so the test fails against a builder that omits
+// the header rather than passing either way. See doc.go's v3 request
+// Accept bullet.
+func TestAdapter_RequestCandidate_V3RequiresAcceptHeader(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	var gotAccept string
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		gotAccept = r.Header.Get("Accept")
+		if gotAccept == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Bad Request: Missing required Accept header"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(wireCatalogBody("web-01.example.test", "production"))
+	})
+	adapter := newAdapter(t, fixture, srv)
+
+	fs := factsetWithTrusted("web-01.example.test", "production", false)
+	_, _, _, diag := adapter.RequestCandidate(context.Background(), v3Target("web-01.example.test", "production"), fs)
+	if diag != nil {
+		t.Fatalf("RequestCandidate returned diagnostic: %+v", diag)
+	}
+	if gotAccept != "application/json" {
+		t.Errorf("Accept = %q, want application/json", gotAccept)
+	}
+}
+
 func TestAdapter_RequestCandidate_V4Success_ProvidedTrustedFacts(t *testing.T) {
 	fixture := newTLSFixture(t, "127.0.0.1")
 	var gotBody v4Request

@@ -124,6 +124,17 @@ candidate environment, so that I can review changes before release.
    target identity and environment agree with the request, or report a
    compilation error.
 6. THE CLI SHALL not persist candidate facts or candidate catalogs to PuppetDB.
+7. WHEN catalog API v4 is selected, THE CLI SHALL request compilation with
+   fact persistence and catalog persistence explicitly disabled, which is how
+   criterion 6 is satisfied.
+8. WHEN a target can compile over v3 — `catalog_api: v3`, or `catalog_api: v4`
+   with `allow_v3_fallback: true` — THE CLI SHALL require `baseline.source:
+   file` for that target. A v3 compilation cannot satisfy criterion 6: the
+   compiler stores the submitted facts and the compiled catalog under the
+   candidate environment, which overwrites exactly the PuppetDB baseline the
+   comparison would read. A permitted fallback reaches that state at runtime,
+   when it is too late to reject the configuration, so the requirement is
+   keyed on what the target *may* do, not on what it did. See section 7.2.
 
 ### Requirement 2: Target facts and trusted identity
 
@@ -139,13 +150,20 @@ unrelated client identity or stale data.
 2. THE CLI SHALL identify the fact source and factset identity used for each
    candidate result.
 3. THE CLI SHALL allow CI configuration to select the compiler catalog API v3
-   or v4 for candidate compilation.
-4. WHEN v4 is selected and supports target trusted facts, THE CLI SHALL use
-   that mechanism for the candidate request.
-5. WHEN v3 is selected or used as a fallback, THE CLI SHALL emit a prominent
-   trusted-fact compatibility warning in every output format.
+   or v4 for candidate compilation. v4 is the supported path; v3 is a degraded
+   path constrained by section 7.2.
+4. WHEN v4 is selected, THE CLI SHALL send the target's own trusted facts in
+   the request, or use the compiler's PuppetDB trusted-fact lookup when the
+   target is explicitly configured for it, and SHALL fail compilation when
+   neither source is available rather than compiling with substituted trusted
+   facts.
+5. WHEN v3 is selected or used as a fallback, THE CLI SHALL emit a prominent,
+   non-suppressible v3 compatibility warning in every output format.
 6. THE v3 warning SHALL explain that `$trusted` can reflect the catalog-reader
    certificate rather than the target identity.
+7. THE v3 warning SHALL also explain that the compilation writes the candidate
+   facts and the candidate catalog into PuppetDB under the candidate
+   environment, overwriting the target's stored factset and catalog.
 
 ### Requirement 3: Service authentication and authorization
 
@@ -361,19 +379,76 @@ package resolution.
 
 ## 7. Compatibility and known constraints
 
-| Capability | Puppet Server | OpenVox |
-| --- | --- | --- |
-| Shared catalog API | `POST /puppet/v3/catalog/:certname` | `POST /puppet/v3/catalog/:certname` |
-| Dedicated catalog-reader certificate | Supported through `auth.conf` | Expected through `auth.conf` |
-| v4 catalog API with explicit trusted facts | Documented | Not documented |
-| v3 trusted-fact caveat with service identity | Warning required | Warning required |
+Puppet Server and OpenVox present PIACE with the same catalog contract. Both
+serve `POST /puppet/v3/catalog/:certname` and `POST /puppet/v4/catalog`, both
+authorize a dedicated catalog-reader certificate through `auth.conf`, and both
+honour the v4 request's `persistence` field. PIACE therefore makes no
+implementation-specific distinction: the API version selected in the target
+file, not the compiler product, determines what PIACE can guarantee.
 
-Puppet's v3 catalog request uses the TLS client identity. When the
-catalog-reader certificate is not the target's certificate, `$trusted` use in
-manifests or Hiera can yield a non-equivalent catalog. `puppet-catalog_diff`
-documents this exact limitation; PIACE therefore allows an explicit v3/v4
-selection and emits the v3 compatibility warning. See
+### 7.1 v4 is the supported path
+
+A v4 request carries `persistence: {facts: false, catalog: false}` and the
+target's own trusted facts. The compiler returns the catalog and writes nothing
+to PuppetDB, which is what makes requirement 1.6 satisfiable and what makes a
+PuppetDB baseline usable: the node's stored catalog and factset are exactly
+what its last real agent run produced, both before and after PIACE runs.
+
+### 7.2 v3 is a degraded path that mutates PuppetDB
+
+The v3 catalog endpoint has no persistence control, and this is a property of
+the endpoint, not of a particular compiler or configuration:
+
+- the compiler saves the facts submitted in the request, rewriting the target's
+  stored factset and its `facts_environment` to the candidate environment;
+- the compiled catalog is stored through the master's PuppetDB catalog cache
+  terminus, rewriting the target's stored catalog, `catalog_environment`, and
+  `transaction_uuid` to the candidate compilation's.
+
+Two consequences follow, and both are contractual:
+
+1. **A PuppetDB baseline is impossible with v3.** PIACE reads the baseline,
+   then compiles the candidate — and the candidate compilation overwrites the
+   baseline that the next target, or the next run, would read. A v3 target
+   requires `baseline.source: file` (requirement 1.8), captured while the
+   baseline environment's catalog was the stored one. So does a v4 target with
+   `allow_v3_fallback: true`: enabling the fallback is accepting a v3
+   compilation, and by the time one happens the configuration can no longer be
+   rejected.
+2. **`baseline.source: file` does not make v3 non-mutating.** It stops PIACE
+   from destroying its own input; it does not stop the compiler from writing
+   the candidate facts and catalog into PuppetDB. Any consumer of PuppetDB
+   state — reporting, exported resources, inventory, node classification that
+   reads `facts_environment` — sees the candidate values until the target's
+   next agent run restores them.
+
+v3 additionally carries the trusted-fact caveat that motivated PIACE's explicit
+API selection in the first place: the request is authenticated by the TLS
+client identity, so when the catalog-reader certificate is not the target's
+certificate, `$trusted` in manifests or Hiera can yield a non-equivalent
+catalog. `puppet-catalog_diff` documents this same limitation. See
 [trusted-facts research](../../../docs/research/trusted-facts-in-existing-catalog-diff-tools.md).
+
+### 7.3 Wire requirements shared by both implementations
+
+- Every `/puppet/v3/` request requires an explicit `Accept` header. The v3
+  routes are served by the compiler's embedded Ruby Puppet request handler,
+  which rejects a request without one before doing any work, with HTTP 400 and
+  `"Missing required Accept header"`. The acceptable value is endpoint-specific:
+  `application/json` for `/puppet/v3/catalog/:certname`, and
+  `application/octet-stream` for `/puppet/v3/file_content/` — which rejects
+  `application/json` with HTTP 406. `POST /puppet/v4/catalog` has no such
+  requirement, being served directly rather than through that handler.
+- A v3 catalog response is the catalog document itself. A v4 catalog response
+  wraps it as `{"catalog": {...}}`.
+- The `Accept` header does not select the catalog's rich-data encoding;
+  `__ptype`-tagged values are returned or not according to the compiler's own
+  `rich_data` setting, independent of the requested format.
+
+The behaviour in sections 7.1-7.3 was verified against a deployed OpenVox
+compiler and PuppetDB on 2026-08-25. Fixture captures from the specific
+compiler and PuppetDB versions in use remain the condition for declaring any
+other combination supported.
 
 ## 8. Target-file shape
 
@@ -428,7 +503,23 @@ targets:
 For a development branch, `baseline.source: file` points to a snapshot captured
 after the target's main/production environment was deployed. A
 `baseline.source: puppetdb` request intentionally means PuppetDB's current
-latest catalog, regardless of its environment.
+latest catalog, regardless of its environment, and is available only with
+`catalog_api: v4` (requirement 1.8, section 7.2).
+
+The two baseline sources answer different questions, and in CI the difference
+matters more than the convenience:
+
+- **`baseline.source: puppetdb`** compares *what the target last received*
+  against *what it would receive now*. It is the right baseline for asking
+  whether a node has drifted from what the deployed code produces, but it
+  depends on the target having run recently in the baseline environment, and
+  the comparison mixes code changes with fact changes since that run.
+- **`baseline.source: file`**, captured with `piace capture catalog
+  --environment <baseline environment>` from the same factset, compares
+  *baseline code now* against *candidate code now* against *identical facts*.
+  Nothing but the environment differs, so a difference is attributable to the
+  change under review. This is the better baseline for a CI gate on a code
+  change, and it does not depend on the target's agent-run schedule.
 
 ## 9. Source material
 
@@ -437,4 +528,5 @@ latest catalog, regardless of its environment.
 - [Trusted-facts research](../../../docs/research/trusted-facts-in-existing-catalog-diff-tools.md)
 - [Puppet Server v4 catalog API](https://help.puppet.com/core/current/Content/PuppetCore/server/http_api/puppet-api/v4/catalog.htm)
 - [OpenVox v3 catalog API](https://github.com/openvoxproject/openvox/blob/main/api/docs/http_catalog.md)
+- [Puppet v3 file_content API](https://github.com/puppetlabs/puppet/blob/main/api/docs/http_file_content.md)
 - [PuppetDB resources query API](https://github.com/puppetlabs/puppetdb/blob/main/documentation/api/query/v4/resources.markdown)

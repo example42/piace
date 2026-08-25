@@ -123,7 +123,7 @@ version: 1
 defaults:
   candidate:
     environment: feature-123
-    catalog_api: v4              # v3 | v4
+    catalog_api: v4              # v3 | v4 — v4 unless the compiler lacks it
     allow_v3_fallback: false     # valid only with v4; opt-in, never implicit
   facts:
     source: puppetdb             # puppetdb | file
@@ -181,6 +181,66 @@ The compiler identity is a dedicated **catalog-reader certificate** whose
 `auth.conf` rule grants it catalog reads for target certnames other than its
 own.
 
+### Authorizing the catalog-reader certificate
+
+A stock compiler lets nobody use the v4 endpoint, so PIACE gets HTTP 403 until
+one rule in `/etc/puppetlabs/puppetserver/conf.d/auth.conf` names the
+catalog-reader certificate's **subject CN** — not the filename in
+`services.yaml`. Edit the stock rule in place rather than appending a new one:
+`name` and `sort-order` identify a rule, and a duplicate is a configuration
+error.
+
+```hocon
+        {
+            # Stock ships this rule as `deny: "*"`. Replace that deny with
+            # an allow list; do not leave both in place.
+            match-request: {
+                path: "^/puppet/v4/catalog/?$"
+                type: regex
+                method: post
+            }
+            allow: [ "catalog-reader" ]
+            sort-order: 500
+            name: "puppetlabs v4 catalog for services"
+        },
+```
+
+That is the whole requirement for a v4 setup. The v3 rule below is needed
+**only** if you have opted into `catalog_api: v3` or `allow_v3_fallback: true`
+— see [Use `catalog_api: v4`](#use-catalog_api-v4) for why that is a degraded
+path:
+
+```hocon
+        {
+            # Allow nodes to retrieve their own catalog, and the
+            # catalog-reader certificate to retrieve anyone's.
+            match-request: {
+                path: "^/puppet/v3/catalog/([^/]+)$"
+                type: regex
+                method: [get, post]
+            }
+            allow: [ "$1", "catalog-reader" ]
+            sort-order: 500
+            name: "puppetlabs v3 catalog from agents"
+        },
+```
+
+`$1` is the certname captured from the request path, and it keeps working
+alongside a second entry — ordinary agents still fetch their own catalogs.
+Adding a CN beside it grants that certificate *every* target's catalog, which
+is the point of a dedicated identity and the reason it should be a certificate
+used for nothing else. It is also exactly what makes `$trusted` in a v3 catalog
+potentially reflect the reader rather than the target.
+
+Reload the compiler after editing (`systemctl reload puppetserver`). No rule
+change is needed for managed-File content evidence: the stock
+`"puppetlabs file"` rule already covers `/puppet/v3/file_content/`, which a
+catalog-reader certificate can therefore use for any target's files.
+
+PuppetDB is authorized separately, by its own certificate allowlist or by
+accepting any certificate signed by the CA, depending on how the installation
+is configured.
+
 ## Exit codes
 
 | Code | Outcome | Meaning |
@@ -194,16 +254,48 @@ Precedence is `30 > 20 > 10 > differences_allowed > clean`. A run is never
 `clean` while any target has an unreported retrieval, compilation, or
 normalization failure — an indeterminate File-content comparison included.
 
+## Use `catalog_api: v4`
+
+v4 is the supported path, and the reason is not trusted facts alone. Every v4
+request PIACE makes carries `persistence: {facts: false, catalog: false}`: the
+compiler returns the candidate catalog and writes nothing. The target's stored
+factset and catalog stay exactly as its last real agent run left them.
+
+The v3 catalog endpoint has no equivalent control, and the consequence is not
+cosmetic. On every v3 request the compiler saves the facts you submitted —
+rewriting the target's stored factset and its `facts_environment` to the
+candidate environment — and stores the compiled catalog through its PuppetDB
+catalog cache terminus, rewriting the target's stored catalog,
+`catalog_environment`, and `transaction_uuid`. That is a property of the
+endpoint. Nothing PIACE sends can turn it off.
+
+So with `catalog_api: v3`:
+
+- **`baseline.source: puppetdb` cannot work.** PIACE reads the baseline, then
+  compiles the candidate, and the candidate compilation overwrites the baseline
+  — for the next target in the same run, and for every later run. The symptom
+  is a baseline-environment mismatch that names the candidate environment. A v3
+  target needs `baseline.source: file`, captured while the baseline
+  environment's catalog was the stored one.
+- **A file baseline does not make v3 harmless.** It stops PIACE from destroying
+  its own input. It does not stop the compiler from writing the candidate facts
+  and catalog into PuppetDB, where anything reading PuppetDB state — reporting,
+  exported resources, inventory, classification keyed on `facts_environment` —
+  sees candidate values until the target's next agent run.
+
+Puppet Server and OpenVox behave identically here: both serve v3 and v4, and
+both honour the v4 `persistence` field. `catalog_api` is the only thing that
+decides.
+
 ## Two things the reports say, and mean literally
 
-**The v3 trusted-fact warning.** With `catalog_api: v3` — or any permitted
-v4→v3 fallback — `$trusted` in the compiled catalog can reflect the
-catalog-reader certificate rather than the target. The warning is
-non-suppressible and appears in all three formats. It does not change the exit
-status; it makes the trust semantics reviewable. v4 uses the compiler's target
-trusted-fact mechanism, and fails compilation rather than inventing trusted
-facts when neither a validated input nor a configured compiler lookup is
-available.
+**The v3 warning.** With `catalog_api: v3` — or any permitted v4→v3 fallback —
+`$trusted` in the compiled catalog can reflect the catalog-reader certificate
+rather than the target. The warning is non-suppressible and appears in all
+three formats. It does not change the exit status; it makes the trust semantics
+reviewable. v4 sends the target's own trusted facts, and fails compilation
+rather than inventing them when neither a validated input nor a configured
+compiler lookup is available.
 
 **The impact estimate.** It reports only that a node's latest *stored* catalog
 contains the exact `Type[title]`. It is not proof those nodes would change, and

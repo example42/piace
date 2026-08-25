@@ -191,7 +191,7 @@ type v4Request struct {
 
 // v3Facts is the JSON value the v3 catalog request's form-encoded `facts`
 // parameter carries: `{"name": <node>, "values": {...}}`, per doc.go's
-// documented assumption from OpenVox's v3 catalog API.
+// v3 request bullet.
 type v3Facts struct {
 	Name   string                     `json:"name"`
 	Values map[string]json.RawMessage `json:"values"`

@@ -65,12 +65,17 @@ and deterministic-output invariants. Requirement references point to
     returned target and candidate environment, and collect compiler provenance.
   - Implement explicit v4 target trusted-fact handling and fail a v4 request
     when neither a validated input nor configured compiler lookup is available.
+  - Send `persistence: {facts: false, catalog: false}` on every v4 request,
+    unconditionally, and send an endpoint-appropriate `Accept` header on every
+    v3 request.
   - Permit v4-to-v3 fallback only when explicitly enabled and only for a
     verified unsupported-v4 response; emit the non-suppressible service-
     identity trusted-fact warning for every v3 catalog.
-  - Reuse this path for catalog snapshot capture; do not claim v4 behavior for
-    OpenVox without an operator-selected, documented compatibility contract.
-  - _Requirements: 1.4-1.5, 2.3-2.5, 7 compatibility constraints, 11.2-11.5_
+  - Reuse this path for catalog snapshot capture. Treat Puppet Server and
+    OpenVox identically: both serve v3 and v4 and both honour the v4
+    `persistence` field, so the adapter carries no implementation-specific
+    branch.
+  - _Requirements: 1.4-1.8, 2.3-2.5, 7 compatibility constraints, 11.2-11.5_
 
 - [x] 7. Normalize Puppet catalogs into a deterministic semantic graph
   - Validate catalog resource and edge structures; construct exact
@@ -199,7 +204,28 @@ and deterministic-output invariants. Requirement references point to
 - Protocol adapters remain the compatibility boundary. Their exact requests and
   responses must be demonstrated with fixtures from the deployed service
   versions before declaring a compiler/PuppetDB combination supported.
-- No task authorizes candidate facts or catalogs to be persisted to PuppetDB.
+- No task authorizes PIACE to write to PuppetDB, and no task authorizes a
+  candidate compilation to be persisted where the API version allows that to be
+  suppressed. v4 suppresses it (`persistence: {facts: false, catalog: false}`);
+  v3 has no such control, and the compiler stores the candidate facts and
+  catalog on every v3 request. That is why v3 is a degraded path requiring a
+  file baseline (requirements.md 1.8, 7.2), not a second supported one.
+
+- [ ] 13. Enforce and disclose the v3 persistence constraint
+  - Reject `baseline.source: puppetdb` for any target that can compile over
+    v3 — `catalog_api: v3`, and `catalog_api: v4` with `allow_v3_fallback:
+    true` — during configuration resolution, with a diagnostic naming the
+    reason: a v3 candidate compilation overwrites the stored catalog the
+    baseline reads. The rule belongs beside the existing `allow_v3_fallback`
+    validation.
+  - The existing v3 acceptance tests baseline from the fake PuppetDB, which
+    this rule forbids; move `TestAcceptance_V3WarningAppearsInEveryFormat` and
+    `TestAcceptance_V4ToV3Fallback` to a file-backed baseline as part of the
+    change rather than treating their failure as a regression.
+  - Extend the non-suppressible v3 warning so it states the PuppetDB mutation
+    as well as the `$trusted` caveat, and update the outcome/renderer fixtures
+    that pin the exact warning text.
+  - _Requirements: 1.6-1.8, 2.5-2.7, 7.2_
 
 ## Task Dependency Graph
 
@@ -215,7 +241,8 @@ and deterministic-output invariants. Requirement references point to
     {"wave": 7, "tasks": [9]},
     {"wave": 8, "tasks": [10]},
     {"wave": 9, "tasks": [11]},
-    {"wave": 10, "tasks": [12]}
+    {"wave": 10, "tasks": [12]},
+    {"wave": 11, "tasks": [13]}
   ]
 }
 ```
@@ -223,7 +250,7 @@ and deterministic-output invariants. Requirement references point to
 ```text
 1 -> 2 -> 3 -> 4 -> 5
                  \-> 6
-4 + 5 + 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12
+4 + 5 + 6 -> 7 -> 8 -> 9 -> 10 -> 11 -> 12 -> 13
 ```
 
 Tasks 4, 5, and 6 may proceed in parallel after task 3. Task 7 depends on their

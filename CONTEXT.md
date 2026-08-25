@@ -13,7 +13,9 @@ _Avoid_: old catalog, stored catalog, production catalog
 
 **Candidate catalog**:
 The catalog compiled by the configured compiler for a target certname in the CI
-environment under test, using the selected v3 or v4 compiler catalog API.
+environment under test, using the selected v3 or v4 compiler catalog API. A v4
+candidate compilation is not persisted; a v3 one is stored by the compiler in
+PuppetDB and overwrites the target's stored catalog and factset.
 _Avoid_: CI catalog, new catalog
 
 **Compiler**:

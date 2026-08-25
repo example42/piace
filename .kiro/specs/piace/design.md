@@ -5,8 +5,11 @@
 PIACE is a dependency-free, CGO-free Go CLI that compares a target's selected
 **baseline catalog** against a **candidate catalog** requested from an existing
 Puppet Server or OpenVox **compiler**. CI deploys the candidate environment
-before PIACE runs. PIACE never embeds a Puppet runtime, runs agents, or writes
-facts or catalogs to PuppetDB.
+before PIACE runs. PIACE never embeds a Puppet runtime, runs agents, or issues
+a write to PuppetDB. With `catalog_api: v4` the candidate compilation writes
+nothing to PuppetDB either, because every v4 request disables fact and catalog
+persistence; with `catalog_api: v3` the compiler stores the candidate facts and
+catalog regardless, which is the constraint that shapes the v3 rules below.
 
 This design fixes the contracts deliberately left open in the requirements:
 configuration merge rules, snapshot integrity, compiler compatibility,
@@ -20,7 +23,8 @@ precedence. The implementation must use the terminology in `CONTEXT.md`.
 - Strict source and target validation before a catalog is diffed.
 - Independent least-privilege mTLS configuration for the compiler and
   PuppetDB; no secret material in output.
-- An explicit degraded-compatibility path for compiler catalog API v3.
+- An explicit degraded-compatibility path for compiler catalog API v3, bounded
+  by what v3 cannot do: suppress persistence.
 - Reusable, verifiable snapshots for environment-stable baselines.
 
 ### 1.2 Explicit non-goals
@@ -84,11 +88,25 @@ fail_on_diff
 
 `catalog_api` is `v3` or `v4`; `allow_v3_fallback` defaults to `false` and is
 valid only with `v4`. This explicit opt-in prevents a server capability error
-from silently degrading trusted-fact semantics. A v4 request may fall back only
-for a documented unsupported-endpoint or unsupported-version response. It must
-not fall back after authentication, authorization, timeout, malformed response,
-or candidate identity/environment mismatch. Any fallback is recorded as a
-warning and is subject to the v3 warning rules.
+from silently degrading both trusted-fact semantics and PuppetDB integrity. A
+v4 request may fall back only for a documented unsupported-endpoint or
+unsupported-version response. It must not fall back after authentication,
+authorization, timeout, malformed response, or candidate identity/environment
+mismatch. Any fallback is recorded as a warning and is subject to every v3 rule
+below, including the persistence consequences — an operator who enables the
+fallback is accepting that a compiler without v4 will have the target's stored
+factset and catalog overwritten.
+
+Any target that can compile over v3 requires `baseline.source: file`
+(requirements.md 1.8) — `catalog_api: v3`, and equally `catalog_api: v4` with
+`allow_v3_fallback: true`. A v3 compilation overwrites the target's stored
+PuppetDB catalog and factset with the candidate's, so a `puppetdb` baseline is
+not merely inaccurate here: the candidate request destroys the baseline the run
+reads, and the failure surfaces on the *next* target or the *next* run as a
+baseline-environment mismatch. Both combinations are configuration errors
+rejected during resolution rather than runtime warnings, because a fallback
+that has already fired cannot be un-fired. Pairing a file baseline with v3
+still leaves the compilation itself mutating: see section 5.
 
 ### 3.2 Merge and validation rules
 
@@ -180,13 +198,30 @@ PIACE fails compilation rather than inventing trusted facts. The response
 provenance records `provided` or `compiler_lookup` but never trusted-fact
 values.
 
+Every v4 request carries `persistence: {facts: false, catalog: false}`. This is
+not configurable. It is what allows requirement 1.6 to hold and what keeps a
+PuppetDB baseline meaningful: the compiler returns the candidate catalog and
+writes nothing, so the target's stored factset and catalog remain those of its
+last real agent run.
+
 For API v3, and every permitted v4-to-v3 fallback, PIACE attaches a prominent,
-non-suppressible warning to the target: the catalog-reader certificate can make
-`$trusted` reflect the service identity rather than the target. The same
-warning appears in the shared result, text, JSON, and HTML. OpenVox is
-configured v3 only unless an operator explicitly selects an implementation
-with a documented v4 contract; PIACE does not claim v4 trusted-fact equivalence
-for OpenVox.
+non-suppressible warning to the target, covering both v3 consequences: the
+catalog-reader certificate can make `$trusted` reflect the service identity
+rather than the target, and the compilation writes the candidate facts and
+candidate catalog into PuppetDB under the candidate environment. The same
+warning appears in the shared result, text, JSON, and HTML.
+
+The v3 endpoint offers no persistence control, so neither consequence is
+avoidable from the client: the compiler saves the facts submitted with the
+request, and stores the compiled catalog through its PuppetDB catalog cache
+terminus. PIACE contains v3's blast radius through configuration
+(`baseline.source: file` is mandatory, section 3.1) and reports it through the
+warning; it cannot prevent it.
+
+Puppet Server and OpenVox are treated identically. Both serve v3 and v4, both
+authorize a catalog-reader certificate through `auth.conf`, and both honour the
+v4 `persistence` field, so `catalog_api` alone determines PIACE's guarantees.
+There is no implementation-specific branch anywhere in the adapter.
 
 PIACE does not probe alternate API versions speculatively. Capture catalog uses
 the exact same adapter and policy as comparison and records the requested API,
@@ -398,18 +433,23 @@ assets, and user-controlled template execution are excluded.
 | Decision | Rationale | Requirements |
 | --- | --- | --- |
 | Separate target and service files | Keeps reviewable scope/policy distinct from mTLS locations. | 3, 4 |
-| Explicit v3 fallback opt-in | Prevents silent loss of v4 trusted-fact behavior. | 2, 7 |
+| Explicit v3 fallback opt-in | Prevents silent loss of v4 trusted-fact behavior and silent PuppetDB mutation. | 2, 7 |
+| v4 persistence always disabled | The only client-side control that keeps a candidate compilation out of PuppetDB. | 1, 7 |
+| v3 requires a file baseline | A v3 candidate compilation overwrites a PuppetDB baseline, including its own run's. | 1, 7 |
 | SHA-256 canonical payload envelope | Detects snapshot corruption without a Puppet runtime. | 11 |
 | Continue valid targets after local errors | Produces actionable CI evidence without hiding failures. | 8, 10 |
 | Redact after equality, before results | Maintains correct diff semantics and prevents disclosure. | 3, 8 |
 | Enabled impact failure is operational | A requested bounded analysis must not be silently omitted. | 9, 10 |
 
-The unresolved external protocol details are isolated behind the compiler and
-PuppetDB adapters. Before production implementation, fixture captures from the
-specific Puppet Server/OpenVox and PuppetDB versions in use must verify request
-fields, response shapes, checksum semantics, file-content endpoints, and PQL
-options; adapter support is not enabled merely because another implementation
-accepts a similar endpoint.
+The external protocol details are isolated behind the compiler and PuppetDB
+adapters. The v3/v4 request shapes, the v3 `Accept` requirement, the v4
+response envelope, and the v3/v4 persistence behaviour were verified against a
+deployed OpenVox compiler and PuppetDB on 2026-08-25 (requirements.md section
+7). For any other compiler or PuppetDB version, fixture captures must verify
+request fields, response shapes, checksum semantics, file-content endpoints,
+and PQL options before that combination is declared supported; adapter support
+is not enabled merely because another implementation accepts a similar
+endpoint.
 
 
 ## Correctness Properties
@@ -475,6 +515,6 @@ normalization, exclusions, redaction, aggregate equivalence, PQL quoting, and
 outcome precedence. Adapter contract fixtures must represent every supported
 PuppetDB, Puppet Server, and OpenVox response variant. Integration validation
 uses an mTLS test service to prove authority isolation, no secret disclosure,
-v3 warning behavior, v4 handling, fallback limits, and deterministic
-self-contained report generation. Release validation proves the CGO-free
+v3 warning behavior, v4 handling including the always-disabled persistence
+fields, fallback limits, and deterministic self-contained report generation. Release validation proves the CGO-free
 artifact and checksum/signature workflow.
