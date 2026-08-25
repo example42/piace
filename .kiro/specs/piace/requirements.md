@@ -2,7 +2,7 @@
 
 **Status:** Draft — requirements-stage input for Kiro spec-driven development.
 
-**Product name:** Puppet Intelligent Analysis Catalog Explorer (PIACE)
+**Product name:** Puppet Impact Assessment & Change Explorer (PIACE)
 
 ## 1. Product summary
 

@@ -1,0 +1,129 @@
+name: CI
+
+# Pull requests run the test job. A merge to main runs the same test job
+# and then, only if it passed, builds the release artifacts and uploads
+# them. Both live in one workflow so `needs:` can gate the build on the
+# tests — a cross-workflow dependency would need `workflow_run`, which
+# reports its status against the wrong commit and is easy to misread.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege. Nothing here writes to the repository; add
+# `contents: write` only if a job is later taught to publish a Release.
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the previous run. Runs on main
+# are never cancelled, so every merged commit keeps its artifacts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, go ${{ matrix.go }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing should not hide the result on the others.
+      fail-fast: false
+      matrix:
+        include:
+          # The minimum go.mod declares: the version the project actually
+          # promises to build under.
+          - os: ubuntu-latest
+            go: '1.22'
+          # The current release, to catch toolchain changes before they
+          # become a forced upgrade.
+          - os: ubuntu-latest
+            go: 'stable'
+          # PIACE writes snapshots with atomic rename, fsync, and 0600
+          # permissions, and its release script branches on
+          # sha256sum/shasum. Those are the parts most likely to diverge
+          # between Linux and macOS, so macOS is not optional here.
+          - os: macos-latest
+            go: 'stable'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          # setup-go caches the module and build caches keyed on go.sum.
+          cache-dependency-path: go.sum
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt reported unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      # -race because the acceptance suite runs in-process mTLS services
+      # whose handlers execute on the net/http server's goroutines while
+      # the pipeline reads their recorded state. -count=1 defeats the test
+      # cache, which would otherwise let a green run say nothing.
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+  build:
+    name: build release artifacts
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # Every artifact is CGO-free (requirements.md 12.1), so one Linux
+      # runner cross-compiles the whole supported matrix. Running this on
+      # pull requests too means a broken release script is found in review
+      # rather than at release time.
+      - name: Build artifacts and checksum manifest
+        run: bash scripts/build-release.sh "main-${GITHUB_SHA::7}"
+
+      # docs/release.md tells a consumer to verify the manifest before
+      # installing. Running that same check here proves the manifest CI
+      # produced is one that verification actually accepts.
+      - name: Verify the checksum manifest
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+
+      # Confirms the artifacts are the statically linked binaries
+      # design.md section 11 describes, not something dynamically linked
+      # against the runner's libc.
+      - name: Confirm the Linux artifacts are statically linked
+        working-directory: dist
+        run: |
+          for binary in piace-*-linux-*; do
+            file "$binary"
+            file "$binary" | grep -q 'statically linked' \
+              || { echo "::error::$binary is not statically linked"; exit 1; }
+          done
+
+      # Uploaded only for main: a pull request has already had the build
+      # validated above, and does not need artifacts accumulating against
+      # the repository's storage.
+      - name: Upload artifacts
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: piace-main-${{ github.sha }}
+          path: |
+            dist/piace-*
+            dist/SHA256SUMS
+          retention-days: 30
+          if-no-files-found: error

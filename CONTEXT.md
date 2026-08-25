@@ -1,4 +1,4 @@
-# Puppet Intelligent Analysis Catalog Explorer (PIACE)
+# Puppet Impact Assessment & Change Explorer (PIACE)
 
 This context defines a CI command that compares node catalogs retained in
 PuppetDB with catalogs compiled for an already deployed candidate environment.

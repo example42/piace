@@ -1,0 +1,129 @@
+package compiler
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/example42/piace/internal/transport"
+)
+
+// trustedFactsDecision is the outcome of design.md section 5's v4
+// trusted-fact policy for one request: either a validated trusted-fact
+// value to send explicitly, or an instruction to omit the field and rely
+// on the compiler's own PuppetDB lookup, or neither — which is a
+// compilation failure the caller must report without ever issuing an HTTP
+// request (design.md: "If neither source is available, PIACE fails
+// compilation rather than inventing trusted facts").
+type trustedFactsDecision struct {
+	// available is false only when neither source applies; callers must
+	// check this before issuing a v4 request.
+	available bool
+	// source is model.TrustedFactsProvided or
+	// model.TrustedFactsCompilerLookup when available is true.
+	source trustedFactsSource
+	// value is the raw "trusted" fact JSON object to send as
+	// trusted_facts.values; nil when source is compiler_lookup (the field
+	// is omitted from the request entirely in that case).
+	value json.RawMessage
+}
+
+// trustedFactsSource mirrors model.TrustedFactsSource without importing
+// internal/model into this decision helper's signature, keeping the
+// decision self-contained and testable independent of the model package's
+// JSON tags. adapter.go converts it to model.TrustedFactsSource when
+// building CandidateProvenance.
+type trustedFactsSource int
+
+const (
+	trustedFactsSourceNone trustedFactsSource = iota
+	trustedFactsSourceProvided
+	trustedFactsSourceCompilerLookup
+)
+
+// decideTrustedFacts implements design.md section 5's exact v4
+// trusted-fact policy: prefer a validated trusted-fact structure already
+// present in the factset; otherwise fall back to the compiler's PuppetDB
+// lookup only when the target is explicitly configured for it; otherwise
+// report unavailability so the caller fails compilation.
+func decideTrustedFacts(flatFacts map[string]json.RawMessage, compilerLookupConfigured bool) trustedFactsDecision {
+	if raw, ok := extractTrustedFacts(flatFacts); ok {
+		return trustedFactsDecision{available: true, source: trustedFactsSourceProvided, value: raw}
+	}
+	if compilerLookupConfigured {
+		return trustedFactsDecision{available: true, source: trustedFactsSourceCompilerLookup}
+	}
+	return trustedFactsDecision{available: false}
+}
+
+// buildV4Request constructs the POST /puppet/v4/catalog request. See
+// doc.go for the documented v4 request-shape assumption.
+func buildV4Request(ctx context.Context, client *transport.Client, baseURL *url.URL, certname, environment string, flatFacts map[string]json.RawMessage, decision trustedFactsDecision) (*http.Request, error) {
+	body := v4Request{
+		Certname:    certname,
+		Persistence: v4Persistence{Facts: false, Catalog: false},
+		Environment: environment,
+		Facts:       v4FactsField{Values: flatFacts},
+	}
+	if decision.source == trustedFactsSourceProvided {
+		body.TrustedFacts = &v4TrustedFactsField{Values: decision.value}
+	}
+	uuid, err := newTransactionUUID()
+	if err != nil {
+		return nil, err
+	}
+	body.TransactionUUID = uuid
+
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encoding v4 catalog request: %w", err)
+	}
+
+	u := *baseURL
+	u.Path = "/puppet/v4/catalog"
+	u.RawQuery = ""
+	u.Fragment = ""
+
+	req, err := client.NewRequest(ctx, http.MethodPost, u.String(), strings.NewReader(string(encoded)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
+// buildV3Request constructs the POST /puppet/v3/catalog/:certname
+// request. See doc.go for the documented v3 request-shape assumption:
+// form-encoded body with environment, facts_format, facts (a JSON string
+// of {"name", "values"}), and transaction_uuid.
+func buildV3Request(ctx context.Context, client *transport.Client, baseURL *url.URL, certname, environment string, flatFacts map[string]json.RawMessage) (*http.Request, error) {
+	factsJSON, err := json.Marshal(v3Facts{Name: certname, Values: flatFacts})
+	if err != nil {
+		return nil, fmt.Errorf("encoding v3 facts parameter: %w", err)
+	}
+	uuid, err := newTransactionUUID()
+	if err != nil {
+		return nil, err
+	}
+
+	form := url.Values{}
+	form.Set("environment", environment)
+	form.Set("facts_format", "application/json")
+	form.Set("facts", string(factsJSON))
+	form.Set("transaction_uuid", uuid)
+
+	u := *baseURL
+	u.Path = "/puppet/v3/catalog/" + url.PathEscape(certname)
+	u.RawQuery = ""
+	u.Fragment = ""
+
+	req, err := client.NewRequest(ctx, http.MethodPost, u.String(), strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return req, nil
+}

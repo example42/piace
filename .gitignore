@@ -1,0 +1,37 @@
+# Release artifacts (scripts/build-release.sh writes here)
+/dist/
+
+# Local `go build` output in the repo root
+/piace
+/cmd/piace/piace
+
+# Go test and profiling output
+*.test
+*.out
+coverage.*
+
+# TLS material. PIACE's --services file points at a CA bundle, a client
+# certificate, and a private key; keeping these unstageable by default is
+# cheaper than noticing one in a diff. Force-add deliberately (`git add
+# -f`) if a fixture genuinely belongs in the repo.
+*.pem
+*.key
+*.crt
+*.p12
+
+# Captured snapshots. These are per-run CI inputs holding full factsets
+# and catalogs, refreshed by `piace capture` rather than authored by hand
+# (see requirements.md 11.7). Un-ignore a directory here if your workflow
+# deliberately versions them.
+/snapshots/
+
+# Local run output
+*.report.json
+*.report.html
+*.report.txt
+
+# macOS / editors
+.DS_Store
+*.swp
+.idea/
+.vscode/

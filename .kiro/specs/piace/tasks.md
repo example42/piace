@@ -20,7 +20,7 @@ and deterministic-output invariants. Requirement references point to
     and `30` operational error.
   - _Requirements: 4.1-4.4, 8.2, 10.1-10.4, 11.1-11.5, 12.1-12.2_
 
-- [~] 2. Parse and validate target and service configuration before I/O
+- [x] 2. Parse and validate target and service configuration before I/O
   - Decode `version: 1` target and service YAML with unknown-field rejection.
   - Resolve defaults, per-target scalar overrides, append-only exclusions and
     redactions, and relative snapshot paths as specified in design section 3.
@@ -30,7 +30,7 @@ and deterministic-output invariants. Requirement references point to
   - Preserve resolved configuration provenance for reporting without secrets.
   - _Requirements: 3.3-3.5, 4.1-4.4, 6.1-6.2, 8.8, 9.1/9.5, 10.3_
 
-- [~] 3. Implement hardened, independent mTLS HTTP clients
+- [x] 3. Implement hardened, independent mTLS HTTP clients
   - Build separate compiler and PuppetDB transports from the resolved service
     configuration, enforcing HTTPS, configured CA roots, client certificates,
     TLS 1.2+, no redirects to another authority, request deadlines, and bounded
@@ -41,7 +41,7 @@ and deterministic-output invariants. Requirement references point to
   - Map service failures into operational versus compiler failure classes.
   - _Requirements: 3.1-3.5, 10.1/10.5, 12.4_
 
-- [~] 4. Implement PuppetDB fact and baseline-catalog source adapters
+- [x] 4. Implement PuppetDB fact and baseline-catalog source adapters
   - Retrieve the latest factset and baseline catalog for an explicit certname.
   - Record source, target, environment, producer timestamp, catalog identity or
     hash, and producer in source provenance.
@@ -50,7 +50,7 @@ and deterministic-output invariants. Requirement references point to
   - _Requirements: 1.1-1.3/1.6, 2.1-2.2, 10.5_
 
 
-- [~] 5. Add PIACE snapshot envelopes and capture workflows
+- [x] 5. Add PIACE snapshot envelopes and capture workflows
   - Implement canonical JSON payload serialization and SHA-256 checksums using
     the envelope schema and atomic `0600` writes defined in design section 6.
   - Load and validate file-backed fact and catalog snapshots for version, kind,
@@ -60,7 +60,7 @@ and deterministic-output invariants. Requirement references point to
     provenance. Ensure captures never mutate PuppetDB.
   - _Requirements: 1.1-1.3, 2.1-2.2, 11.1-11.7_
 
-- [~] 6. Implement the v3/v4 compiler adapter and trusted-fact policy
+- [x] 6. Implement the v3/v4 compiler adapter and trusted-fact policy
   - Request candidate catalogs only through the configured compiler, validate
     returned target and candidate environment, and collect compiler provenance.
   - Implement explicit v4 target trusted-fact handling and fail a v4 request
@@ -72,7 +72,7 @@ and deterministic-output invariants. Requirement references point to
     OpenVox without an operator-selected, documented compatibility contract.
   - _Requirements: 1.4-1.5, 2.3-2.5, 7 compatibility constraints, 11.2-11.5_
 
-- [~] 7. Normalize Puppet catalogs into a deterministic semantic graph
+- [x] 7. Normalize Puppet catalogs into a deterministic semantic graph
   - Validate catalog resource and edge structures; construct exact
     `Type[title]` identities, sorted resources, canonical parameter values, and
     sorted edge endpoint keys.
@@ -83,7 +83,7 @@ and deterministic-output invariants. Requirement references point to
     serializable semantic representation redaction-ready.
   - _Requirements: 5.1-5.4/5.9, 8.6-8.8, 10.5_
 
-- [~] 8. Implement managed File content evidence without content disclosure
+- [x] 8. Implement managed File content evidence without content disclosure
   - Classify `File` differences using inline-content digests, source changes,
     and available compiled checksums.
   - Add the compiler-backed content resolver for cases lacking comparable
@@ -94,7 +94,7 @@ and deterministic-output invariants. Requirement references point to
     mistaken for a clean verified comparison.
   - _Requirements: 5.5-5.8, 8.7, 10.5_
 
-- [~] 9. Build node diffing, exclusions, and redaction boundaries
+- [x] 9. Build node diffing, exclusions, and redaction boundaries
   - Produce resource additions/removals, canonical parameter changes, edge
     additions/removals, and File-content difference classifications per target.
   - Apply the resolved exact-type/case-sensitive-glob exclusion rules before
@@ -105,10 +105,18 @@ and deterministic-output invariants. Requirement references point to
     formats while retaining no secret material in logs or aggregate keys.
   - _Requirements: 5.1-5.9, 6.1-6.6, 8.7-8.8, 10.4_
 
-- [~] 10. Build deterministic aggregate diffs and optional impact estimates
+- [x] 10. Build deterministic aggregate diffs and optional impact estimates
   - Group equivalent non-excluded node changes by kind, identity, and raw
     canonical before/after evidence; output each group with sorted certnames
-    and links to its node changes.
+    and links to its node changes. Task 9 supplies that evidence as
+    `model.ResourceChange.Fingerprint`, an equality-preserving digest over the
+    unredacted values that never reaches a serialized report, so distinct
+    sensitive changes cannot merge into one group; an empty fingerprint means
+    "cannot group". `model.EdgeChange` needs none — kind plus the ordered
+    endpoint pair is already complete equivalence — but
+    `model.AggregateChangeKey` currently carries a `ResourceIdentity` and
+    therefore cannot represent an edge group, which requirement 7.4 requires
+    as a distinct aggregate kind; it needs an edge-shaped variant.
   - Generate safely escaped exact type/title PQL resource queries, request no
     more than `result_limit + 1`, apply time limits, sort certnames, and retain
     only the deterministic sample and truncation state.
@@ -116,10 +124,26 @@ and deterministic-output invariants. Requirement references point to
     outcome separately, and never compile returned nodes.
   - _Requirements: 7.1-7.4, 9.1-9.8_
 
-- [~] 11. Implement the shared result model, renderers, and outcome reducer
+- [x] 11. Implement the shared result model, renderers, and outcome reducer
   - Populate a versioned JSON document with node results, aggregate diff,
     source/configuration provenance, diagnostics, exclusions, redactions, and
-    optional impact-estimate states.
+    optional impact-estimate states. Task 10 supplies the aggregate via
+    `aggregate.Build(nodeDiffs)` and the estimates via
+    `impact.EstimateAll(ctx, querier, targets, nodeDiffs)`; a failed or
+    timed-out estimate arrives twice, as an `ImpactEstimate` with a non-
+    completed `Status` and as an error-severity `estimate_impact` diagnostic
+    that must reduce to an operational outcome after all targets finish.
+    `AggregateChangeKey` sets exactly one of `Identity`/`Edge` per `Kind`, and
+    `NodeChangeRef.Index` indexes `ResourceChanges` or `EdgeChanges` according
+    to that same `Kind`. `ImpactEstimate.ResultCount` is what the bounded query
+    returned (at most `result_limit+1`), never a total.
+  - Own requirement 9.3's visible **potential impact estimate** label. Task 10
+    deliberately emits no such wording: `model.ImpactEstimate` carries state,
+    not prose, and 9.3 is a property of what the CLI renders. Every format
+    (text, JSON, HTML) must therefore label the estimate section itself, and
+    must not phrase a returned certname as a node that will change — the
+    estimate says only that a node's latest stored catalog contains the
+    resource.
   - Render the same data deterministically to concise CI text and a single
     self-contained, safely escaped `file://` HTML artifact with no external
     assets or network requests.
@@ -129,18 +153,42 @@ and deterministic-output invariants. Requirement references point to
   - _Requirements: 7.1-7.4, 8.1-8.8, 9.3/9.7, 10.1-10.5_
 
 - [~] 12. Validate release and operational behavior against the accepted matrix
-  - Exercise the defined behavior with fixture-driven checks covering PuppetDB
+  - [x] Exercise the defined behavior with fixture-driven checks covering PuppetDB
     and snapshot sources; valid and invalid envelopes; v3, v4, and allowed
     fallback; trusted-fact warnings; baseline-environment rejection; exclusions;
     sensitive/redacted values; File evidence states; impact time/limit states;
     partial target failures; all outcome precedences; and byte-identical report
-    ordering for identical inputs.
-  - Verify a `CGO_ENABLED=0` build has no Puppet/Ruby/Facter or runtime package
+    ordering for identical inputs. Implemented as `cmd/piace`'s acceptance
+    suite, which drives the CLI `run()` entry point against two in-process
+    mTLS services so PEM loading, TLS handshakes, adapter HTTP/JSON decoding,
+    artifact writing, and the process exit code are all exercised.
+  - [ ] **Outstanding — needs a deployed PuppetDB.** Confirm the two endpoint
+    assumptions task 10 documents in `internal/impact/doc.go`: that design.md
+    section 8's PQL text is accepted at the root `/pdb/query/v4` endpoint
+    (requirements.md 9.2 names `/pdb/query/v4/resources`, which takes AST, not
+    a PQL string naming its own entity), and that `limit`/`order_by` URL
+    parameters are honored alongside a `query` parameter there. Without
+    honored `order_by`, a *truncated* impact sample is not reproducible, which
+    requirements.md 9.6 assumes it is. The request PIACE emits is pinned by
+    `TestAcceptance_ImpactQueryWireShape`; the confirmation procedure is in
+    `TestOutstanding_PuppetDBImpactEndpointAssumptions`.
+  - [ ] **Outstanding — needs a rich-data-enabled compiler.** Confirm the Puppet
+    `Sensitive` wire shape task 9 documents in `internal/diff/doc.go`
+    (`{"__ptype":"Sensitive","__pvalue":...}`), which is derived from Puppet's
+    Ruby serializer source rather than from a live response. A fixture cannot
+    discharge this: the suite serves the assumed shape, so it proves PIACE
+    redacts what it expects to see. If a real compiler emits a different
+    encoding the suite still passes and the value is not redacted. Procedure
+    in `TestOutstanding_SensitiveWireShape`.
+  - [x] Verify a `CGO_ENABLED=0` build has no Puppet/Ruby/Facter or runtime package
     dependency, and document checksum/signature generation and verification for
-    the supported release artifacts.
-  - Confirm runtime endpoints are restricted to the configured compiler and
+    the supported release artifacts. See `docs/release.md`,
+    `scripts/build-release.sh`, and `cmd/piace/release_test.go`.
+  - [x] Confirm runtime endpoints are restricted to the configured compiler and
     PuppetDB services, and that no report contains credentials, private material,
-    managed content bytes, or unredacted sensitive values.
+    managed content bytes, or unredacted sensitive values. Both are asserted
+    structurally: a third mTLS service fails the test if ever contacted, and
+    every rendered artifact is scanned for the served secrets.
   - _Requirements: 1-12_
 
 
