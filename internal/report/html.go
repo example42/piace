@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"strings"
 
 	"github.com/example42/piace/internal/exitcode"
 	"github.com/example42/piace/internal/model"
@@ -16,10 +17,22 @@ import (
 //
 // Self-containment is structural, not a review promise: the template is a
 // package constant with one inlined <style> block, no <script>, no <img>,
-// no <link>, and no URL of any kind. There is nothing in the document
-// that could issue a request. Expand/collapse uses <details>, so the page
-// stays interactive with no JavaScript and the document has no script
-// context for an untrusted value to escape into.
+// no <link>, no `url(...)`, and no URL of any kind. There is nothing in
+// the document that could issue a request — which also means no webfont,
+// so the type system is built from system font stacks, and every
+// disclosure marker is drawn in CSS rather than set in a glyph a reader's
+// machine may not have.
+//
+// Expand/collapse is <details>, so the page stays interactive with no
+// JavaScript and the document has no script context for an untrusted
+// value to escape into.
+//
+// Unlike the text report, HTML takes no display Options: it shows
+// everything the result document holds — edge changes, an estimate's PQL,
+// request options, and full certname list — and uses disclosure rather
+// than omission to keep the page readable. A reader who wants the detail
+// opens it; a reader scanning for the outcome never has to page past it.
+// See doc.go.
 //
 // Everything variable is interpolated through html/template, whose
 // contextual escaping is what makes an attacker-shaped resource title or
@@ -47,58 +60,120 @@ type htmlView struct {
 	OutcomeClass string
 	// Compiler/PuppetDB are the run-level service authorities
 	// (model.ServiceProvenance); empty when the document records none.
-	Compiler  string
-	PuppetDB  string
-	ExitCode  int
-	Reasons   []string
-	Targets   []htmlTarget
-	Aggregate []htmlGroup
+	Compiler string
+	PuppetDB string
+	ExitCode int
+	Reasons  []string
+	Tally    []htmlTally
+	Targets  []htmlTarget
+	// Aggregate holds the resource-level groups; EdgeAggregate holds the
+	// edge groups, which the page discloses separately rather than
+	// interleaving. Both are shown: requirements.md 7.4 keeps edge
+	// changes a distinct aggregate kind, and this format keeps all of it.
+	Aggregate     []htmlGroup
+	EdgeAggregate []htmlEdgeGroup
 	// EstimateLabel/EstimateNote carry requirement 9.3's wording into the
 	// document; see doc.go.
-	EstimateLabel  string
-	EstimateNote   string
-	Estimates      []htmlEstimate
-	Diagnostics    []htmlDiagnostic
-	CanonicalJSON  string
-	TotalTargets   int
-	TotalGroups    int
-	TotalEstimates int
+	EstimateLabel   string
+	EstimateNote    string
+	Estimates       []htmlEstimate
+	Diagnostics     []htmlDiagnostic
+	CanonicalJSON   string
+	TotalTargets    int
+	TotalGroups     int
+	TotalEdgeGroups int
+	TotalEstimates  int
+}
+
+// htmlTally is one figure in the masthead's at-a-glance row. It is
+// navigation, not new information: every number in it is the length of a
+// section further down, shown once at the top so a reader knows the shape
+// of a report before scrolling a thousand rows of it.
+type htmlTally struct {
+	Count int
+	Label string
 }
 
 type htmlTarget struct {
-	Certname      string
-	Outcome       string
-	OutcomeClass  string
-	Baseline      []mapEntry
-	Facts         []mapEntry
-	Candidate     []mapEntry
-	Config        []mapEntry
-	Exclude       []string
-	Redact        []string
-	V3Warning     string
-	Failures      []htmlDiagnostic
-	Warnings      []htmlDiagnostic
+	Certname     string
+	Outcome      string
+	OutcomeClass string
+	Baseline     []mapEntry
+	Facts        []mapEntry
+	Candidate    []mapEntry
+	Config       []mapEntry
+	Exclude      []string
+	Redact       []string
+	V3Warning    string
+	Failures     []htmlDiagnostic
+	Warnings     []htmlDiagnostic
+	Compared     bool
+	// Changes and EdgeChanges are the target's differences, split because
+	// the page discloses them separately: resource changes open, edges
+	// closed. HasDifference stays authoritative for whether the target
+	// changed at all, so a target whose only differences are edges is
+	// never rendered as unchanged.
 	HasDifference bool
-	Compared      bool
-	Changes       []string
+	Changes       []htmlChange
+	EdgeChanges   []htmlEdge
 	Exclusions    []string
 }
 
-type htmlGroup struct {
-	Label     string
+// htmlChange is one resource-level difference, split into the parts the
+// page styles independently — a colored sign gutter, a monospace
+// identity, a parameter name, and a before/after pair. Splitting happens
+// here rather than in the template so the layout stays free of logic.
+type htmlChange struct {
+	// Sign is the gutter mark; Class is the CSS class keyed to it.
+	Sign      string
+	Class     string
+	Kind      string
+	Identity  string
+	Parameter string
 	Before    string
 	After     string
 	HasValues bool
-	Certnames []string
+	// Note carries File-content evidence in place of a value pair: the
+	// comparison state, its evidence source, and the digest pair. Managed
+	// content bytes are never available here to render
+	// (requirements.md 5.8).
+	Note string
 }
 
+// htmlEdge is one dependency-graph edge difference. Direction is
+// significant (design.md section 7.1), so Source and Target are separate
+// fields and the arrow between them is drawn by the page, never
+// normalized away.
+type htmlEdge struct {
+	Sign   string
+	Class  string
+	Source string
+	Target string
+}
+
+// htmlGroup and htmlEdgeGroup are aggregate groups: one difference plus
+// the targets exhibiting it (requirements.md 7.2).
+type htmlGroup struct {
+	htmlChange
+	Targets string
+}
+
+type htmlEdgeGroup struct {
+	htmlEdge
+	Targets string
+}
+
+// htmlEstimate is one impact estimate. Count is what the bounded query
+// returned; Certnames, PQL and Request are the detail behind the
+// disclosure — all of it present, none of it in the scanning path.
 type htmlEstimate struct {
 	Identity  string
 	Status    string
-	Summary   string
+	Count     string
+	Certnames string
+	NodeLabel string
 	PQL       string
 	Request   string
-	Certnames []string
 	Failed    bool
 }
 
@@ -110,18 +185,16 @@ type htmlDiagnostic struct {
 
 func buildHTMLView(r model.Result, canonicalJSON string) htmlView {
 	view := htmlView{
-		ToolVersion:    r.Invocation.ToolVersion,
-		TimestampUTC:   r.Invocation.TimestampUTC,
-		Outcome:        string(r.Outcome),
-		OutcomeClass:   outcomeClass(r.Outcome),
-		ExitCode:       r.ExitCode,
-		Reasons:        r.Reasons,
-		EstimateLabel:  ImpactEstimateLabel,
-		EstimateNote:   ImpactEstimateNote,
-		CanonicalJSON:  canonicalJSON,
-		TotalTargets:   len(r.Targets),
-		TotalGroups:    len(r.Aggregate.Groups),
-		TotalEstimates: len(r.ImpactEstimates),
+		ToolVersion:   r.Invocation.ToolVersion,
+		TimestampUTC:  r.Invocation.TimestampUTC,
+		Outcome:       string(r.Outcome),
+		OutcomeClass:  outcomeClass(r.Outcome),
+		ExitCode:      r.ExitCode,
+		Reasons:       r.Reasons,
+		EstimateLabel: ImpactEstimateLabel,
+		EstimateNote:  ImpactEstimateNote,
+		CanonicalJSON: canonicalJSON,
+		TotalTargets:  len(r.Targets),
 	}
 
 	if s := r.Invocation.Services; s != nil {
@@ -129,39 +202,62 @@ func buildHTMLView(r model.Result, canonicalJSON string) htmlView {
 		view.PuppetDB = s.PuppetDB
 	}
 
+	var changes, edges int
 	for _, t := range r.Targets {
 		view.Targets = append(view.Targets, buildHTMLTarget(t))
-	}
-	for _, g := range r.Aggregate.Groups {
-		view.Aggregate = append(view.Aggregate, htmlGroup{
-			Label:     aggregateKeyLabel(g.Key),
-			Before:    formatValue(g.Before),
-			After:     formatValue(g.After),
-			HasValues: g.Key.Edge == nil && (g.Before != nil || g.After != nil),
-			Certnames: g.Certnames,
-		})
-	}
-	for _, e := range r.ImpactEstimates {
-		request := fmt.Sprintf("path=%s limit=%d timeout=%s", e.Request.Path, e.Request.Limit, e.Timeout)
-		if e.Request.OrderBy != "" {
-			request += " order_by=" + e.Request.OrderBy
+		if t.NodeDiff != nil {
+			changes += len(t.NodeDiff.ResourceChanges)
+			edges += len(t.NodeDiff.EdgeChanges)
 		}
-		view.Estimates = append(view.Estimates, htmlEstimate{
-			Identity:  e.Identity.String(),
-			Status:    string(e.Status),
-			Summary:   estimateSummary(e),
-			PQL:       e.PQL,
-			Request:   request,
-			Certnames: e.Certnames,
-			Failed:    e.Status != model.ImpactStatusCompleted,
+	}
+
+	for _, g := range r.Aggregate.Groups {
+		targets := targetCountList(g.Certnames)
+		if g.Key.Edge != nil {
+			view.EdgeAggregate = append(view.EdgeAggregate, htmlEdgeGroup{
+				htmlEdge: edgeKeyParts(g.Key), Targets: targets,
+			})
+			continue
+		}
+		view.Aggregate = append(view.Aggregate, htmlGroup{
+			htmlChange: groupKeyParts(g), Targets: targets,
 		})
 	}
+	view.TotalGroups = len(view.Aggregate)
+	view.TotalEdgeGroups = len(view.EdgeAggregate)
+
+	for _, e := range r.ImpactEstimates {
+		view.Estimates = append(view.Estimates, buildHTMLEstimate(e))
+	}
+	view.TotalEstimates = len(view.Estimates)
+
 	for _, d := range r.Diagnostics {
 		view.Diagnostics = append(view.Diagnostics, htmlDiagnostic{
 			Severity: string(d.Severity), Operation: string(d.Operation), Message: d.Message,
 		})
 	}
+
+	view.Tally = buildHTMLTally(view, changes, edges)
 	return view
+}
+
+// buildHTMLTally assembles the masthead figures, omitting any that is
+// zero. A row of zeroes tells a reader nothing and dilutes the figures
+// that do matter; an absent figure is itself legible as "none".
+func buildHTMLTally(view htmlView, changes, edges int) []htmlTally {
+	groups := view.TotalGroups + view.TotalEdgeGroups
+	tally := []htmlTally{{view.TotalTargets, plural(view.TotalTargets, "target", "targets")}}
+	for _, entry := range []htmlTally{
+		{changes, plural(changes, "resource change", "resource changes")},
+		{edges, plural(edges, "edge change", "edge changes")},
+		{groups, plural(groups, "aggregate group", "aggregate groups")},
+		{view.TotalEstimates, plural(view.TotalEstimates, "impact estimate", "impact estimates")},
+	} {
+		if entry.Count > 0 {
+			tally = append(tally, entry)
+		}
+	}
+	return tally
 }
 
 func buildHTMLTarget(t model.TargetResult) htmlTarget {
@@ -207,14 +303,111 @@ func buildHTMLTarget(t model.TargetResult) htmlTarget {
 	if t.NodeDiff != nil {
 		out.HasDifference = t.NodeDiff.HasDifference
 		for _, c := range t.NodeDiff.ResourceChanges {
-			out.Changes = append(out.Changes, changeSummary(c))
+			out.Changes = append(out.Changes, changeParts(c))
 		}
 		for _, c := range t.NodeDiff.EdgeChanges {
-			out.Changes = append(out.Changes, edgeSummary(c))
+			out.EdgeChanges = append(out.EdgeChanges, edgeParts(c))
 		}
 		for _, e := range t.NodeDiff.Exclusions {
-			out.Exclusions = append(out.Exclusions, exclusionSummary(e))
+			out.Exclusions = append(out.Exclusions, exclusionSummaryFull(e))
 		}
+	}
+	return out
+}
+
+func buildHTMLEstimate(e model.ImpactEstimate) htmlEstimate {
+	request := fmt.Sprintf("path=%s limit=%d timeout=%s", e.Request.Path, e.Request.Limit, e.Timeout)
+	if e.Request.OrderBy != "" {
+		request += " order_by=" + e.Request.OrderBy
+	}
+	// A failed estimate carries its status in a badge, so the line beside
+	// it is the reason alone: "failed  failed: puppetdb returned 503"
+	// says the same word twice. The text report has no badge, which is
+	// why estimateCount keeps the prefix there.
+	count := estimateCount(e)
+	if e.Status != model.ImpactStatusCompleted {
+		count = e.FailureReason
+		if count == "" {
+			count = "no reason reported"
+		}
+	}
+
+	return htmlEstimate{
+		Identity:  e.Identity.String(),
+		Status:    string(e.Status),
+		Count:     count,
+		Certnames: strings.Join(e.Certnames, ", "),
+		NodeLabel: plural(len(e.Certnames), "node", "nodes"),
+		PQL:       e.PQL,
+		Request:   request,
+		Failed:    e.Status != model.ImpactStatusCompleted,
+	}
+}
+
+// changeParts splits one resource-level change into its display parts.
+// It calls the same formatValue and fileContentSummary the text report
+// does, so a value is spelled identically in both formats however
+// differently the two lay it out (see doc.go).
+func changeParts(c model.ResourceChange) htmlChange {
+	out := htmlChange{Identity: c.Identity.String(), Parameter: c.Parameter, Kind: string(c.Kind)}
+	switch c.Kind {
+	case model.ChangeResourceAdded:
+		out.Sign, out.Class = "+", "add"
+	case model.ChangeResourceRemoved:
+		out.Sign, out.Class = "-", "remove"
+	case model.ChangeParameterChanged:
+		out.Sign, out.Class = "~", "change"
+		if c.FileContent != nil {
+			out.Note = fileContentSummary(*c.FileContent)
+			return out
+		}
+		out.Before, out.After, out.HasValues = formatValue(c.Before), formatValue(c.After), true
+	default:
+		out.Sign, out.Class = "?", "change"
+	}
+	return out
+}
+
+func edgeParts(c model.EdgeChange) htmlEdge {
+	if c.Kind == model.ChangeEdgeRemoved {
+		return htmlEdge{Sign: "-", Class: "remove", Source: c.Edge.Source, Target: c.Edge.Target}
+	}
+	return htmlEdge{Sign: "+", Class: "add", Source: c.Edge.Source, Target: c.Edge.Target}
+}
+
+// groupKeyParts splits an aggregate group's key and evidence the same way
+// changeParts splits a node change, so a group row and a target's change
+// row read as the same kind of line.
+func groupKeyParts(g model.AggregateGroup) htmlChange {
+	out := htmlChange{Kind: string(g.Key.Kind), Parameter: g.Key.Parameter}
+	if g.Key.Identity != nil {
+		out.Identity = g.Key.Identity.String()
+	}
+	switch g.Key.Kind {
+	case model.ChangeResourceAdded:
+		out.Sign, out.Class = "+", "add"
+	case model.ChangeResourceRemoved:
+		out.Sign, out.Class = "-", "remove"
+	default:
+		out.Sign, out.Class = "~", "change"
+	}
+	if g.Before != nil || g.After != nil {
+		out.Before, out.After, out.HasValues = formatValue(g.Before), formatValue(g.After), true
+	}
+	return out
+}
+
+// edgeKeyParts renders an edge-kind aggregate key. model.AggregateChangeKey
+// leaves Identity nil for these, which is why the two key shapes become
+// separate view types here rather than one type that would have to
+// nil-check on every row.
+func edgeKeyParts(key model.AggregateChangeKey) htmlEdge {
+	out := htmlEdge{Sign: "+", Class: "add"}
+	if key.Kind == model.ChangeEdgeRemoved {
+		out.Sign, out.Class = "-", "remove"
+	}
+	if key.Edge != nil {
+		out.Source, out.Target = key.Edge.Source, key.Edge.Target
 	}
 	return out
 }
@@ -266,6 +459,13 @@ func addNonEmpty(m map[string]any, key, value string) {
 	if value != "" {
 		m[key] = value
 	}
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // outcomeClass maps an outcome to the CSS class that colors its badge.

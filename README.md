@@ -65,7 +65,7 @@ request and on every push to `main`:
 
 ```
 piace compare --targets TARGETS.yaml --services SERVICES.yaml \
-  [--text-out PATH] [--json-out PATH] [--html-out PATH]
+  [--text-out PATH] [--json-out PATH] [--html-out PATH] [--impact-nodes]
 
 piace capture facts   --targets TARGETS.yaml --services SERVICES.yaml [--replace]
 
@@ -76,6 +76,29 @@ piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
 Omitting `--text-out` writes the text report to stdout; JSON and HTML are
 produced only when explicitly requested. All three render from one redacted
 result document, so they cannot disagree.
+
+They do not all show the same amount of it. JSON and HTML are complete; only
+the text report omits anything.
+
+The HTML report keeps everything and collapses it. Resource changes are open;
+dependency-graph edges, an estimate's PQL, request options and full node list,
+the exclusion detail and the provenance block all sit in closed sections you
+expand. Nothing is capped — a closed section already keeps a thousand certnames
+out of the way without dropping a name — and the page embeds the canonical JSON
+at the bottom as well. It is one self-contained file with a light background, no
+webfonts and no images: `file://` is all it needs.
+
+The text report is the one that summarizes, because a CI log is a linear read
+with nothing to expand. It omits edge changes — a consequence of the resource
+changes, and routinely more numerous than them — and each estimate's PQL and
+request options, and it names an estimate's first few certnames and counts the
+rest. `--impact-nodes` names all of them, up to the configured `result_limit`;
+it does not affect the HTML report, which never capped them.
+
+A target whose *only* differences are edges is still reported as changed: HTML
+shows the edges, and the text report prints a count in place of the list.
+Shortening a reading path must never make a run that exits non-zero read as if
+nothing changed.
 
 `capture catalog --environment ENV` requests the catalog for `ENV` — typically
 the production/default environment, captured after merge, so development-branch
@@ -300,8 +323,14 @@ compiler lookup is available.
 **The impact estimate.** It reports only that a node's latest *stored* catalog
 contains the exact `Type[title]`. It is not proof those nodes would change, and
 PIACE never compiles them. Queries are bounded by `timeout` and `result_limit`;
-an over-limit result is marked truncated with a sorted certname sample. Because
-an enabled estimate is requested analysis, a failed one is an operational error.
+an over-limit result is marked truncated and reported as *more than* the limit,
+never as an exact population, with a sorted certname sample. Because an enabled
+estimate is requested analysis, a failed one is an operational error.
+
+The compact per-estimate line depends on the section header for its meaning:
+`Service[nginx]: 9 nodes: …` is not a claim about those nodes, because the
+fixed note above it says once, for the whole section, what a listed certname
+does and does not mean.
 
 ## Output and secrecy
 

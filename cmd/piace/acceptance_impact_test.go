@@ -59,10 +59,21 @@ func TestAcceptance_ImpactEstimateBoundsAndLabelling(t *testing.T) {
 		}
 	}
 
-	// requirements.md 9.4: the exact generated PQL is reported.
-	wantPQL := `resources[certname] { type = "Service" and title = "nginx" }`
-	if !strings.Contains(got.stdout, wantPQL) {
-		t.Errorf("the report does not carry the exact generated PQL:\n%s", got.stdout)
+	// requirements.md 9.4: the exact generated PQL is reported. It is
+	// discharged by the JSON report and by the canonical JSON the HTML
+	// artifact embeds; the text report and the HTML reading path omit it
+	// as repeated bulk (see internal/report's doc.go). Asserting it here
+	// against both artifacts is what keeps that trade honest — the
+	// obligation moved, it did not lapse.
+	wantPQL := `resources[certname] { type = \"Service\" and title = \"nginx\" }`
+	if !strings.Contains(got.json, wantPQL) {
+		t.Errorf("the JSON report does not carry the exact generated PQL:\n%s", got.json)
+	}
+	if !strings.Contains(got.html, template.HTMLEscapeString(wantPQL)) {
+		t.Errorf("the HTML artifact does not embed the exact generated PQL")
+	}
+	if strings.Contains(got.stdout, "resources[certname]") {
+		t.Errorf("the text report still prints the PQL:\n%s", got.stdout)
 	}
 
 	// requirements.md 9.6: truncation is marked and the sample is the
@@ -178,5 +189,82 @@ func TestAcceptance_ImpactQueryWireShape(t *testing.T) {
 	}
 	if q["order_by"] != `[{"field":"certname","order":"asc"}]` {
 		t.Errorf("order_by = %q", q["order_by"])
+	}
+}
+
+// TestAcceptance_ImpactNodesControlsTheCertnameSample covers the
+// `--impact-nodes` option end to end.
+//
+// The default is capped because a bounded estimate may hold as many
+// certnames as its configured `result_limit` — a thousand in a realistic
+// deployment — and a section of several hundred estimates, each naming a
+// thousand nodes, is not a CI log anyone reads. What the cap must never
+// do is understate the estimate, so the count stays exact in both forms
+// and only the names are elided.
+func TestAcceptance_ImpactNodesControlsTheCertnameSample(t *testing.T) {
+	// A result limit above the returned count keeps the estimate
+	// untruncated, so this exercises the display cap rather than the
+	// query bound — two different elisions that must not be confused.
+	defaults := strings.Replace(impactDefaults, "    result_limit: 2", "    result_limit: 50", 1)
+
+	nodes := []string{
+		"db-01.example.test", "db-02.example.test", "db-03.example.test",
+		"db-04.example.test", "db-05.example.test", "db-06.example.test",
+		"db-07.example.test",
+	}
+
+	// Both runs share ONE harness: an artifact records the service
+	// authorities it talked to, and a second harness listens on different
+	// ports, so two harnesses could never produce identical HTML however
+	// inert the flag was.
+	h := newHarness(t)
+	h.seedTarget("web-01.example.test", baseResources(), changedResources(), baseEdges())
+	h.pdb.impactCertnames = nodes
+	h.writeConfigs(t, targetsYAML(defaults, target("web-01.example.test")))
+
+	run := func(t *testing.T, extra ...string) artifacts {
+		t.Helper()
+		got := h.compare(t, extra...)
+		if got.code != exitcode.Success {
+			t.Fatalf("exit = %d, want 0\nstderr:\n%s", got.code, got.stderr)
+		}
+		return got
+	}
+
+	byDefault := run(t)
+	withFlag := run(t, "--impact-nodes")
+
+	if !strings.Contains(byDefault.stdout, "7 nodes") {
+		t.Errorf("the capped line does not state the full node count:\n%s", byDefault.stdout)
+	}
+	if !strings.Contains(byDefault.stdout, "(+2 more)") {
+		t.Errorf("the capped line does not count the elided certnames:\n%s", byDefault.stdout)
+	}
+	if strings.Contains(byDefault.stdout, "db-07.example.test") {
+		t.Errorf("a certname past the cap was named:\n%s", byDefault.stdout)
+	}
+	// The elision is display-only: the artifact still holds every name.
+	if !strings.Contains(byDefault.json, "db-07.example.test") {
+		t.Error("the JSON report lost a certname the text report elided")
+	}
+
+	if !strings.Contains(withFlag.stdout, "db-07.example.test") {
+		t.Errorf("--impact-nodes did not name every certname:\n%s", withFlag.stdout)
+	}
+	if strings.Contains(withFlag.stdout, "more)") {
+		t.Errorf("--impact-nodes still elided part of the sample:\n%s", withFlag.stdout)
+	}
+
+	// The flag is a text-report control. The HTML artifact names every
+	// certname either way -- it collapses the list rather than capping it
+	// -- so the two runs must produce the same page, byte for byte.
+	// Asserting only that both contain db-07 would keep passing if display
+	// options were ever threaded back into report.HTML and capped there;
+	// asserting equality is what actually pins the documented contract.
+	if !strings.Contains(byDefault.html, "db-07.example.test") {
+		t.Error("the HTML report capped the certname list; it should disclose all of them")
+	}
+	if byDefault.html != withFlag.html {
+		t.Error("--impact-nodes changed the HTML artifact; it is a text-report control")
 	}
 }

@@ -21,17 +21,62 @@
 // drift even when both are safe, so both formats call formatValue, and
 // both label the same sections with the same constants.
 //
-// # Determinism
+// # Three formats, three amounts of detail
 //
-// design.md Property 1 requires byte-identical output for identical
-// inputs. model.Result carries three map fields (ConfigProvenance's
-// Candidate/Facts/Baseline/ImpactEstimate projections). Go's
-// encoding/json sorts map keys, so the JSON path is safe automatically —
-// but a `range` over a map in a text or HTML renderer is not, so every
-// map here is iterated through sortedKeys. Everything else in a Result is
-// already ordered by the package that produced it (targets by certname,
-// aggregate groups by kind and identity, estimates by identity, certname
-// samples locally sorted).
+// The three formats show the same document at three levels of detail.
+// This is display policy, not a second projection: nothing here filters
+// or recomputes what a comparison found, and every format decides through
+// the same shared helpers (formatValue, changeSummary/changeParts,
+// estimateCount, targetCountList), so they cannot drift apart in what a
+// value says.
+//
+//   - JSON is the complete record and takes no options at all.
+//   - HTML is complete too, and uses disclosure rather than omission:
+//     edge changes, aggregate edge groups, an estimate's PQL, request
+//     options and full certname list are all on the page, inside closed
+//     <details>. A target's resource changes open by default; everything
+//     else starts closed. Nothing is capped, because a closed disclosure
+//     already keeps a thousand certnames out of the reading path without
+//     dropping a name.
+//   - Text is the only format that omits, because a CI log is a linear
+//     read with no way to skip a section and no way to expand one. It
+//     drops edge changes (a run's edge differences routinely outnumber
+//     its resource differences, being a consequence of them), an
+//     estimate's PQL and request options (identical in shape on every
+//     line of a section that can run to hundreds of entries), and an
+//     estimate's certnames past Options.inlineCertnameCap unless
+//     Options.ImpactNodes is set. The count is never elided, only names.
+//
+// So requirements.md 5.3 and 7.4 (edges identified and retained through
+// aggregation as a distinct kind), 6.5 (suppressed-difference counts),
+// 8.2 ("complete node diffs"), and 9.4 ("the exact generated PQL query")
+// are discharged by the JSON report and, for everything but the JSON
+// envelope itself, visibly by the HTML report as well. The HTML artifact
+// also embeds the canonical JSON in its closing disclosure, so the page
+// is a complete record twice over.
+//
+// One consequence has to be handled explicitly rather than by omission.
+// model.NodeDiff.HasDifference is true for a target whose only
+// differences are edges, and that target still drives the run's outcome
+// and exit code. HTML renders those edges, so nothing is needed there;
+// the text report prints a note instead of an empty change list, because
+// a report that showed nothing would read as "no changes" on a run that
+// exits non-zero, contradicting its own stated outcome
+// (requirements.md 10.2) and brushing 10.5. For the same reason every
+// section header in both formats counts what it actually displays rather
+// than what the document holds.
+//
+// # A light page, and nothing to fetch
+//
+// requirements.md 8.3's "no HTTP server, a CDN, network access, or
+// sibling assets" is stronger than it first reads: it also rules out a
+// webfont and an image file. The HTML report is therefore built from
+// system font stacks with declared fallbacks, and its only piece of
+// iconography — the disclosure triangle — is drawn with CSS borders
+// rather than set in a glyph a reader's machine may not have. The page
+// commits to a single light palette rather than following the reader's
+// system theme: a review artifact gets shared, printed, and pasted into
+// tickets, and one appearance is one thing to check.
 //
 // # requirement 9.3's label
 //
@@ -45,6 +90,13 @@
 // things, and neither ever describes a returned certname as a node that
 // will change: the estimate says only that a node's latest stored catalog
 // contains the resource.
+//
+// The compact per-estimate line depends on that section header for its
+// meaning. "Class[Foo]: 9 nodes: ..." is not a claim about those nodes on
+// its own, because ImpactEstimateNote stands immediately above it and
+// says, once for the whole section, what a listed certname does and does
+// not mean. Any format that ever prints an estimate line without that
+// header would be stating something requirement 9.3 forbids.
 //
 // # HTML safety
 //
