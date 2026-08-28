@@ -372,6 +372,17 @@ func TestResolveFileContentEvidence_NeverLeaksContentAcrossAllStates(t *testing.
 			after:  fileParams(map[string]model.Value{"source": "puppet:///modules/example/other"}),
 		},
 		{
+			name: "directory_reference_changed",
+			before: fileParams(map[string]model.Value{
+				"ensure": "directory", "recurse": true,
+				"source": "puppet:///modules/example/" + sampleContentBytes + "/",
+			}),
+			after: fileParams(map[string]model.Value{
+				"ensure": "directory", "recurse": true,
+				"source": "puppet:///modules/example/other/",
+			}),
+		},
+		{
 			name:   "retrieval_failure",
 			before: fileParams(map[string]model.Value{"source": "puppet:///modules/example/data.txt"}),
 			after:  fileParams(map[string]model.Value{"source": "puppet:///modules/example/data.txt"}),
@@ -386,6 +397,151 @@ func TestResolveFileContentEvidence_NeverLeaksContentAcrossAllStates(t *testing.
 			evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
 				model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, tc.before, tc.after, tc.retriever)
 			assertNoRawContentLeak(t, sampleContentBytes, evidence, diag)
+		})
+	}
+}
+
+// countingRetriever fails the test if it is ever asked for a digest. A
+// directory or recursive File's source names a directory tree the
+// compiler's file_content endpoint cannot serve, so resolution must stop
+// before any retrieval is attempted.
+type countingRetriever struct {
+	t     *testing.T
+	calls int
+}
+
+func (c *countingRetriever) Digest(_ context.Context, reference string, _ RetrievalContext) (DigestEvidence, error) {
+	c.t.Helper()
+	c.calls++
+	c.t.Fatalf("retriever called for a directory/recursive File source %q", reference)
+	return DigestEvidence{}, nil
+}
+
+func TestResolveFileContentEvidence_DirectoryRecursiveSource_ReferenceChangedWithoutRetrieval(t *testing.T) {
+	cases := []struct {
+		name           string
+		beforeOverride map[string]model.Value
+		afterOverride  map[string]model.Value
+	}{
+		{
+			// The exact shape observed in a live comparison: a tp module
+			// directory copy whose source lost its trailing slash between
+			// the baseline and candidate environments.
+			name: "ensure_directory_bool_recurse",
+			beforeOverride: map[string]model.Value{
+				"ensure": "directory", "recurse": true,
+				"source": "puppet:///modules/tp/run_info/",
+			},
+			afterOverride: map[string]model.Value{
+				"ensure": "directory", "recurse": true,
+				"source": "puppet:///modules/tp/run_info",
+			},
+		},
+		{
+			name: "recurse_remote_without_ensure",
+			beforeOverride: map[string]model.Value{
+				"recurse": "remote", "source": "puppet:///modules/example/tree/",
+			},
+			afterOverride: map[string]model.Value{
+				"recurse": "remote", "source": "puppet:///modules/example/other/",
+			},
+		},
+		{
+			// Only one side is a directory: byte comparison still does not
+			// apply, because the two sides are not comparable as files.
+			name: "one_side_directory",
+			beforeOverride: map[string]model.Value{
+				"ensure": "directory", "recurse": true,
+				"source": "puppet:///modules/example/tree/",
+			},
+			afterOverride: map[string]model.Value{
+				"source": "puppet:///modules/example/tree/file.txt",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			retriever := &countingRetriever{t: t}
+			evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "upstream",
+				model.ResourceIdentity{Type: "File", Title: "info scripts"},
+				fileParams(tc.beforeOverride), fileParams(tc.afterOverride), retriever)
+
+			if retriever.calls != 0 {
+				t.Fatalf("retriever calls = %d, want 0", retriever.calls)
+			}
+			if evidence.State != model.FileContentReferenceChanged {
+				t.Errorf("State = %q, want %q", evidence.State, model.FileContentReferenceChanged)
+			}
+			if evidence.Algorithm != "" || evidence.BeforeDigest != "" || evidence.AfterDigest != "" {
+				t.Errorf("digest fields must stay empty, got %+v", evidence)
+			}
+			if diag == nil {
+				t.Fatal("diagnostic = nil, want a verify_content diagnostic")
+			}
+			if diag.Severity != model.SeverityWarning {
+				t.Errorf("Severity = %q, want %q", diag.Severity, model.SeverityWarning)
+			}
+			if diag.Operation != model.OperationVerifyContent {
+				t.Errorf("Operation = %q, want %q", diag.Operation, model.OperationVerifyContent)
+			}
+			// A warning must not turn the target into an operational error.
+			if _, contributes := model.OutcomeForDiagnostic(*diag); contributes {
+				t.Error("a not-applicable content comparison must not contribute to the outcome")
+			}
+		})
+	}
+}
+
+func TestResolveFileContentEvidence_DirectoryUnchangedSource_Indeterminate(t *testing.T) {
+	retriever := &countingRetriever{t: t}
+	before := fileParams(map[string]model.Value{
+		"ensure": "directory", "recurse": true,
+		"source": "puppet:///modules/tp/run_info/", "checksum_value": "abc",
+	})
+	after := fileParams(map[string]model.Value{
+		"ensure": "directory", "recurse": true,
+		"source": "puppet:///modules/tp/run_info/",
+	})
+
+	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "upstream",
+		model.ResourceIdentity{Type: "File", Title: "info scripts"}, before, after, retriever)
+
+	if retriever.calls != 0 {
+		t.Fatalf("retriever calls = %d, want 0", retriever.calls)
+	}
+	if evidence.State != model.FileContentIndeterminate {
+		t.Errorf("State = %q, want %q", evidence.State, model.FileContentIndeterminate)
+	}
+	if diag == nil || diag.Severity != model.SeverityError {
+		t.Fatalf("want an error-severity diagnostic, got %+v", diag)
+	}
+}
+
+func TestIsDirectoryOrRecursive(t *testing.T) {
+	cases := []struct {
+		name   string
+		params map[string]model.Value
+		want   bool
+	}{
+		{"plain file", map[string]model.Value{"source": "puppet:///modules/example/a.txt"}, false},
+		{"ensure file", map[string]model.Value{"ensure": "file"}, false},
+		{"ensure Directory mixed case", map[string]model.Value{"ensure": "Directory"}, true},
+		{"recurse bool true", map[string]model.Value{"recurse": true}, true},
+		{"recurse bool false", map[string]model.Value{"recurse": false}, false},
+		{"recurse string true", map[string]model.Value{"recurse": "true"}, true},
+		{"recurse string false", map[string]model.Value{"recurse": "false"}, false},
+		{"recurse remote", map[string]model.Value{"recurse": "remote"}, true},
+		{"recurse inf", map[string]model.Value{"recurse": "inf"}, true},
+		{"recurse depth 0", map[string]model.Value{"recurse": model.Number("0")}, false},
+		{"recurse depth 2", map[string]model.Value{"recurse": model.Number("2")}, true},
+		{"nil params", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isDirectoryOrRecursive(tc.params); got != tc.want {
+				t.Errorf("isDirectoryOrRecursive = %v, want %v", got, tc.want)
+			}
 		})
 	}
 }

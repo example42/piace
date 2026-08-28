@@ -31,6 +31,32 @@ const (
 	checksumValueParameter = "checksum_value"
 )
 
+// ensureParameter and recurseParameter are the two Puppet File parameters
+// that decide whether a `source` reference names a single file at all.
+// They are not content-bearing themselves -- the differ never collapses
+// them into a content change -- but they gate step 3, because the
+// compiler's file_content endpoint serves a file's bytes and nothing
+// else; see doc.go's "Sources that are not byte-comparable" section.
+const (
+	ensureParameter  = "ensure"
+	recurseParameter = "recurse"
+)
+
+// directoryEnsureValue is the `ensure` value naming a directory, and
+// recursiveRecurseValues is the set of `recurse` string values that turn
+// a File resource into a recursive directory copy. Puppet documents
+// `recurse`'s allowed values as true, false, remote, and inf ("inf" and a
+// numeric depth being the deprecated spellings of unlimited/limited
+// recursion); every spelling other than an explicit false means the
+// `source` names a directory tree.
+const directoryEnsureValue = "directory"
+
+var recursiveRecurseValues = map[string]bool{
+	"true":   true,
+	"remote": true,
+	"inf":    true,
+}
+
 // recognizedChecksumAlgorithms is the exact set of `checksum` algorithm
 // names Puppet's `checksum_value` parameter documentation restricts
 // itself to ("Only md5, sha256, sha224, sha384 and sha512 are supported
@@ -91,6 +117,17 @@ func ResolveFileContentEvidence(
 		return evidence, nil
 	}
 
+	// A directory or recursive File resource's `source` names a
+	// directory tree, not a file. Step 3 cannot compare it: the
+	// compiler's file_content endpoint serves a single file's bytes and
+	// rejects a directory reference outright. Resolve it here, before
+	// any retrieval is attempted, rather than issuing a request whose
+	// failure would be reported as if content evidence had been lost.
+	if isDirectoryOrRecursive(before) || isDirectoryOrRecursive(after) {
+		evidence, diag := resolveNonByteComparable(certname, identity, before, after)
+		return evidence, diag
+	}
+
 	// Step 3: retrieve whichever side needs it (a `source` reference,
 	// when that side has no literal content), hash locally, and compare.
 	rc := RetrievalContext{Certname: certname, Identity: identity, Environment: environment}
@@ -118,7 +155,7 @@ func ResolveFileContentEvidence(
 
 	// Step 4: comparable bytes could not be established for both sides.
 	state, reason := classifyUnresolvedState(retriever, beforeRes, afterRes)
-	diag := verifyContentDiagnostic(certname, identity, reason)
+	diag := verifyContentDiagnostic(model.SeverityError, certname, identity, reason)
 	return model.FileContentEvidence{State: state}, &diag
 }
 
@@ -178,6 +215,64 @@ func getChecksumAlgorithm(params map[string]model.Value) string {
 	return defaultChecksumAlgorithm
 }
 
+// isDirectoryOrRecursive reports whether params describes a File
+// resource whose `source` (if any) names a directory tree rather than a
+// single file: `ensure => directory`, or any `recurse` value other than
+// an explicit false. Both spellings matter independently -- a recursive
+// File may leave `ensure` unset, and PIACE sees each side separately, so
+// one side alone is enough to make byte comparison inapplicable.
+//
+// `recurse` arrives from a catalog as a JSON boolean, so the bool case is
+// the common one; the string and numeric cases cover Puppet's documented
+// "remote"/"inf" spellings and the deprecated numeric recursion depth.
+func isDirectoryOrRecursive(params map[string]model.Value) bool {
+	if ensure, ok := getStringParam(params, ensureParameter); ok &&
+		lowerASCII(ensure) == directoryEnsureValue {
+		return true
+	}
+	if params == nil {
+		return false
+	}
+	switch v := params[recurseParameter].(type) {
+	case bool:
+		return v
+	case string:
+		return recursiveRecurseValues[lowerASCII(v)]
+	case model.Number:
+		// A numeric recursion depth of 0 disables recursion, exactly as
+		// `recurse => false` does; any other depth enables it.
+		return string(v) != "0"
+	default:
+		return false
+	}
+}
+
+// resolveNonByteComparable resolves a File resource whose content-bearing
+// parameters changed but whose `source` names a directory tree, so no
+// byte-level comparison is possible or meaningful. No retrieval is
+// attempted; see doc.go's "Sources that are not byte-comparable" section
+// for why this is reported as a reference change at warning severity
+// rather than as a failed content verification.
+func resolveNonByteComparable(certname string, identity model.ResourceIdentity, before, after map[string]model.Value) (model.FileContentEvidence, *model.Diagnostic) {
+	beforeRef, beforeHas := getReferenceParam(before, sourceParameter)
+	afterRef, afterHas := getReferenceParam(after, sourceParameter)
+
+	if (beforeHas || afterHas) && (beforeRef != afterRef || beforeHas != afterHas) {
+		diag := verifyContentDiagnostic(model.SeverityWarning, certname, identity,
+			"content source reference changed on a directory or recursive File; byte-level content comparison does not apply to a directory source")
+		return model.FileContentEvidence{State: model.FileContentReferenceChanged}, &diag
+	}
+
+	// The reference did not visibly change, so some other content-bearing
+	// parameter did (a checksum or checksum_value the compiler inlined on
+	// only one side, say). There is no reference-level fact to report and
+	// no bytes to compare, which is exactly content_indeterminate: this
+	// case keeps error severity so it cannot collapse into a clean run.
+	diag := verifyContentDiagnostic(model.SeverityError, certname, identity,
+		"content evidence changed on a directory or recursive File; byte-level content comparison does not apply to a directory source")
+	return model.FileContentEvidence{State: model.FileContentIndeterminate}, &diag
+}
+
 // sideResolution is the outcome of resolving one side (before or after)
 // of a File resource's content-bearing parameters toward a comparable
 // digest, per design.md section 7.2 step 3.
@@ -235,10 +330,13 @@ func classifyUnresolvedState(retriever ContentRetriever, before, after sideResol
 // verifyContentDiagnostic builds a model.OperationVerifyContent
 // diagnostic identifying only the target, resource identity, and a safe
 // reason string -- never a parameter value, source reference, or file
-// content.
-func verifyContentDiagnostic(certname string, identity model.ResourceIdentity, reason string) model.Diagnostic {
+// content. severity is the caller's: a retrieval that was attempted and
+// failed is an error, while a comparison this package declines to attempt
+// because bytes are not the right evidence for the resource at all is a
+// warning (see doc.go).
+func verifyContentDiagnostic(severity model.DiagnosticSeverity, certname string, identity model.ResourceIdentity, reason string) model.Diagnostic {
 	return model.Diagnostic{
-		Severity:  model.SeverityError,
+		Severity:  severity,
 		Operation: model.OperationVerifyContent,
 		Certname:  certname,
 		Message:   identity.String() + ": " + reason,

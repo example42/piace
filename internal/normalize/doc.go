@@ -93,6 +93,36 @@
 // must keep its own reference to the raw puppetdb.Catalog rather than
 // recovering it from a NormalizedCatalog.
 //
+// One *parameter* is dropped for the same reason, and it is the only one:
+// Puppet's `alias` metaparameter. The PuppetDB terminus injects it into a
+// stored catalog's `parameters` object for every resource whose namevar
+// differs from its title, recording the catalog-internal alias index as
+// if it were a declared attribute; a compiler's own catalog response
+// carries no such parameter. Measured against a deployed OpenVox
+// installation on 2026-08-28 for one node: the PuppetDB-stored catalog
+// carried `alias` on 9 of 53 resources (`Stage[main]`, `Class[main]`,
+// `File[info scripts]`, ...), while the same node's freshly compiled
+// catalog carried it on 0 of 40 through both the v3 and the v4 endpoint —
+// and `alias` was the *only* parameter present on one side and absent on
+// the other. Comparing a PuppetDB baseline against a compiled candidate
+// therefore reported a spurious `alias: [...] -> null` parameter change
+// for roughly a quarter of the shared resources: exactly the "generated
+// noise" requirements.md 5.9 excludes ("catalog metadata unrelated to
+// managed file content").
+//
+// Dropping it cannot hide a real difference. `alias` only registers
+// additional keys in the compiler's own resource index so that
+// `File['/etc/tp/run_info']` resolves to `File['info scripts']` during
+// compilation and relationship resolution; it is never enforced on a
+// node, and a change to it cannot alter anything an agent does to a
+// system. The drop is symmetric — applied to whichever wire shape is
+// being normalized, not conditionally to the PuppetDB one — because a
+// file baseline captured from PuppetDB carries `alias` too, and a
+// shape-conditional filter would let the same asymmetry back in through a
+// snapshot. See value.go's generatedMetadataParameters, which is that
+// list and is deliberately not generalized beyond the one parameter
+// actually measured to cause this.
+//
 // # Canonical parameter values and Property 1
 //
 // Each parameter value is converted into the model.Value domain (nil,
