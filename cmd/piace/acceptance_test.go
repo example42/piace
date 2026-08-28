@@ -317,8 +317,17 @@ func TestAcceptance_ExclusionsSuppressDifferencesAndAreReported(t *testing.T) {
 	if !strings.Contains(got.stdout, "excluded: Notify[noi*]") {
 		t.Errorf("text report does not report the applied exclusion rule:\n%s", got.stdout)
 	}
-	if !strings.Contains(got.stdout, "1 edge(s) suppressed") {
-		t.Errorf("the edge attached to an excluded resource was not suppressed and counted:\n%s", got.stdout)
+	// requirements.md 6.4/6.5: the edge attached to the excluded resource
+	// is suppressed and counted. The count is asserted against the JSON
+	// report because the text and HTML formats omit edge information
+	// entirely (see internal/report's doc.go); 6.5 asks for the counts in
+	// "machine-readable and human-readable output", and the human-readable
+	// half is the rule identity and its resource/parameter counts above.
+	if !strings.Contains(got.json, `"suppressed_edges":1`) {
+		t.Errorf("the edge attached to an excluded resource was not suppressed and counted:\n%s", got.json)
+	}
+	if strings.Contains(got.stdout, "edge(s) suppressed") {
+		t.Errorf("the text report still prints the suppressed-edge count:\n%s", got.stdout)
 	}
 	if !strings.Contains(got.html, "Excluded differences") {
 		t.Error("the HTML report does not visibly mark excluded differences (requirements.md 8.5)")

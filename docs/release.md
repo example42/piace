@@ -27,7 +27,51 @@ release metadata (design.md section 11): they are published with the
 release and edited deliberately in `scripts/build-release.sh`, never
 discovered or downloaded at run time.
 
-## Generating the artifacts
+## Cutting a release
+
+Pushing a `v*` tag runs the whole thing:
+
+```sh
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+A tagged run uses the workflow **as it exists at the tagged commit**, so
+tag a commit that already carries `.github/workflows/ci.yml`. Tagging a
+branch the workflow has not reached yet does nothing at all — no run, no
+error, nothing in the Actions log — which is a confusing way to spend a
+version number.
+
+`.github/workflows/ci.yml` then runs the test matrix, builds every
+platform, verifies the manifest, confirms the Linux binaries are
+statically linked and that each reports the version it was stamped with,
+and publishes a GitHub Release with the binaries and `SHA256SUMS`
+attached. The release job publishes the artifacts the build job produced
+rather than rebuilding, so what a consumer downloads is what CI checked.
+A tag that is not `vMAJOR.MINOR.PATCH[-prerelease]` fails before anything
+is built; a tag whose version carries a `-suffix` is published as a
+prerelease.
+
+**The signature is not part of that.** CI holds no signing key, so a
+freshly published release contains two of the three files above. Sign the
+manifest and attach it as the last step:
+
+```sh
+gh release download v1.0.0 --pattern SHA256SUMS
+gpg --armor --detach-sign --local-user <signing-key-id> SHA256SUMS
+gh release upload v1.0.0 SHA256SUMS.asc
+```
+
+Until that lands, the published checksums show only that a download is
+intact, not where it came from — a manifest published beside its own
+artifacts attests to integrity, never to origin. The release notes say so
+in as many words, so a consumer is not left following a verification step
+that cannot yet succeed.
+
+## Generating the artifacts by hand
+
+CI runs exactly this, and it stays usable directly for an air-gapped or
+out-of-band build:
 
 ```sh
 scripts/build-release.sh 1.0.0

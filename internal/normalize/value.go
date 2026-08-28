@@ -9,9 +9,27 @@ import (
 	"github.com/example42/piace/internal/snapshot"
 )
 
+// generatedMetadataParameters names the resource parameters this package
+// drops as generated catalog metadata rather than managed configuration,
+// per requirements.md 5.9 ("THE CLI SHALL exclude generated/noise-oriented
+// fields from the semantic diff: tags, source file/line information, and
+// catalog metadata unrelated to managed file content"). See doc.go's
+// "What is dropped, and why that is safe" section for the full rationale
+// and the measurements behind it.
+var generatedMetadataParameters = map[string]bool{
+	"alias": true,
+}
+
+// isGeneratedMetadataParameter reports whether name is a parameter
+// decodeParameters drops on both sides of a comparison.
+func isGeneratedMetadataParameter(name string) bool {
+	return generatedMetadataParameters[name]
+}
+
 // decodeParameters decodes a resource's raw "parameters" JSON object into
 // the model.Value domain, canonicalizing every numeric value with
-// snapshot.CanonicalNumberString along the way. A missing/empty
+// snapshot.CanonicalNumberString along the way, and dropping every
+// parameter isGeneratedMetadataParameter names. A missing/empty
 // "parameters" field decodes to an empty (nil) parameter map rather than
 // an error: PuppetDB's documented catalog wire format v8 states "Puppet
 // will only provide Booleans, strings, arrays, and hashes... Attributes
@@ -41,6 +59,9 @@ func decodeParameters(raw json.RawMessage) (map[string]model.Value, error) {
 	}
 	out := make(map[string]model.Value, len(decoded))
 	for k, v := range decoded {
+		if isGeneratedMetadataParameter(k) {
+			continue
+		}
 		cv, err := canonicalizeRaw(v)
 		if err != nil {
 			return nil, fmt.Errorf("parameter %q: %w", k, err)

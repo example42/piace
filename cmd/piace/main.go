@@ -72,10 +72,19 @@ func run(args []string, stdout, stderr *os.File) exitcode.Code {
 
 func usage() string {
 	return `piace compare --targets TARGETS.yaml --services SERVICES.yaml \
-  [--text-out PATH] [--json-out PATH] [--html-out PATH]
+  [--text-out PATH] [--json-out PATH] [--html-out PATH] [--impact-nodes]
 piace capture facts --targets TARGETS.yaml --services SERVICES.yaml
 piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
   --environment ENVIRONMENT
+
+The text report summarizes for a CI log: it omits dependency-graph edge
+changes and each impact estimate's PQL and request options, and names only
+the first few certnames per estimate. The JSON and HTML reports are
+complete -- HTML keeps everything, with the bulk behind expandable
+sections.
+  --impact-nodes         list every certname an impact estimate returned
+                         instead of a capped sample; affects the text
+                         report only (compare only)
 
 Every subcommand also accepts:
   --debug                print one line per service request to stderr (method,
@@ -93,7 +102,12 @@ type compareFlags struct {
 	textOut  string
 	jsonOut  string
 	htmlOut  string
-	debug    debugFlags
+	// impactNodes is display policy for the text report only; it never
+	// reaches resolve.Config, because what PIACE queries and what PIACE
+	// prints are separate concerns and an estimate's certname sample is
+	// already bounded by the target's configured result_limit.
+	impactNodes bool
+	debug       debugFlags
 }
 
 func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
@@ -105,6 +119,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.textOut, "text-out", "", "path to write the text report (default: stdout)")
 	fs.StringVar(&f.jsonOut, "json-out", "", "path to write the versioned JSON report")
 	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the static HTML report")
+	fs.BoolVar(&f.impactNodes, "impact-nodes", false, "list every certname an impact estimate returned instead of a capped sample (text report only)")
 	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
@@ -206,6 +221,14 @@ func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*comp
 // contains no credentials, private material, managed content bytes, or
 // unredacted sensitive values by construction.
 func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
+	// Display policy applies to the text report alone. report.JSON takes
+	// no options by design — it is the complete machine-readable record,
+	// and a flag that changed what it contained would make one run's
+	// artifact incomparable with another's — and report.HTML takes none
+	// because it shows everything too, using disclosure rather than
+	// omission to stay readable.
+	opts := report.Options{ImpactNodes: f.impactNodes}
+
 	if f.jsonOut != "" {
 		data, err := report.JSON(result)
 		if err != nil {
@@ -226,7 +249,7 @@ func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
 		}
 	}
 
-	text, err := report.Text(result)
+	text, err := report.Text(result, opts)
 	if err != nil {
 		return err
 	}
