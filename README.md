@@ -8,7 +8,18 @@ differences, a cross-node aggregate view, and an optional PuppetDB-backed
 estimate of a changed resource's wider stored-catalog footprint.
 
 PIACE is a client of PuppetDB and a compiler. It does not compile Puppet code
-locally, embed a Puppet runtime, run agents, or write anything to PuppetDB.
+locally, embed a Puppet runtime, run agents, or issue any write or command
+request to PuppetDB — every PuppetDB request it makes is a read.
+
+That is not the same as "nothing changes server-side", and the difference is
+the choice of catalog API. On the supported `catalog_api: v4` path nothing
+changes: each candidate request carries `persistence: {facts: false, catalog:
+false}` and the compiler stores neither the facts PIACE submitted nor the
+catalog it compiled. On `catalog_api: v3` the *compiler* stores both, because
+that endpoint has no persistence control — PIACE still writes nothing itself,
+but the target's stored factset and catalog are rewritten as a side effect of
+asking for a candidate. Read [Use `catalog_api: v4`](#use-catalog_api-v4)
+before selecting v3.
 
 Terminology used throughout the code and reports is fixed in
 [CONTEXT.md](CONTEXT.md).
@@ -47,7 +58,7 @@ Release artifacts and their checksum/signature workflow:
 ### Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull
-request and on every push to `main`:
+request, on every push to `main`, and on every `v*` tag:
 
 - **test** — `gofmt`, `go vet`, `go build`, and `go test -race -count=1` on
   Linux against the Go version `go.mod` declares and against current stable,
@@ -56,10 +67,21 @@ request and on every push to `main`:
   `sha256sum`/`shasum` branch are where the two diverge.
 - **build** — gated on `test`. Cross-compiles the full supported platform
   matrix, verifies the generated `SHA256SUMS` manifest the same way
-  [docs/release.md](docs/release.md) tells a consumer to, and confirms the
-  Linux binaries are statically linked. It runs on pull requests too, so a
-  broken release script surfaces in review rather than at release time;
-  artifacts are uploaded only for `main`.
+  [docs/release.md](docs/release.md) tells a consumer to, confirms the Linux
+  binaries are statically linked, and checks each binary reports the version
+  it was stamped with. It runs on pull requests too, so a broken release
+  script surfaces in review rather than at release time; artifacts are
+  uploaded for pushes only.
+- **release** — gated on `build`, and only on a tag. Publishes a GitHub
+  Release from the artifacts `build` produced, rather than rebuilding, so
+  what a consumer downloads is what CI checked. It is the only job granted
+  `contents: write`.
+
+Cutting a release is `git push origin v1.0.0`; a malformed tag fails before
+anything is built. The detached signature is not automated — CI holds no
+signing key — so it is attached by hand afterwards, and the release notes
+say so rather than leaving a consumer following a verification step that
+cannot yet succeed. See [docs/release.md](docs/release.md).
 
 ## Usage
 
@@ -80,13 +102,27 @@ result document, so they cannot disagree.
 They do not all show the same amount of it. JSON and HTML are complete; only
 the text report omits anything.
 
-The HTML report keeps everything and collapses it. Resource changes are open;
-dependency-graph edges, an estimate's PQL, request options and full node list,
-the exclusion detail and the provenance block all sit in closed sections you
-expand. Nothing is capped — a closed section already keeps a thousand certnames
-out of the way without dropping a name — and the page embeds the canonical JSON
-at the bottom as well. It is one self-contained file with a light background, no
-webfonts and no images: `file://` is all it needs.
+The HTML report keeps everything and collapses it. What you land on is an index
+of the run: the outcome, the reasons, the tally, and one line per target with a
+counted chip per section. Every list of rows — resource changes, dependency-graph
+edges, aggregate groups, the exclusion detail, the provenance block, an estimate's
+PQL, request options and full node list — is a closed section whose heading counts
+what it holds, and one click opens any of it. A real run of four targets is under
+two screens closed where it used to be seventy. Nothing is capped — a closed
+section already keeps a thousand certnames out of the way without dropping a
+name — and the page embeds the canonical JSON at the bottom as well.
+
+What never collapses is a failure: retrieval and compilation failures, the v3
+trusted-fact warning, the run diagnostics and every outcome badge stay in the
+scanning path, because a mark you have to go looking for is not a visible one.
+Printing expands the collapsed sections too, so a filed or pasted copy is the
+same document as the one on screen; the canonical JSON is the one exception,
+since it is that document a second time and half a megabyte of it on paper
+serves nobody.
+
+It is one self-contained file with a light background, no webfonts, no images
+and no JavaScript — expand and collapse is `<details>`: `file://` is all it
+needs.
 
 The text report is the one that summarizes, because a CI log is a linear read
 with nothing to expand. It omits edge changes — a consequence of the resource
@@ -146,7 +182,9 @@ version: 1
 defaults:
   candidate:
     environment: feature-123
-    catalog_api: v4              # v3 | v4 — v4 unless the compiler lacks it
+    catalog_api: v4              # v3 | v4 — v4 unless the compiler lacks it;
+                                 # v3 rewrites PuppetDB state, and needs
+                                 # baseline.source: file (see below)
     allow_v3_fallback: false     # valid only with v4; opt-in, never implicit
   facts:
     source: puppetdb             # puppetdb | file
@@ -299,7 +337,8 @@ So with `catalog_api: v3`:
   — for the next target in the same run, and for every later run. The symptom
   is a baseline-environment mismatch that names the candidate environment. A v3
   target needs `baseline.source: file`, captured while the baseline
-  environment's catalog was the stored one.
+  environment's catalog was the stored one — see
+  [If you must use v3, compare against a captured file](#if-you-must-use-v3-compare-against-a-captured-file).
 - **A file baseline does not make v3 harmless.** It stops PIACE from destroying
   its own input. It does not stop the compiler from writing the candidate facts
   and catalog into PuppetDB, where anything reading PuppetDB state — reporting,
@@ -309,6 +348,57 @@ So with `catalog_api: v3`:
 Puppet Server and OpenVox behave identically here: both serve v3 and v4, and
 both honour the v4 `persistence` field. `catalog_api` is the only thing that
 decides.
+
+### If you must use v3, compare against a captured file
+
+The only workable shape for a v3 target is a **baseline that no longer comes
+from PuppetDB**: a snapshot captured earlier, from disk, that the candidate
+compilation cannot reach in to overwrite. Comparing against a snapshot is not a
+workaround here — with v3 it is the only arrangement in which the baseline
+survives the run that reads it.
+
+```yaml
+defaults:
+  candidate:
+    environment: feature-123
+    catalog_api: v3
+  baseline:
+    source: file                 # required, not optional, with v3
+    environment: production
+    file: snapshots/catalogs/{certname}.json
+```
+
+The snapshot is produced by `piace capture catalog`, which writes to the same
+`baseline.file` path `compare` later reads:
+
+```sh
+# once, from the baseline environment, while it is the deployed one
+piace capture catalog --targets targets.yaml --services services.yaml \
+  --environment production
+
+# then, per change, as often as you like
+piace compare --targets targets.yaml --services services.yaml
+```
+
+Three things to keep straight:
+
+- **Capture from the baseline environment, and capture it fresh.** The snapshot
+  is the thing every later comparison is measured against; a stale one silently
+  reports drift that was already merged. Re-capture after each promotion to the
+  baseline environment — requirements.md 11.7 describes exactly this loop, CI
+  refreshing catalog snapshots from the default environment after a merge.
+- **`capture catalog` compiles too, through the target's own `catalog_api`.** A
+  v3 capture therefore stores what it compiled — but it compiled the *baseline*
+  environment, which is what an agent run would have stored anyway, so the
+  damage a v3 compare does is absent here. Capturing with `catalog_api: v4`
+  avoids even that.
+- **PIACE does not currently refuse `catalog_api: v3` with
+  `baseline.source: puppetdb`.** requirements.md 1.8 says it should; config
+  validation does not yet enforce it. The configuration loads, the first
+  comparison looks normal, and the run corrupts the baseline it just read — the
+  symptom on the next run is an operational error naming a baseline-environment
+  mismatch against the candidate environment. Set `baseline.source: file`
+  yourself; nothing will do it for you.
 
 ## Two things the reports say, and mean literally
 
@@ -388,6 +478,7 @@ still rests on.
 
 ## Further reading
 
+- [CHANGELOG.md](CHANGELOG.md) — what each release contains
 - [CONTEXT.md](CONTEXT.md) — domain language
 - [.kiro/specs/piace/](.kiro/specs/piace/) — requirements, design, tasks
 - [docs/adr/0001-request-candidate-catalogs-from-an-existing-compiler.md](docs/adr/0001-request-candidate-catalogs-from-an-existing-compiler.md)
