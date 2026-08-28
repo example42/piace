@@ -157,6 +157,59 @@ func TestCatalog_DropsTagsFileLineAndOtherMetadata(t *testing.T) {
 	}
 }
 
+// TestCatalog_DropsAliasParameter verifies the `alias` metaparameter the
+// PuppetDB terminus injects into a stored catalog is dropped from both
+// wire shapes, so a PuppetDB baseline and a compiled candidate do not
+// differ by it alone (requirements.md 5.9; see doc.go).
+func TestCatalog_DropsAliasParameter(t *testing.T) {
+	resources := `[{"type":"File","title":"info scripts","parameters":{"path":"/etc/tp/run_info","alias":["/etc/tp/run_info"]}}]`
+
+	for _, tc := range []struct {
+		name string
+		raw  puppetdb.Catalog
+	}{
+		{"puppetdb shape", pdbShapedCatalog("web-01.example.test", "production", resources, `[]`)},
+		{"compiler shape", compilerShapedCatalog("web-01.example.test", "production", resources, `[]`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, diag := Catalog(tc.raw)
+			if diag != nil {
+				t.Fatalf("unexpected diagnostic: %+v", diag)
+			}
+			params := got.Resources[0].Parameters
+			if _, ok := params["alias"]; ok {
+				t.Errorf("alias parameter was not dropped: %+v", params)
+			}
+			if params["path"] != "/etc/tp/run_info" {
+				t.Errorf("Parameters[path] = %v, want the declared value preserved", params["path"])
+			}
+			if len(params) != 1 {
+				t.Errorf("Parameters = %+v, want exactly {path: ...}", params)
+			}
+		})
+	}
+}
+
+// TestCatalog_ResourceWithOnlyAliasParameter verifies a resource whose
+// only parameter is the dropped `alias` (Stage[main] and Class[main] are
+// exactly this in a stored catalog) normalizes to an empty parameter map,
+// not to a diagnostic or a resource carrying a leftover key.
+func TestCatalog_ResourceWithOnlyAliasParameter(t *testing.T) {
+	raw := pdbShapedCatalog("web-01.example.test", "production",
+		`[{"type":"Stage","title":"main","parameters":{"alias":["main"]}}]`, `[]`)
+
+	got, diag := Catalog(raw)
+	if diag != nil {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+	if len(got.Resources) != 1 {
+		t.Fatalf("Resources = %+v", got.Resources)
+	}
+	if len(got.Resources[0].Parameters) != 0 {
+		t.Errorf("Parameters = %+v, want empty", got.Resources[0].Parameters)
+	}
+}
+
 // TestCatalog_RejectsMalformedResourcesShape verifies an unrecognized
 // "resources" shape (neither object nor array) produces a reported
 // model.OperationNormalize diagnostic and a zero NormalizedCatalog,

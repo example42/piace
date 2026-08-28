@@ -16,7 +16,10 @@ import (
 // The outcome and its reasons come first because a CI log is read from
 // the top and often truncated; requirements.md 10.2 requires both to be
 // present.
-func Text(r model.Result) ([]byte, error) {
+//
+// opts selects display policy only — what this format prints, never what
+// it says about the run. See Options.
+func Text(r model.Result, opts Options) ([]byte, error) {
 	var b bytes.Buffer
 
 	fmt.Fprintf(&b, "PIACE %s (%s)\n", r.Invocation.ToolVersion, r.Invocation.TimestampUTC)
@@ -30,7 +33,7 @@ func Text(r model.Result) ([]byte, error) {
 
 	writeTextTargets(&b, r.Targets)
 	writeTextAggregate(&b, r.Aggregate)
-	writeTextImpact(&b, r.ImpactEstimates)
+	writeTextImpact(&b, r.ImpactEstimates, opts)
 	writeTextRunDiagnostics(&b, r.Diagnostics)
 
 	return b.Bytes(), nil
@@ -110,16 +113,26 @@ func candidateProvenanceLine(p model.CandidateProvenance) string {
 	return strings.Join(parts, " ")
 }
 
+// writeTextNodeDiff prints one target's displayed changes. The count in
+// the header counts what is actually printed, not what the node diff
+// holds, so the header can never promise lines that follow it.
+//
+// A target whose only differences are dependency-graph edges still has
+// HasDifference true and still drives the run's outcome and exit code, so
+// it gets an explicit note rather than an empty list: a report that
+// printed nothing here would read as "no changes" on a run that exits
+// non-zero, which is exactly the stdout/exit-code contradiction
+// writeReports in cmd/piace is ordered to prevent.
 func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
-	if !nd.HasDifference {
+	switch {
+	case !nd.HasDifference:
 		fmt.Fprintf(b, "    changes: none\n")
-	} else {
-		fmt.Fprintf(b, "    changes (%d resource, %d edge):\n", len(nd.ResourceChanges), len(nd.EdgeChanges))
+	case len(nd.ResourceChanges) == 0:
+		fmt.Fprintf(b, "    changes: %d dependency-edge difference(s) only, not shown in the text report\n", len(nd.EdgeChanges))
+	default:
+		fmt.Fprintf(b, "    changes (%d):\n", len(nd.ResourceChanges))
 		for _, c := range nd.ResourceChanges {
 			fmt.Fprintf(b, "      %s\n", changeSummary(c))
-		}
-		for _, c := range nd.EdgeChanges {
-			fmt.Fprintf(b, "      %s\n", edgeSummary(c))
 		}
 	}
 	for _, e := range nd.Exclusions {
@@ -127,37 +140,35 @@ func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
 	}
 }
 
+// writeTextAggregate prints one line per displayed aggregate group. The
+// header counts displayed groups rather than len(agg.Groups), which still
+// includes the edge groups this format filters out.
+//
+// Certnames are never capped here: they are the operator's own configured
+// targets, a set they wrote themselves and whose size they already know —
+// unlike an impact estimate's certnames, which come from the estate.
 func writeTextAggregate(b *bytes.Buffer, agg model.AggregateDiff) {
-	fmt.Fprintf(b, "\naggregate diff (%d group(s)):\n", len(agg.Groups))
-	for _, g := range agg.Groups {
-		fmt.Fprintf(b, "  %s\n", aggregateKeyLabel(g.Key))
-		if g.Key.Edge == nil && (g.Before != nil || g.After != nil) {
-			fmt.Fprintf(b, "    %s -> %s\n", formatValue(g.Before), formatValue(g.After))
-		}
-		fmt.Fprintf(b, "    %d target(s): %s\n", len(g.Certnames), strings.Join(g.Certnames, ", "))
+	groups := displayedGroups(agg.Groups)
+	fmt.Fprintf(b, "\naggregate diff (%d):\n", len(groups))
+	for _, g := range groups {
+		fmt.Fprintf(b, "  %s: %s\n", aggregateGroupLabel(g), targetCountList(g.Certnames))
 	}
 }
 
-// writeTextImpact renders the impact section. The section header carries
-// requirement 9.3's label and note; individual entries never phrase a
-// returned certname as a node that will change.
-func writeTextImpact(b *bytes.Buffer, estimates []model.ImpactEstimate) {
+// writeTextImpact renders the impact section, one line per estimate. The
+// section header carries requirement 9.3's label and note, which is what
+// keeps a bare "N nodes" line from reading as a prediction: the note
+// above it states, once for the whole section, that a listed certname
+// means only that the node's latest stored catalog contains the resource.
+// No individual entry ever phrases a certname as a node that will change.
+func writeTextImpact(b *bytes.Buffer, estimates []model.ImpactEstimate, opts Options) {
 	if len(estimates) == 0 {
 		return
 	}
 	fmt.Fprintf(b, "\n%s (%d):\n", ImpactEstimateLabel, len(estimates))
 	fmt.Fprintf(b, "  %s\n", ImpactEstimateNote)
 	for _, e := range estimates {
-		fmt.Fprintf(b, "  %s: %s\n", e.Identity, estimateSummary(e))
-		fmt.Fprintf(b, "    pql: %s\n", e.PQL)
-		fmt.Fprintf(b, "    request: path=%s limit=%d timeout=%s", e.Request.Path, e.Request.Limit, e.Timeout)
-		if e.Request.OrderBy != "" {
-			fmt.Fprintf(b, " order_by=%s", e.Request.OrderBy)
-		}
-		fmt.Fprintln(b)
-		if len(e.Certnames) > 0 {
-			fmt.Fprintf(b, "    nodes with this resource in their latest stored catalog: %s\n", strings.Join(e.Certnames, ", "))
-		}
+		fmt.Fprintf(b, "  %s: %s\n", e.Identity, estimateSummary(e, opts.ImpactNodes))
 	}
 }
 

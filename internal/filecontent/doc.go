@@ -57,6 +57,11 @@
 //     rule distinguishing the two, and evidence.go's ResolveFileContentEvidence
 //     doc comment for the precise decision tree.
 //
+// Resolution stops between step 2 and step 3 for a directory or
+// recursive File resource, whose `source` names a directory tree the
+// compiler's file_content endpoint cannot serve at all; see "Sources
+// that are not byte-comparable" below.
+//
 // Every returned model.FileContentEvidence carries only an algorithm
 // name, digest hex strings, the evidence-source enum, and the
 // comparison state — never managed file bytes. Hashing always happens
@@ -107,6 +112,51 @@
 // exactly what makes the distinction determinable, and the accompanying
 // diagnostic guarantees the retrieval failure is never silently dropped
 // even if a caller ignored the State value.
+//
+// # Sources that are not byte-comparable
+//
+// A File resource with `ensure => directory`, or with any `recurse`
+// value other than an explicit false, copies a whole directory tree:
+// its `source` (e.g. `puppet:///modules/tp/run_info/`) names a
+// directory, not a file. The compiler's file_content endpoint serves one
+// file's bytes and nothing else -- a directory reference is rejected
+// outright (verified against a deployed OpenVox compiler on 2026-08-28:
+// GET /puppet/v3/file_content/modules/tp/run_info/?environment=<env>
+// returns HTTP 500 with an empty body, for both the trailing-slash and
+// the bare form). Attempting step 3 for such a resource therefore cannot
+// succeed, and reporting its inevitable failure as content_indeterminate
+// would state that content evidence was *lost* when in truth
+// byte-level content evidence was never the right evidence for this
+// resource.
+//
+// ResolveFileContentEvidence therefore tests isDirectoryOrRecursive on
+// both sides after step 2 and before step 3, and resolves the resource
+// without any retrieval:
+//
+//   - The `source` references differ (or one side has one and the other
+//     does not): FileContentReferenceChanged, with a *warning*-severity
+//     verify_content diagnostic. This is design.md section 7.2's
+//     "Source/reference changes are always reported without rendering
+//     their bytes" applied to the one case where rendering them is not
+//     merely undesirable but impossible. The severity is what
+//     distinguishes it from step 4: nothing failed, so
+//     model.OutcomeForDiagnostic must not turn the comparison into an
+//     operational error, while the diagnostic still records why no
+//     digest accompanies the change.
+//   - The references do not visibly differ, so some other
+//     content-bearing parameter did: FileContentIndeterminate with an
+//     error-severity diagnostic, exactly as step 4 would. There is
+//     neither a reference-level fact to report nor bytes to compare, and
+//     model.TargetResult.ClassifyOutcome's indeterminate check keeps that
+//     from collapsing into a clean run.
+//
+// This widens the reference_changed state beyond the "no ContentResolver
+// was supplied" rule stated below: reference_changed now also covers a
+// reference that changed and *cannot* be byte-compared by any resolver,
+// not only one that changed with no resolver available to try. Both
+// readings share the same meaning -- "the reference changed and no
+// byte-level comparison stands behind that statement" -- and neither
+// ever claims a verified content change.
 //
 // # Identifying "a recognized compatible checksum" (step 2)
 //
@@ -189,9 +239,12 @@
 //     application/octet-stream and HTTP 200, per Puppet's documented v3
 //     file_content endpoint (puppetlabs/puppet, api/docs/http_file_content.md):
 //     "The file_content endpoint returns the contents of the specified
-//     file." A 404 response ("Not Found: Could not find file_content
-//     <path>") is documented for a missing file but was not exercised
-//     against a live compiler; nothing depends on the body text, because
+//     file." A missing file returns HTTP 404 with the documented body
+//     ({"message":"Not Found: Could not find file_content <path>",
+//     "issue_kind":"RESOURCE_NOT_FOUND"}), and a reference naming a
+//     directory returns HTTP 500 with an empty body -- both verified
+//     against a deployed OpenVox compiler on 2026-08-28. Nothing depends
+//     on either body, because
 //     this package treats any non-2xx response as a retrieval failure
 //     (step 4b), never
 //     inspecting the response body for meaning, matching this package's

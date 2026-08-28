@@ -2,24 +2,32 @@ name: CI
 
 # Pull requests run the test job. A merge to main runs the same test job
 # and then, only if it passed, builds the release artifacts and uploads
-# them. Both live in one workflow so `needs:` can gate the build on the
-# tests — a cross-workflow dependency would need `workflow_run`, which
-# reports its status against the wrong commit and is easy to misread.
+# them. A `v*` tag runs both and then publishes a GitHub Release from the
+# artifacts the build job already verified.
+#
+# All three live in one workflow so `needs:` can gate each stage on the
+# one before it — a cross-workflow dependency would need `workflow_run`,
+# which reports its status against the wrong commit and is easy to
+# misread. That gating is the point on a tag: a release is published only
+# from a commit whose tests passed on every matrix leg.
 on:
   pull_request:
   push:
     branches: [main]
+    tags: ['v*']
 
-# Least privilege. Nothing here writes to the repository; add
-# `contents: write` only if a job is later taught to publish a Release.
+# Least privilege by default. Only the release job writes to the
+# repository, and it raises its own permission locally rather than
+# granting it to every job here.
 permissions:
   contents: read
 
-# A new push to the same branch supersedes the previous run. Runs on main
-# are never cancelled, so every merged commit keeps its artifacts.
+# A new push to the same branch supersedes the previous run. Only pull
+# requests are cancelled: a merged commit keeps its artifacts, and
+# cancelling a tag run would leave a published tag with no release.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -80,6 +88,12 @@ jobs:
     name: build release artifacts
     needs: test
     runs-on: ubuntu-latest
+    # Consumed by the release job, so it publishes the version this job
+    # actually stamped rather than re-deriving it from the ref and
+    # risking a disagreement between the two.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,12 +102,39 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      # A tag builds the version it names; anything else builds a
+      # commit-stamped development version that can never be mistaken for
+      # a release. docs/release.md's artifact names carry no `v`, so the
+      # prefix is stripped here rather than taught to the build script,
+      # which stays a plain `VERSION` interface usable by hand.
+      - name: Resolve the version to stamp
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            # A malformed tag has to fail here. Downstream it becomes an
+            # artifact filename and the -X main.toolVersion stamp, where
+            # `piace-1.0-linux-amd64` would be published looking every bit
+            # as deliberate as a correct one.
+            if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "::error::tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH[-prerelease]"
+              exit 1
+            fi
+            case "$version" in *-*) prerelease=true ;; *) prerelease=false ;; esac
+          else
+            version="main-${GITHUB_SHA::7}"
+            prerelease=false
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "building version $version"
+
       # Every artifact is CGO-free (requirements.md 12.1), so one Linux
       # runner cross-compiles the whole supported matrix. Running this on
       # pull requests too means a broken release script is found in review
       # rather than at release time.
       - name: Build artifacts and checksum manifest
-        run: bash scripts/build-release.sh "main-${GITHUB_SHA::7}"
+        run: bash scripts/build-release.sh "${{ steps.version.outputs.version }}"
 
       # docs/release.md tells a consumer to verify the manifest before
       # installing. Running that same check here proves the manifest CI
@@ -114,16 +155,131 @@ jobs:
               || { echo "::error::$binary is not statically linked"; exit 1; }
           done
 
-      # Uploaded only for main: a pull request has already had the build
+      # Ties the artifact back to the tag. -X main.toolVersion is what
+      # `piace version` prints and what every result document records as
+      # its invocation metadata, so a mis-stamped binary would misreport
+      # itself in every report it ever produced — and the checksum
+      # manifest would happily certify it.
+      - name: Confirm the binary reports the version it was stamped with
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          reported="$(./dist/piace-${VERSION}-linux-amd64 version)"
+          echo "$reported"
+          if [ "$reported" != "piace ${VERSION}" ]; then
+            echo "::error::binary reports '$reported', expected 'piace ${VERSION}'"
+            exit 1
+          fi
+
+      # Uploaded for pushes only: a pull request has already had the build
       # validated above, and does not need artifacts accumulating against
-      # the repository's storage.
+      # the repository's storage. On a tag this is also the handoff to the
+      # release job, which publishes these exact bytes rather than
+      # building its own.
       - name: Upload artifacts
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: piace-main-${{ github.sha }}
+          name: piace-${{ steps.version.outputs.version }}
           path: |
             dist/piace-*
             dist/SHA256SUMS
           retention-days: 30
           if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    # github.ref_type is 'tag' only under the tags: ['v*'] trigger above,
+    # so a push to main builds and uploads as before and stops there.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    # The only job in this workflow that writes to the repository, and the
+    # only one holding the permission to. Granting it at the workflow
+    # level would hand it to the test job as well, which runs the code
+    # under review.
+    permissions:
+      contents: write
+    steps:
+      # The published bytes are the ones the build job already checked:
+      # manifest verified, static linking confirmed, version stamp
+      # asserted. Rebuilding here would publish artifacts that nothing had
+      # checked, and a compiler or toolchain difference between the two
+      # jobs would be invisible.
+      - name: Download the verified artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: piace-${{ needs.build.outputs.version }}
+          path: dist
+
+      # Re-verified after the round trip through artifact upload and
+      # download, so a truncated or corrupted transfer fails here rather
+      # than reaching a consumer who trusts the manifest.
+      - name: Re-verify the checksum manifest
+        working-directory: dist
+        run: sha256sum --check SHA256SUMS
+
+      # The notes state plainly what this release does and does not prove.
+      # A checksum manifest published beside its own artifacts attests to
+      # integrity, never to origin: anyone who could replace the binaries
+      # could replace SHA256SUMS with them. Only the detached signature
+      # closes that gap, and this workflow holds no signing key, so the
+      # release says so instead of leaving a consumer to follow a
+      # verification step that cannot yet succeed.
+      - name: Compose the release notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          {
+            echo "Statically linked, CGO-free binaries for linux/amd64, linux/arm64,"
+            echo "darwin/amd64 and darwin/arm64."
+            echo
+            echo "## Verifying this download"
+            echo
+            echo '```sh'
+            echo "sha256sum --check --ignore-missing SHA256SUMS   # shasum -a 256 on macOS"
+            echo "./piace-${VERSION}-<os>-<arch> version"
+            echo '```'
+            echo
+            echo "\`SHA256SUMS.asc\` — the detached OpenPGP signature over the manifest — is"
+            echo "signed and attached separately after publication; this workflow holds no"
+            echo "signing key. Until it appears, the checksums above show only that a download"
+            echo "is intact, not where it came from. See \`docs/release.md\` for the full"
+            echo "procedure and the signing key fingerprint."
+            echo
+            echo "## SHA256SUMS"
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > release-notes.md
+          cat release-notes.md
+
+      # gh resolves the repository from GH_REPO, so this job needs no
+      # checkout: the only inputs are the downloaded artifacts and the
+      # notes composed above. The tag already exists — pushing it is what
+      # triggered the run — so gh attaches the release to it rather than
+      # creating one.
+      #
+      # Re-running this job after a release already exists fails, and is
+      # meant to. The alternative — falling back to `gh release upload
+      # --clobber` — would quietly overwrite the assets of a release
+      # people may already have downloaded, to rescue a case (a partial
+      # publish) that is rarer than the case it endangers. Delete the
+      # incomplete release and re-run if that happens.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "piace $VERSION" \
+            --notes-file release-notes.md \
+            "${flags[@]}" \
+            dist/piace-* dist/SHA256SUMS

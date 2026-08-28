@@ -90,23 +90,185 @@ func TestHTML_VisiblyMarksRequiredStates(t *testing.T) {
 	}
 }
 
-// TestHTML_EdgeGroupRendersWithoutAResourceIdentity guards the shape
-// split in model.AggregateChangeKey: an edge group has a nil Identity and
-// no before/after values, and must render rather than panic.
-func TestHTML_EdgeGroupRendersWithoutAResourceIdentity(t *testing.T) {
+// TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity guards the shape
+// split in model.AggregateChangeKey: an edge key sets Edge and leaves
+// Identity nil, so a caller that dereferences Identity unconditionally
+// panics.
+//
+// The HTML and text renderers no longer reach this branch — they filter
+// edge groups out first — but the hazard is structural, not situational,
+// so it is tested directly at the helper rather than through a format
+// that happens to exercise it today.
+func TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity(t *testing.T) {
+	key := model.AggregateChangeKey{Kind: model.ChangeEdgeRemoved, Edge: &model.Edge{Source: "Class[a]", Target: "Class[b]"}}
+	if got := aggregateKeyLabel(key); got != "edge_removed Class[a] -> Class[b]" {
+		t.Errorf("aggregateKeyLabel = %q", got)
+	}
+}
+
+// TestHTML_KeepsEverythingBehindDisclosure is this format's half of the
+// display contract. Text drops edge changes, an estimate's PQL and
+// request options, and the certnames past a cap; HTML keeps all of it and
+// uses <details> instead — so every string the text test asserts is
+// ABSENT must be present here, in the page itself rather than only in the
+// canonical JSON embedded at the bottom.
+func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
+	data, err := HTML(sampleResult())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	out := string(data)
+	visible := out[:strings.Index(out, "<h2>Result document</h2>")]
+
+	for _, want := range []string{
+		"Class[a]",             // a per-target edge change
+		"Class[b]",             //   ...and its other endpoint
+		"1 edge(s) suppressed", // requirements.md 6.5, in full
+		`resources[certname] { type = &#34;Service&#34;`, // requirements.md 9.4
+		"/pdb/query/v4",                          // requirements.md 9.7 request scope
+		"order_by",                               //   ...and its options
+		"db-01.example.test, db-02.example.test", // the uncapped certname sample
+	} {
+		if !strings.Contains(visible, want) {
+			t.Errorf("HTML report does not show %q above the result document", want)
+		}
+	}
+
+	// Present is not enough: the bulk has to be collapsed, or the page is
+	// just the old wall of text with nicer colors.
+	for _, summary := range []string{
+		"Resource changes",             // per-target resource changes
+		"Dependency-graph edges",       // per-target edges
+		"Grouped resource changes",     // aggregate resource groups
+		"Dependency-graph edge groups", // aggregate edge groups
+		"Queried resources",            // the estimate list
+		"Excluded differences",         // requirements.md 8.5
+	} {
+		if !strings.Contains(visible, summary) {
+			t.Errorf("HTML report has no disclosure headed %q", summary)
+		}
+	}
+	// ...and no list of rows is in the scanning path: a section left open
+	// buries every section after it, which on a real run means four
+	// figures of rows above the outcome a reader came for.
+	if strings.Contains(visible, "<details open") {
+		t.Error("a disclosure is open by default, putting a row list in the scanning path")
+	}
+}
+
+// TestHTML_KeepsFailuresOutOfDisclosure is the floor under the collapse.
+// requirements.md 8.5 requires catalog retrieval failure, compilation
+// failure and the v3 trusted-fact warning to be *visibly* marked, and a
+// mark inside a closed <details> is not visible. Everything else on a
+// target may collapse; these may not.
+//
+// TestHTML_VisiblyMarksRequiredStates cannot catch this — it substring
+// searches, and collapsed content still matches.
+func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
+	data, err := HTML(sampleResult())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	out := string(data)
+
+	for _, mark := range []string{
+		"Trusted-fact compatibility", // the v3 warning banner
+		"load_baseline failed",       // a per-target error banner
+	} {
+		at := strings.Index(out, mark)
+		if at < 0 {
+			t.Errorf("HTML report does not show %q at all", mark)
+			continue
+		}
+		// The mark belongs to a target card, so the enclosing card is the
+		// last one opened before it; any <details> between that card's
+		// start and the mark would be hiding it.
+		card := strings.LastIndex(out[:at], `<section class="card">`)
+		if card < 0 {
+			t.Errorf("%q is not inside a target card", mark)
+			continue
+		}
+		if strings.Contains(out[card:at], "<details") {
+			t.Errorf("%q is inside a disclosure; requirements.md 8.5 needs it visibly marked", mark)
+		}
+	}
+}
+
+// TestHTML_MarksAFailedEstimateOnTheClosedList is the estimate section's
+// share of the visibility floor. An estimate list is a disclosure like
+// every other list of rows, so a failed estimate sits two levels deep;
+// the count on the closed summary is what keeps it in the scanning path.
+// sampleResult holds one failed estimate of two.
+func TestHTML_MarksAFailedEstimateOnTheClosedList(t *testing.T) {
+	data, err := HTML(sampleResult())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	out := string(data)
+
+	if !strings.Contains(out, `<span class="badge operational">1 failed</span>`) {
+		t.Error("the closed estimate list does not mark that one estimate failed")
+	}
+	// The failed entry keeps its place in the list rather than being
+	// hoisted out of it, so its reason is still one click away.
+	if !strings.Contains(out, "puppetdb returned status 503") {
+		t.Error("the failed estimate's reason is not on the page")
+	}
+}
+
+// TestHTML_CountsAgreeWithWhatIsRendered guards the header/body agreement
+// per section. sampleResult holds two aggregate groups, one of each
+// shape, which the page splits into separate counted sections.
+func TestHTML_CountsAgreeWithWhatIsRendered(t *testing.T) {
+	data, err := HTML(sampleResult())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	visible := string(data)[:strings.Index(string(data), "<h2>Result document</h2>")]
+
+	for _, want := range []string{
+		`<h2>Aggregate diff <span class="count">1</span></h2>`,
+		`Grouped resource changes <span class="count">1</span>`,
+		`Dependency-graph edge groups <span class="count">1</span>`,
+		`Resource changes <span class="count">4</span>`,
+		`Dependency-graph edges <span class="count">1</span>`,
+	} {
+		if !strings.Contains(visible, want) {
+			t.Errorf("HTML report is missing the counted heading %q", want)
+		}
+	}
+}
+
+// TestHTML_EdgeOnlyTargetShowsItsEdges is the report/exit-code contract
+// for this format. A target whose only differences are edges still drove
+// the run's outcome; because HTML keeps edge changes, it discharges that
+// by rendering them rather than by the note the text report needs.
+func TestHTML_EdgeOnlyTargetShowsItsEdges(t *testing.T) {
 	r := model.NewResult("test", "2026-08-25T12:00:00Z")
-	r.Aggregate = model.AggregateDiff{Groups: []model.AggregateGroup{{
-		Key:       model.AggregateChangeKey{Kind: model.ChangeEdgeRemoved, Edge: &model.Edge{Source: "Class[a]", Target: "Class[b]"}},
-		Certnames: []string{"web-01.example.test"},
-	}}}
+	r.Targets = []model.TargetResult{{
+		Certname: "web-01.example.test",
+		Config:   &model.ConfigProvenance{},
+		NodeDiff: &model.NodeDiff{
+			Certname:      "web-01.example.test",
+			HasDifference: true,
+			EdgeChanges: []model.EdgeChange{
+				{Kind: model.ChangeEdgeAdded, Edge: model.Edge{Source: "Class[a]", Target: "Class[b]"}},
+			},
+		},
+	}}
 	r.Reduce()
 
 	data, err := HTML(r)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
-	if !strings.Contains(string(data), "edge_removed Class[a] -&gt; Class[b]") {
-		t.Errorf("edge group did not render: %s", string(data))
+	visible := string(data)[:strings.Index(string(data), "<h2>Result document</h2>")]
+
+	if strings.Contains(visible, "No non-excluded differences") {
+		t.Errorf("an edge-only difference was reported as no changes\n---\n%s", visible)
+	}
+	if !strings.Contains(visible, `Dependency-graph edges <span class="count">1</span>`) {
+		t.Errorf("the target's edge changes are not shown\n---\n%s", visible)
 	}
 }
 
