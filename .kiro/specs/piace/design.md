@@ -385,9 +385,14 @@ from the same redacted projection, preventing format drift or secret exposure.
 The three formats show the same document at three levels of detail, decided
 through shared helpers so they cannot drift apart in what a value says. JSON
 encodes the complete document and takes no options. HTML is complete too and
-uses disclosure rather than omission: edge changes, aggregate edge groups, and
-each estimate's PQL, request options and full certname list are on the page
-inside closed `<details>`; a target's resource changes open by default. Only
+uses disclosure rather than omission: resource changes, edge changes, aggregate
+groups, and each estimate's PQL, request options and full certname list are on
+the page inside closed `<details>`. Every list of rows is closed and every
+summary carries its count, so the page a reader lands on is an index of the run
+— outcome, reasons, tally, and one line per target with a counted chip per
+section — and one click reaches any of it. What stays outside every disclosure
+is anything requirement 8.5 requires visibly marked (retrieval and compilation
+failures, the v3 warning) and requirement 9.3's estimate label and note. Only
 the text report omits, because a CI log is a linear read with nothing to
 expand — it drops edge changes and each estimate's query mechanics, and caps an
 estimate's certname sample unless `--impact-nodes` is passed. Requirements 5.3,

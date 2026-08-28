@@ -32,12 +32,17 @@
 //
 //   - JSON is the complete record and takes no options at all.
 //   - HTML is complete too, and uses disclosure rather than omission:
-//     edge changes, aggregate edge groups, an estimate's PQL, request
-//     options and full certname list are all on the page, inside closed
-//     <details>. A target's resource changes open by default; everything
-//     else starts closed. Nothing is capped, because a closed disclosure
+//     resource changes, edge changes, aggregate groups, an estimate's PQL,
+//     request options and full certname list are all on the page, inside
+//     closed <details>. Every list of rows is closed and every summary
+//     carries the count of what it holds, so the page a reader lands on is
+//     an index of the run — the outcome, the reasons, the tally, and one
+//     line per target with a counted chip per section — and one click
+//     reaches any of it. Nothing is capped, because a closed disclosure
 //     already keeps a thousand certnames out of the reading path without
-//     dropping a name.
+//     dropping a name. What stays outside every disclosure is anything
+//     requirements.md 8.5 requires visibly marked (see below) and the
+//     estimate label and note requirement 9.3 requires.
 //   - Text is the only format that omits, because a CI log is a linear
 //     read with no way to skip a section and no way to expand one. It
 //     drops edge changes (a run's edge differences routinely outnumber

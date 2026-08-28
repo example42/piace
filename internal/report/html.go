@@ -30,9 +30,14 @@ import (
 // Unlike the text report, HTML takes no display Options: it shows
 // everything the result document holds — edge changes, an estimate's PQL,
 // request options, and full certname list — and uses disclosure rather
-// than omission to keep the page readable. A reader who wants the detail
-// opens it; a reader scanning for the outcome never has to page past it.
-// See doc.go.
+// than omission to keep the page readable. Every list of rows is closed
+// and its summary carries its count, so a reader scanning for the outcome
+// reads an index of the run rather than paging through it, and a reader
+// who wants a section opens it. What never goes behind a disclosure is a
+// failure: the per-target error banners, the v3 warning, the run
+// diagnostics and the outcome badges stay in the scanning path, because
+// requirements.md 8.5's "visibly mark" is not satisfied by a mark a
+// reader has to go looking for. See doc.go.
 //
 // Everything variable is interpolated through html/template, whose
 // contextual escaping is what makes an attacker-shaped resource title or
@@ -83,6 +88,12 @@ type htmlView struct {
 	TotalGroups     int
 	TotalEdgeGroups int
 	TotalEstimates  int
+	// TotalEstimateFailures rides on the estimate list's closed summary.
+	// The list is a disclosure like every other list of rows on the page,
+	// and a failed estimate inside a closed one would be invisible; the
+	// count keeps it in the scanning path without lifting the failed
+	// entries out of their place in the list.
+	TotalEstimateFailures int
 }
 
 // htmlTally is one figure in the masthead's at-a-glance row. It is
@@ -109,10 +120,12 @@ type htmlTarget struct {
 	Warnings     []htmlDiagnostic
 	Compared     bool
 	// Changes and EdgeChanges are the target's differences, split because
-	// the page discloses them separately: resource changes open, edges
-	// closed. HasDifference stays authoritative for whether the target
-	// changed at all, so a target whose only differences are edges is
-	// never rendered as unchanged.
+	// the page discloses them separately: a run's edge differences
+	// routinely outnumber its resource differences, being a consequence of
+	// them, so they get their own chip rather than padding the list a
+	// reader opens first. HasDifference stays authoritative for whether
+	// the target changed at all, so a target whose only differences are
+	// edges is never rendered as unchanged.
 	HasDifference bool
 	Changes       []htmlChange
 	EdgeChanges   []htmlEdge
@@ -227,7 +240,11 @@ func buildHTMLView(r model.Result, canonicalJSON string) htmlView {
 	view.TotalEdgeGroups = len(view.EdgeAggregate)
 
 	for _, e := range r.ImpactEstimates {
-		view.Estimates = append(view.Estimates, buildHTMLEstimate(e))
+		estimate := buildHTMLEstimate(e)
+		if estimate.Failed {
+			view.TotalEstimateFailures++
+		}
+		view.Estimates = append(view.Estimates, estimate)
 	}
 	view.TotalEstimates = len(view.Estimates)
 

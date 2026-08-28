@@ -137,18 +137,82 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 	// Present is not enough: the bulk has to be collapsed, or the page is
 	// just the old wall of text with nicer colors.
 	for _, summary := range []string{
+		"Resource changes",             // per-target resource changes
 		"Dependency-graph edges",       // per-target edges
+		"Grouped resource changes",     // aggregate resource groups
 		"Dependency-graph edge groups", // aggregate edge groups
-		"Nodes and query",              // an estimate's certnames, PQL, request
+		"Queried resources",            // the estimate list
 		"Excluded differences",         // requirements.md 8.5
 	} {
 		if !strings.Contains(visible, summary) {
 			t.Errorf("HTML report has no disclosure headed %q", summary)
 		}
 	}
-	// ...and the resource changes, the thing a reader came for, must not be.
-	if !strings.Contains(visible, "<details open>") {
-		t.Error("the resource-change list is not open by default")
+	// ...and no list of rows is in the scanning path: a section left open
+	// buries every section after it, which on a real run means four
+	// figures of rows above the outcome a reader came for.
+	if strings.Contains(visible, "<details open") {
+		t.Error("a disclosure is open by default, putting a row list in the scanning path")
+	}
+}
+
+// TestHTML_KeepsFailuresOutOfDisclosure is the floor under the collapse.
+// requirements.md 8.5 requires catalog retrieval failure, compilation
+// failure and the v3 trusted-fact warning to be *visibly* marked, and a
+// mark inside a closed <details> is not visible. Everything else on a
+// target may collapse; these may not.
+//
+// TestHTML_VisiblyMarksRequiredStates cannot catch this — it substring
+// searches, and collapsed content still matches.
+func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
+	data, err := HTML(sampleResult())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	out := string(data)
+
+	for _, mark := range []string{
+		"Trusted-fact compatibility", // the v3 warning banner
+		"load_baseline failed",       // a per-target error banner
+	} {
+		at := strings.Index(out, mark)
+		if at < 0 {
+			t.Errorf("HTML report does not show %q at all", mark)
+			continue
+		}
+		// The mark belongs to a target card, so the enclosing card is the
+		// last one opened before it; any <details> between that card's
+		// start and the mark would be hiding it.
+		card := strings.LastIndex(out[:at], `<section class="card">`)
+		if card < 0 {
+			t.Errorf("%q is not inside a target card", mark)
+			continue
+		}
+		if strings.Contains(out[card:at], "<details") {
+			t.Errorf("%q is inside a disclosure; requirements.md 8.5 needs it visibly marked", mark)
+		}
+	}
+}
+
+// TestHTML_MarksAFailedEstimateOnTheClosedList is the estimate section's
+// share of the visibility floor. An estimate list is a disclosure like
+// every other list of rows, so a failed estimate sits two levels deep;
+// the count on the closed summary is what keeps it in the scanning path.
+// sampleResult holds one failed estimate of two.
+func TestHTML_MarksAFailedEstimateOnTheClosedList(t *testing.T) {
+	data, err := HTML(sampleResult())
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	out := string(data)
+
+	if !strings.Contains(out, `<span class="badge operational">1 failed</span>`) {
+		t.Error("the closed estimate list does not mark that one estimate failed")
+	}
+	// The failed entry keeps its place in the list rather than being
+	// hoisted out of it, so its reason is still one click away.
+	if !strings.Contains(out, "puppetdb returned status 503") {
+		t.Error("the failed estimate's reason is not on the page")
 	}
 }
 
@@ -164,6 +228,7 @@ func TestHTML_CountsAgreeWithWhatIsRendered(t *testing.T) {
 
 	for _, want := range []string{
 		`<h2>Aggregate diff <span class="count">1</span></h2>`,
+		`Grouped resource changes <span class="count">1</span>`,
 		`Dependency-graph edge groups <span class="count">1</span>`,
 		`Resource changes <span class="count">4</span>`,
 		`Dependency-graph edges <span class="count">1</span>`,
