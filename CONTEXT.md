@@ -5,6 +5,8 @@ PuppetDB with catalogs compiled for an already deployed candidate environment.
 
 ## Language
 
+### Comparison
+
 **Baseline catalog**:
 The catalog selected from PuppetDB or a local catalog snapshot for a target,
 used as the state against which a candidate catalog is compared. A PuppetDB
@@ -78,3 +80,40 @@ whose latest stored catalog contains a changed exact resource type and title.
 It is bounded by configured limits and is a potential-impact estimate, not
 proof that those nodes will change.
 _Avoid_: affected nodes, blast radius
+
+### Change assessment
+
+**Change assessment**:
+The advisory, model-generated document `piace explain` derives from one stored
+result document and an optional change context. It is not deterministic, is not
+part of the result document, and never affects a comparison outcome or exit
+status.
+_Avoid_: AI report, analysis, blast radius
+
+**Risk indication**:
+A change assessment's closed-enum judgement (`low`, `medium`, `high`,
+`unknown`) for one aggregate group or for the run. It is a model's opinion
+about a change, not a measurement of it.
+_Avoid_: risk score, severity, danger level, safety rating
+
+**Review focus**:
+The ordered list of resource identities or targets a change assessment suggests
+a reviewer look at first. It is a reading order, not a work list.
+_Avoid_: recommendations, action items, findings
+
+**Inference service**:
+The configured external OpenAI-compatible endpoint a change assessment is
+requested from. It is the only service PIACE contacts that is not the compiler
+or PuppetDB, and `piace compare` never contacts it.
+_Avoid_: AI provider, LLM, model backend
+
+**Change context**:
+The caller-supplied file describing the repository change under test: refs,
+commit subjects, changed paths, and optional capped title and description.
+PIACE reads it, never invokes git, and treats its free text as untrusted data.
+_Avoid_: git diff, commit info, PR metadata
+
+**Pseudonymized identity**:
+A stable per-run substitute for a certname or service authority used only in an
+inference request body. It never appears in a change assessment or any report.
+_Avoid_: anonymized, masked, redacted

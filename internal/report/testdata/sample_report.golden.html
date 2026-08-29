@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PIACE report — operational_error</title>
+<style>
+:root {
+  color-scheme: light;
+
+  --paper: #f5f4f0;
+  --surface: #ffffff;
+  --sunk: #fbfaf7;
+  --line: #e2ded5;
+  --line-soft: #eeebe4;
+  --ink: #1c1a16;
+  --muted: #6d675d;
+  --faint: #98928a;
+
+  --clean-fg: #1d6a3c;       --clean-bg: #e8f2ea;
+  --allowed-fg: #8a6510;     --allowed-bg: #f9f0da;
+  --policy-fg: #98511b;      --policy-bg: #fbeadb;
+  --compile-fg: #9c2320;     --compile-bg: #fbeae7;
+  --operational-fg: #7d1a17; --operational-bg: #faeae7;
+
+  --add: #1d6a3c;
+  --remove: #9c2320;
+  --change: #2f4a78;
+
+  --serif: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 1.75rem 1.25rem 4rem;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15.5px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+
+main { max-width: 76rem; margin: 0 auto; }
+
+ 
+
+.masthead {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--rule, var(--muted));
+  border-radius: var(--radius);
+  padding: 1.1rem 1.35rem 1.2rem;
+}
+.masthead.clean { --rule: var(--clean-fg); }
+.masthead.allowed { --rule: var(--allowed-fg); }
+.masthead.policy { --rule: var(--policy-fg); }
+.masthead.compile { --rule: var(--compile-fg); }
+.masthead.operational { --rule: var(--operational-fg); }
+
+.masthead h1 {
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.masthead-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .85rem;
+}
+.stamp {
+  font-family: var(--mono);
+  font-size: .75rem;
+  color: var(--faint);
+  margin: .35rem 0 0;
+  overflow-wrap: anywhere;
+}
+.stamp span { white-space: nowrap; }
+
+.tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem 2rem;
+  margin: .9rem 0 0;
+  padding: .85rem 0 0;
+  border-top: 1px solid var(--line-soft);
+}
+.tally-item { display: flex; align-items: baseline; gap: .35rem; }
+.tally-n {
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+.tally-l { font-size: .78rem; color: var(--muted); }
+
+.reasons { list-style: none; margin: .85rem 0 0; padding: 0; }
+.reasons li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: .85rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.reasons li + li { margin-top: .2rem; }
+.reasons li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: .68em;
+  width: .55rem; height: 1px;
+  background: var(--faint);
+}
+
+ 
+
+.badge {
+  display: inline-block;
+  padding: .1rem .5rem .16rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.badge.clean { color: var(--clean-fg); background: var(--clean-bg); }
+.badge.allowed { color: var(--allowed-fg); background: var(--allowed-bg); }
+.badge.policy { color: var(--policy-fg); background: var(--policy-bg); }
+.badge.compile { color: var(--compile-fg); background: var(--compile-bg); }
+.badge.operational { color: var(--operational-fg); background: var(--operational-bg); }
+
+ 
+
+h2 {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-family: var(--serif);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 1.9rem 0 .6rem;
+  padding: .5rem 0 .35rem;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+h2 .count {
+  font-family: var(--mono);
+  font-size: .75rem;
+  font-weight: 400;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty { color: var(--faint); font-size: .85rem; margin: .35rem 0; }
+
+ 
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: .85rem 1rem .9rem;
+  margin: 0 0 .55rem;
+}
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .4rem .65rem;
+}
+.card-head h3 {
+  font-family: var(--mono);
+  font-size: .9rem;
+  font-weight: 600;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+ 
+
+.banner {
+  border-radius: 6px;
+  padding: .5rem .7rem;
+  margin: .55rem 0 0;
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
+.banner strong { font-weight: 600; }
+.banner-warn { color: var(--allowed-fg); background: var(--allowed-bg); }
+.banner-error { color: var(--compile-fg); background: var(--compile-bg); }
+.banner-note {
+  color: var(--muted);
+  background: var(--sunk);
+  border: 1px solid var(--line-soft);
+}
+
+ 
+
+details { margin: .5rem 0 0; }
+summary {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  list-style: none;
+  cursor: pointer;
+  padding: .28rem .55rem;
+  border-radius: 6px;
+  background: var(--sunk);
+  border: 1px solid var(--line-soft);
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--muted);
+  user-select: none;
+}
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: "";
+  flex: none;
+  width: 0; height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform-origin: 30% 50%;
+  transition: transform .15s ease;
+}
+details[open] > summary::before { transform: rotate(90deg); }
+summary .count {
+  font-family: var(--mono);
+  font-weight: 400;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.disclosed { padding: .6rem .1rem .1rem .7rem; }
+
+ 
+.disclosures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: .4rem;
+  margin-top: .6rem;
+}
+.disclosures > details { margin: 0; min-width: 0; flex: 0 1 auto; }
+.disclosures > details[open] { flex: 1 0 100%; }
+
+ 
+
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows > li {
+  display: grid;
+  grid-template-columns: .9rem minmax(0, 1fr);
+  gap: 0 .5rem;
+  padding: .12rem 0;
+  font-size: .8rem;
+  line-height: 1.45;
+  border-top: 1px solid transparent;
+}
+.rows > li + li { border-top-color: var(--line-soft); }
+.sign {
+  font-family: var(--mono);
+  font-weight: 700;
+  text-align: center;
+  user-select: none;
+}
+.sign.add { color: var(--add); }
+.sign.remove { color: var(--remove); }
+.sign.change { color: var(--change); }
+
+.body { min-width: 0; }
+.ident { font-family: var(--mono); overflow-wrap: anywhere; }
+.param { font-family: var(--mono); color: var(--muted); }
+.param::before { content: " · "; color: var(--faint); }
+ 
+.vals {
+  font-family: var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vals::before { content: " · "; color: var(--faint); }
+.vals .was { color: var(--remove); }
+.vals .now { color: var(--add); }
+.note {
+  font-family: var(--mono);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.note::before { content: " · "; color: var(--faint); }
+.on {
+  display: block;
+  color: var(--faint);
+  font-size: .76rem;
+  overflow-wrap: anywhere;
+}
+.arrow { color: var(--faint); padding: 0 .25rem; }
+
+ 
+
+ 
+.est { margin: 0; }
+.est > summary {
+  background: none;
+  border: none;
+  border-radius: 0;
+  border-top: 1px solid var(--line-soft);
+  padding: .22rem .1rem;
+  font-weight: 400;
+  flex-wrap: wrap;
+  gap: .3rem .6rem;
+}
+.est:first-child > summary { border-top: none; }
+.est > summary .ident { font-size: .8rem; color: var(--ink); }
+.est-count {
+  font-size: .78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.est .disclosed { padding: .35rem .1rem .55rem 1.05rem; }
+
+ 
+
+.kv {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: .1rem .9rem;
+  font-size: .8rem;
+  margin: .15rem 0 .7rem;
+}
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+.sub {
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--faint);
+  margin: .75rem 0 .1rem;
+}
+.sub:first-child { margin-top: .15rem; }
+.plain {
+  list-style: none;
+  margin: .15rem 0 .7rem;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: .8rem;
+}
+.plain li { overflow-wrap: anywhere; }
+.prose { font-size: .8rem; overflow-wrap: anywhere; margin: .1rem 0 .5rem; }
+.prose.mono { font-family: var(--mono); }
+
+pre {
+  font-family: var(--mono);
+  font-size: .75rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 32rem;
+  padding: .8rem;
+  margin: .6rem 0 0;
+  background: var(--sunk);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+
+@media (max-width: 34rem) {
+  body { padding: 1.25rem .75rem 3rem; }
+  .kv { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .kv dt { margin-top: .35rem; }
+  .disclosures > details { flex: 1 0 100%; }
+}
+
+@media print {
+  body { background: #fff; padding: 0; }
+  h2 { position: static; }
+  .card, .est { break-inside: avoid; }
+  pre { max-height: none; }
+   
+  details:not(.record) > *:not(summary) { display: block !important; }
+  details:not(.record)::details-content { content-visibility: visible !important; }
+  details:not(.record) > summary::before { transform: rotate(90deg); }
+  .disclosures > details { flex: 1 0 100%; }
+}
+</style>
+</head>
+<body>
+<main>
+
+<header class="masthead operational">
+  <div class="masthead-top">
+    <h1>PIACE report</h1>
+    <span class="badge operational">operational_error</span>
+  </div>
+  <p class="stamp"><span>exit 30</span> &middot; <span>piace test</span> &middot; <span>2026-08-25T12:00:00Z</span></p>
+  
+  <div class="tally">
+    <div class="tally-item"><span class="tally-n">2</span><span class="tally-l">targets</span></div><div class="tally-item"><span class="tally-n">4</span><span class="tally-l">resource changes</span></div><div class="tally-item"><span class="tally-n">1</span><span class="tally-l">edge change</span></div><div class="tally-item"><span class="tally-n">2</span><span class="tally-l">aggregate groups</span></div><div class="tally-item"><span class="tally-n">2</span><span class="tally-l">impact estimates</span></div>
+  </div>
+  
+  
+  <ul class="reasons"><li>operational_error (estimate_impact): estimating impact for File[/etc/motd]: puppetdb returned status 503</li><li>target web-02.example.test: operational_error: no baseline catalog stored for this certname</li><li>target web-01.example.test: non-excluded difference with fail_on_diff enabled</li></ul>
+  
+</header>
+
+<h2>Targets <span class="count">2</span></h2>
+
+<section class="card">
+  <div class="card-head">
+    <h3>web-01.example.test</h3>
+    <span class="badge policy">policy_disallowed_difference</span>
+  </div>
+
+  
+  <div class="banner banner-warn"><strong>Trusted-fact compatibility warning.</strong> trusted-fact compatibility warning: this candidate catalog was compiled using the v3 catalog API authenticated by the catalog-reader certificate, not the target&#39;s own certificate. Puppet code or Hiera data that reads $trusted can observe the catalog-reader&#39;s identity rather than this target&#39;s identity. Review any $trusted-dependent logic before trusting this comparison.</div>
+  
+
+  
+
+  
+
+  
+
+  <div class="disclosures">
+    
+    <details>
+      <summary>Resource changes <span class="count">4</span></summary>
+      <div class="disclosed">
+        <ul class="rows">
+          
+          <li>
+            <span class="sign add">&#43;</span>
+            <span class="body"><span class="ident">Notify[&lt;/script&gt;&lt;img src=x&gt;]</span></span>
+          </li>
+          
+          <li>
+            <span class="sign change">~</span>
+            <span class="body"><span class="ident">Service[nginx]</span><span class="param">ensure</span><span class="vals"><span class="was">&#34;stopped&#34;</span><span class="arrow">&rarr;</span><span class="now">&#34;running&#34;</span></span></span>
+          </li>
+          
+          <li>
+            <span class="sign change">~</span>
+            <span class="body"><span class="ident">Service[nginx]</span><span class="param">password</span><span class="vals"><span class="was">&#34;&lt;redacted&gt;&#34;</span><span class="arrow">&rarr;</span><span class="now">&#34;&lt;redacted&gt;&#34;</span></span></span>
+          </li>
+          
+          <li>
+            <span class="sign change">~</span>
+            <span class="body"><span class="ident">File[/etc/motd]</span><span class="param">content</span><span class="note">changed (via inline_content) sha256 aaaa -&gt; bbbb</span></span>
+          </li>
+          
+        </ul>
+      </div>
+    </details>
+    
+
+    
+    <details>
+      <summary>Dependency-graph edges <span class="count">1</span></summary>
+      <div class="disclosed">
+        <ul class="rows">
+          
+          <li>
+            <span class="sign add">&#43;</span>
+            <span class="body"><span class="ident">Class[a]</span><span class="arrow">&rarr;</span><span class="ident">Class[b]</span></span>
+          </li>
+          
+        </ul>
+      </div>
+    </details>
+    
+
+    
+    <details>
+      <summary>Excluded differences <span class="count">1</span></summary>
+      <div class="disclosed">
+        <ul class="plain"><li>Package[*]: 2 resource(s), 0 parameter(s), 1 edge(s) suppressed</li></ul>
+      </div>
+    </details>
+    
+
+    <details>
+      <summary>Provenance and resolved configuration</summary>
+      <div class="disclosed">
+        <p class="sub">baseline</p><dl class="kv"><dt>catalog_identity</dt><dd>sha256:baseline</dd><dt>certname</dt><dd>web-01.example.test</dd><dt>environment</dt><dd>production</dd><dt>source</dt><dd>puppetdb</dd></dl>
+        <p class="sub">facts</p><dl class="kv"><dt>certname</dt><dd>web-01.example.test</dd><dt>source</dt><dd>puppetdb</dd></dl>
+        <p class="sub">candidate</p><dl class="kv"><dt>effective_api</dt><dd>v3</dd><dt>environment</dt><dd>feature-123</dd><dt>fact_source</dt><dd>puppetdb</dd><dt>requested_api</dt><dd>v3</dd></dl>
+        <p class="sub">configuration</p><dl class="kv"><dt>candidate.catalog_api</dt><dd>v3</dd><dt>candidate.environment</dt><dd>feature-123</dd><dt>fail_on_diff</dt><dd>true</dd></dl>
+        
+        
+      </div>
+    </details>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head">
+    <h3>web-02.example.test</h3>
+    <span class="badge operational">operational_error</span>
+  </div>
+
+  
+
+  
+  <div class="banner banner-error"><strong>load_baseline failed.</strong> no baseline catalog stored for this certname</div>
+  
+
+  
+
+  
+  <p class="empty">No node diff was produced for this target.</p>
+  
+
+  <div class="disclosures">
+    
+
+    
+
+    
+
+    <details>
+      <summary>Provenance and resolved configuration</summary>
+      <div class="disclosed">
+        
+        
+        
+        <p class="sub">configuration</p><dl class="kv"><dt>fail_on_diff</dt><dd>false</dd></dl>
+        
+        
+      </div>
+    </details>
+  </div>
+</section>
+
+
+<h2>Aggregate diff <span class="count">1</span></h2>
+
+<section class="card">
+  <div class="disclosures">
+    
+    <details>
+      <summary>Grouped resource changes <span class="count">1</span></summary>
+      <div class="disclosed">
+        <ul class="rows">
+          
+          <li>
+            <span class="sign change">~</span>
+            <span class="body"><span class="ident">Service[nginx]</span><span class="param">ensure</span><span class="vals"><span class="was">&#34;stopped&#34;</span><span class="arrow">&rarr;</span><span class="now">&#34;running&#34;</span></span><span class="on">1 target: web-01.example.test</span></span>
+          </li>
+          
+        </ul>
+      </div>
+    </details>
+    
+    
+    <details>
+      <summary>Dependency-graph edge groups <span class="count">1</span></summary>
+      <div class="disclosed">
+        <ul class="rows">
+          
+          <li>
+            <span class="sign add">&#43;</span>
+            <span class="body"><span class="ident">Class[a]</span><span class="arrow">&rarr;</span><span class="ident">Class[b]</span><span class="on">1 target: web-01.example.test</span></span>
+          </li>
+          
+        </ul>
+      </div>
+    </details>
+    
+  </div>
+</section>
+
+
+
+<h2>potential impact estimate <span class="count">2</span></h2>
+<div class="banner banner-note">Reports only that a node&#39;s latest stored catalog contains this exact resource type and title. It does not state that the node will change, and PIACE does not compile these nodes.</div>
+<section class="card">
+  <div class="disclosures">
+    <details>
+      <summary>Queried resources <span class="count">2</span><span class="badge operational">1 failed</span></summary>
+      <div class="disclosed">
+        
+        <details class="est">
+          <summary><span class="ident">Service[nginx]</span><span class="est-count">more than 2 nodes (truncated at result_limit 2)</span></summary>
+          <div class="disclosed">
+            <p class="sub">nodes whose latest stored catalog contains this resource</p><p class="prose mono">db-01.example.test, db-02.example.test</p>
+            <p class="sub">pql</p><p class="prose mono">resources[certname] { type = &#34;Service&#34; and title = &#34;nginx&#34; }</p>
+            <p class="sub">request</p><p class="prose mono">path=/pdb/query/v4 limit=3 timeout=10s order_by=[{&#34;field&#34;:&#34;certname&#34;,&#34;order&#34;:&#34;asc&#34;}]</p>
+          </div>
+        </details>
+        
+        <details class="est">
+          <summary><span class="ident">File[/etc/motd]</span><span class="badge operational">failed</span><span class="est-count">puppetdb returned status 503</span></summary>
+          <div class="disclosed">
+            
+            <p class="sub">pql</p><p class="prose mono">resources[certname] { type = &#34;File&#34; and title = &#34;/etc/motd&#34; }</p>
+            <p class="sub">request</p><p class="prose mono">path=/pdb/query/v4 limit=3 timeout=10s</p>
+          </div>
+        </details>
+        
+      </div>
+    </details>
+  </div>
+</section>
+
+
+
+<h2>Run diagnostics <span class="count">1</span></h2>
+
+<div class="banner banner-error"><strong>estimate_impact.</strong> estimating impact for File[/etc/motd]: puppetdb returned status 503</div>
+
+
+
+<h2>Result document</h2>
+<details class="record">
+  <summary>Canonical JSON &mdash; schema-versioned, identical to the --json-out artifact</summary>
+  <div class="disclosed"><pre>{&#34;aggregate&#34;:{&#34;groups&#34;:[{&#34;after&#34;:&#34;running&#34;,&#34;before&#34;:&#34;stopped&#34;,&#34;certnames&#34;:[&#34;web-01.example.test&#34;],&#34;key&#34;:{&#34;identity&#34;:{&#34;title&#34;:&#34;nginx&#34;,&#34;type&#34;:&#34;Service&#34;},&#34;kind&#34;:&#34;parameter_changed&#34;,&#34;parameter&#34;:&#34;ensure&#34;},&#34;node_change_refs&#34;:[{&#34;certname&#34;:&#34;web-01.example.test&#34;,&#34;index&#34;:1}]},{&#34;certnames&#34;:[&#34;web-01.example.test&#34;],&#34;key&#34;:{&#34;edge&#34;:{&#34;source&#34;:&#34;Class[a]&#34;,&#34;target&#34;:&#34;Class[b]&#34;},&#34;kind&#34;:&#34;edge_added&#34;},&#34;node_change_refs&#34;:[{&#34;certname&#34;:&#34;web-01.example.test&#34;,&#34;index&#34;:0}]}]},&#34;diagnostics&#34;:[{&#34;message&#34;:&#34;estimating impact for File[/etc/motd]: puppetdb returned status 503&#34;,&#34;operation&#34;:&#34;estimate_impact&#34;,&#34;severity&#34;:&#34;error&#34;}],&#34;exit_code&#34;:30,&#34;impact_estimate_label&#34;:&#34;potential impact estimate&#34;,&#34;impact_estimate_note&#34;:&#34;Reports only that a node&#39;s latest stored catalog contains this exact resource type and title. It does not state that the node will change, and PIACE does not compile these nodes.&#34;,&#34;impact_estimates&#34;:[{&#34;certnames&#34;:[&#34;db-01.example.test&#34;,&#34;db-02.example.test&#34;],&#34;identity&#34;:{&#34;title&#34;:&#34;nginx&#34;,&#34;type&#34;:&#34;Service&#34;},&#34;pql&#34;:&#34;resources[certname] { type = \&#34;Service\&#34; and title = \&#34;nginx\&#34; }&#34;,&#34;request&#34;:{&#34;limit&#34;:3,&#34;order_by&#34;:&#34;[{\&#34;field\&#34;:\&#34;certname\&#34;,\&#34;order\&#34;:\&#34;asc\&#34;}]&#34;,&#34;path&#34;:&#34;/pdb/query/v4&#34;},&#34;result_count&#34;:3,&#34;result_limit&#34;:2,&#34;status&#34;:&#34;completed&#34;,&#34;timeout&#34;:&#34;10s&#34;,&#34;truncated&#34;:true},{&#34;failure_reason&#34;:&#34;puppetdb returned status 503&#34;,&#34;identity&#34;:{&#34;title&#34;:&#34;/etc/motd&#34;,&#34;type&#34;:&#34;File&#34;},&#34;pql&#34;:&#34;resources[certname] { type = \&#34;File\&#34; and title = \&#34;/etc/motd\&#34; }&#34;,&#34;request&#34;:{&#34;limit&#34;:3,&#34;path&#34;:&#34;/pdb/query/v4&#34;},&#34;result_count&#34;:0,&#34;result_limit&#34;:2,&#34;status&#34;:&#34;failed&#34;,&#34;timeout&#34;:&#34;10s&#34;,&#34;truncated&#34;:false}],&#34;invocation&#34;:{&#34;timestamp_utc&#34;:&#34;2026-08-25T12:00:00Z&#34;,&#34;tool_version&#34;:&#34;test&#34;},&#34;outcome&#34;:&#34;operational_error&#34;,&#34;reasons&#34;:[&#34;operational_error (estimate_impact): estimating impact for File[/etc/motd]: puppetdb returned status 503&#34;,&#34;target web-02.example.test: operational_error: no baseline catalog stored for this certname&#34;,&#34;target web-01.example.test: non-excluded difference with fail_on_diff enabled&#34;],&#34;schema_version&#34;:1,&#34;targets&#34;:[{&#34;baseline&#34;:{&#34;catalog_identity&#34;:&#34;sha256:baseline&#34;,&#34;certname&#34;:&#34;web-01.example.test&#34;,&#34;environment&#34;:&#34;production&#34;,&#34;kind&#34;:&#34;puppetdb&#34;},&#34;candidate&#34;:{&#34;effective_api&#34;:&#34;v3&#34;,&#34;environment&#34;:&#34;feature-123&#34;,&#34;fact_source&#34;:&#34;puppetdb&#34;,&#34;requested_api&#34;:&#34;v3&#34;,&#34;v3_warning&#34;:&#34;trusted-fact compatibility warning: this candidate catalog was compiled using the v3 catalog API authenticated by the catalog-reader certificate, not the target&#39;s own certificate. Puppet code or Hiera data that reads $trusted can observe the catalog-reader&#39;s identity rather than this target&#39;s identity. Review any $trusted-dependent logic before trusting this comparison.&#34;},&#34;certname&#34;:&#34;web-01.example.test&#34;,&#34;config&#34;:{&#34;candidate&#34;:{&#34;catalog_api&#34;:&#34;v3&#34;,&#34;environment&#34;:&#34;feature-123&#34;},&#34;fail_on_diff&#34;:true},&#34;facts&#34;:{&#34;certname&#34;:&#34;web-01.example.test&#34;,&#34;kind&#34;:&#34;puppetdb&#34;},&#34;node_diff&#34;:{&#34;certname&#34;:&#34;web-01.example.test&#34;,&#34;edge_changes&#34;:[{&#34;edge&#34;:{&#34;source&#34;:&#34;Class[a]&#34;,&#34;target&#34;:&#34;Class[b]&#34;},&#34;kind&#34;:&#34;edge_added&#34;}],&#34;exclusions&#34;:[{&#34;rule&#34;:{&#34;title&#34;:&#34;*&#34;,&#34;type&#34;:&#34;Package&#34;},&#34;suppressed_edges&#34;:1,&#34;suppressed_parameters&#34;:0,&#34;suppressed_resources&#34;:2}],&#34;has_difference&#34;:true,&#34;resource_changes&#34;:[{&#34;identity&#34;:{&#34;title&#34;:&#34;\u003c/script\u003e\u003cimg src=x\u003e&#34;,&#34;type&#34;:&#34;Notify&#34;},&#34;kind&#34;:&#34;resource_added&#34;},{&#34;after&#34;:&#34;running&#34;,&#34;before&#34;:&#34;stopped&#34;,&#34;identity&#34;:{&#34;title&#34;:&#34;nginx&#34;,&#34;type&#34;:&#34;Service&#34;},&#34;kind&#34;:&#34;parameter_changed&#34;,&#34;parameter&#34;:&#34;ensure&#34;},{&#34;after&#34;:&#34;\u003credacted\u003e&#34;,&#34;before&#34;:&#34;\u003credacted\u003e&#34;,&#34;identity&#34;:{&#34;title&#34;:&#34;nginx&#34;,&#34;type&#34;:&#34;Service&#34;},&#34;kind&#34;:&#34;parameter_changed&#34;,&#34;parameter&#34;:&#34;password&#34;},{&#34;file_content&#34;:{&#34;after_digest&#34;:&#34;bbbb&#34;,&#34;algorithm&#34;:&#34;sha256&#34;,&#34;before_digest&#34;:&#34;aaaa&#34;,&#34;evidence_source&#34;:&#34;inline_content&#34;,&#34;state&#34;:&#34;changed&#34;},&#34;identity&#34;:{&#34;title&#34;:&#34;/etc/motd&#34;,&#34;type&#34;:&#34;File&#34;},&#34;kind&#34;:&#34;parameter_changed&#34;,&#34;parameter&#34;:&#34;content&#34;}]},&#34;outcome&#34;:&#34;policy_disallowed_difference&#34;},{&#34;certname&#34;:&#34;web-02.example.test&#34;,&#34;config&#34;:{&#34;fail_on_diff&#34;:false},&#34;diagnostics&#34;:[{&#34;certname&#34;:&#34;web-02.example.test&#34;,&#34;message&#34;:&#34;no baseline catalog stored for this certname&#34;,&#34;operation&#34;:&#34;load_baseline&#34;,&#34;severity&#34;:&#34;error&#34;}],&#34;outcome&#34;:&#34;operational_error&#34;}]}
+</pre></div>
+</details>
+
+</main>
+</body>
+</html>

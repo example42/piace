@@ -80,3 +80,52 @@ func TestOutstanding_PuppetDBImpactEndpointAssumptions(t *testing.T) {
 func TestOutstanding_SensitiveWireShape(t *testing.T) {
 	t.Skip("requires a rich-data-enabled compiler; see this test's doc comment for the exact confirmation procedure")
 }
+
+// TestOutstanding_StructuredOutputWireShape is v0.2.0's addition to this
+// file, and it is the same kind of gap as the two above: an assumption
+// about a wire shape, served back to the code that assumes it.
+//
+// What must be confirmed against a deployed OpenAI-compatible provider:
+//
+//  1. That it accepts the `response_format` object PIACE sends —
+//     `{"type":"json_schema","json_schema":{"name":...,"strict":true,
+//     "schema":{...}}}` — at the chat-completions endpoint, rather than
+//     rejecting it as an unknown field or an unsupported type.
+//
+//  2. That `strict: true` is honored. The assessment schema is built for
+//     it: every property is listed in `required` and
+//     `additionalProperties` is false, which is what makes `rationale`
+//     and `review_focus` required-and-possibly-empty rather than absent.
+//     Chat Completions is non-strict by default, so a provider that
+//     silently ignores the flag returns a shape PIACE's own validation
+//     then has to degrade — correctly, but with diagnostics on every run.
+//
+//  3. That `temperature: 0` and `seed: 0` are accepted. Neither is
+//     configurable, and neither makes an assessment reproducible — a
+//     provider-side model revision changes what it says, which is the
+//     whole reason the assessment is a separate artifact. They reduce
+//     variance between two runs over the same report; that is all they
+//     are for.
+//
+// What IS already covered, and why it is not enough:
+// internal/assess's request tests assert the exact nesting, the exact
+// fields, and their presence or absence under `structured_output: false`.
+// The stub service in acceptance_explain_test.go accepts anything, and a
+// golden fixture ossifies whatever it is given — so both would go on
+// passing against a shape no provider accepts.
+//
+// This assumption is, however, the least load-bearing of the three in
+// this file. Structured output is a latency optimisation, never a trust
+// boundary: assess.Interpret validates every reply locally and
+// unconditionally, whether or not the request asked for it. A provider
+// that rejects the field outright fails visibly at the first request; one
+// that ignores it degrades to diagnostics. Neither can put an
+// unvalidated risk indication into a report.
+//
+// How to confirm: send one recorded request to the deployed provider with
+// `structured_output: true` and check that it returns 200 and that the
+// assistant message parses as the requested schema with no extra
+// properties.
+func TestOutstanding_StructuredOutputWireShape(t *testing.T) {
+	t.Skip("requires a deployed OpenAI-compatible inference service; see this test's doc comment for the exact confirmation procedure")
+}

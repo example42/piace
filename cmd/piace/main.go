@@ -1,6 +1,6 @@
-// Command piace is the PIACE CLI entry point. It provides three
-// subcommands: `compare`, `capture facts`, and `capture catalog`. See
-// design.md section 2.1 ("CLI surface").
+// Command piace is the PIACE CLI entry point. It provides four
+// subcommands: `compare`, `capture facts`, `capture catalog`, and
+// `explain`. See design.md section 2.1 ("CLI surface").
 //
 // This file wires argument parsing, transport/adapter construction, and
 // stable exit codes. All domain behavior lives in internal packages:
@@ -8,15 +8,25 @@
 // (internal/transport), source and compiler adapters (internal/puppetdb,
 // internal/compiler), the compare pipeline (internal/compare), and the
 // three renderers (internal/report).
+//
+// `explain` is a second, independent step over a result document
+// `compare` already wrote. It is the only subcommand that contacts an
+// inference service, and the only one that does not contact a compiler
+// or PuppetDB: the two halves share nothing but a file on disk. See
+// docs/adr/0002-keep-the-change-assessment-out-of-the-result-document.md.
 package main
 
 import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
+	"net/http"
+
+	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/capture"
 	"github.com/example42/piace/internal/compare"
 	"github.com/example42/piace/internal/compiler"
@@ -24,9 +34,11 @@ import (
 	"github.com/example42/piace/internal/exitcode"
 	"github.com/example42/piace/internal/filecontent"
 	"github.com/example42/piace/internal/impact"
+	"github.com/example42/piace/internal/inference"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/puppetdb"
 	"github.com/example42/piace/internal/report"
+	"github.com/example42/piace/internal/snapshot"
 	"github.com/example42/piace/internal/transport"
 )
 
@@ -40,6 +52,24 @@ var toolVersion = "dev"
 // two runs over identical inputs differ, and requirements.md 8.6 requires
 // them not to. Production never reassigns it.
 var clock = time.Now
+
+// stdin is the stream `explain --json-in -` reads a result document
+// from. It is a package variable for the same reason clock is: the
+// acceptance suite drives run() and has no other way to hand it one.
+// Production never reassigns it.
+var stdin = os.Stdin
+
+// inferenceHTTPClient, when non-nil, replaces the HTTP client the
+// inference client would build for itself.
+//
+// It exists so the acceptance suite can reach an in-process stub service
+// over TLS with a generated certificate. That certificate is trusted by
+// nothing outside the test process, and it must stay that way: this is
+// deliberately a package variable production never assigns rather than an
+// insecure_skip_verify or a ca_bundle in the services file, either of
+// which would ship a way to weaken verification against a real inference
+// service. Production never reassigns it.
+var inferenceHTTPClient *http.Client
 
 func main() {
 	os.Exit(int(run(os.Args[1:], os.Stdout, os.Stderr)))
@@ -58,6 +88,8 @@ func run(args []string, stdout, stderr *os.File) exitcode.Code {
 		return runCompare(args[1:], stdout, stderr)
 	case "capture":
 		return runCapture(args[1:], stdout, stderr)
+	case "explain":
+		return runExplain(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		fmt.Fprintln(stdout, usage())
 		return exitcode.Success
@@ -76,6 +108,9 @@ func usage() string {
 piace capture facts --targets TARGETS.yaml --services SERVICES.yaml
 piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
   --environment ENVIRONMENT
+piace explain --json-in REPORT.json --services SERVICES.yaml \
+  [--ai-out PATH] [--html-out PATH] [--change CHANGE.yaml] \
+  [--fail-on-inference-error]
 
 The text report summarizes for a CI log: it omits dependency-graph edge
 changes and each impact estimate's PQL and request options, and names only
@@ -86,7 +121,26 @@ sections.
                          instead of a capped sample; affects the text
                          report only (compare only)
 
-Every subcommand also accepts:
+explain reads a result document compare wrote and asks a configured
+inference service to assess the change it records. The assessment is
+advisory: it is a separate, separately versioned artifact, it is never
+part of the result document, and it cannot change an outcome or an exit
+code. explain contacts no compiler and no PuppetDB, and compare contacts
+no inference service.
+  --json-in PATH         the stored result document; "-" reads stdin
+  --change PATH          a change context file describing the repository
+                         change under test; its free text is treated as
+                         untrusted data, never as instruction
+  --ai-out PATH          path to write the change assessment artifact
+  --html-out PATH        path to write the report re-rendered with the
+                         assessment below the deterministic outcome
+  --fail-on-inference-error
+                         exit 30 when the assessment could not be
+                         produced; without it a failed assessment is
+                         recorded in the artifact and the command still
+                         exits 0
+
+compare and capture also accept:
   --debug                print one line per service request to stderr (method,
                          URL, status, duration, body sizes, response top-level
                          JSON keys); no body content is printed
@@ -227,6 +281,11 @@ func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
 	// artifact incomparable with another's — and report.HTML takes none
 	// because it shows everything too, using disclosure rather than
 	// omission to stay readable.
+	//
+	// The nil passed to both renderers is the change assessment. `compare`
+	// never has one: it does not contact an inference service, and an
+	// assessment reaches a report only through `explain`. A nil renders
+	// nothing at all, so these are the artifacts v0.1.0 wrote.
 	opts := report.Options{ImpactNodes: f.impactNodes}
 
 	if f.jsonOut != "" {
@@ -240,7 +299,7 @@ func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
 	}
 
 	if f.htmlOut != "" {
-		data, err := report.HTML(result)
+		data, err := report.HTML(result, nil)
 		if err != nil {
 			return err
 		}
@@ -249,7 +308,7 @@ func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
 		}
 	}
 
-	text, err := report.Text(result, opts)
+	text, err := report.Text(result, nil, opts)
 	if err != nil {
 		return err
 	}
@@ -437,4 +496,167 @@ func reportCaptureOutcomes(stdout, stderr *os.File, label string, outcomes []cap
 		return exitcode.OperationalError
 	}
 	return exitcode.Success
+}
+
+// explainFlags holds the parsed `explain` flags.
+type explainFlags struct {
+	jsonIn   string
+	services string
+	change   string
+	aiOut    string
+	htmlOut  string
+	// failOnInferenceError turns a failed assessment into exit 30. It is
+	// off by default and documented as a deliberate loosening in the
+	// other direction: a change assessment is advisory, so a CI job that
+	// fails because an inference service was briefly unavailable is
+	// failing for a reason that has nothing to do with the change under
+	// test. An operator who would rather know may ask for it.
+	failOnInferenceError bool
+}
+
+// runExplain produces a change assessment from a stored result document.
+//
+// It contacts exactly one service — the configured inference service —
+// and constructs no compiler client and no PuppetDB client, whatever a
+// services file happens to name. That is not an optimisation: `explain`
+// sends catalog-derived data outside the building, and the set of hosts
+// it can reach while doing so has to be short enough to state in one
+// sentence.
+//
+// Nothing here can fail a comparison. The result document is read, never
+// rewritten; its outcome and exit code are the run's, not this command's.
+func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
+	fs := flag.NewFlagSet("explain", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var f explainFlags
+	fs.StringVar(&f.jsonIn, "json-in", "", "path to the stored JSON result document, or - for stdin (required)")
+	fs.StringVar(&f.services, "services", "", "path to the services YAML file (required)")
+	fs.StringVar(&f.change, "change", "", "path to a change context file describing the repository change under test")
+	fs.StringVar(&f.aiOut, "ai-out", "", "path to write the change assessment artifact")
+	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the report re-rendered with the assessment")
+	fs.BoolVar(&f.failOnInferenceError, "fail-on-inference-error", false, "exit 30 when the change assessment could not be produced")
+	if err := fs.Parse(args); err != nil {
+		return exitcode.OperationalError
+	}
+	if f.jsonIn == "" || f.services == "" {
+		fmt.Fprintln(stderr, "piace explain: --json-in and --services are required")
+		return exitcode.OperationalError
+	}
+	// An explain run with no output flag would contact an inference
+	// service, disclose a comparison to it, and discard the answer. It is
+	// a usage error rather than a no-op for that reason.
+	if f.aiOut == "" && f.htmlOut == "" {
+		fmt.Fprintln(stderr, "piace explain: at least one of --ai-out and --html-out is required")
+		return exitcode.OperationalError
+	}
+
+	raw, err := readResultDocument(f.jsonIn)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+	result, err := report.DecodeJSON(raw)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+	if result.SchemaVersion != model.ResultSchemaVersion {
+		fmt.Fprintf(stderr, "piace explain: result document schema_version %d is not supported by piace %s, which reads version %d\n",
+			result.SchemaVersion, toolVersion, model.ResultSchemaVersion)
+		return exitcode.OperationalError
+	}
+	// The checksum is over the document's *canonical* form, not its
+	// literal bytes: snapshot.Checksum canonicalizes before hashing. So
+	// it ties an assessment to the comparison the document records rather
+	// than to one file's whitespace, and it will not match a plain
+	// `sha256sum report.json`.
+	checksum, err := snapshot.Checksum(raw)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: checksumming the result document: %s\n", err)
+		return exitcode.OperationalError
+	}
+
+	in, err := resolve.LoadInferenceFile(f.services)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+	changeContext, err := assess.LoadChangeContext(f.change)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+
+	client, err := inference.New(in.URL, in.Token, in.Timeout)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+	if inferenceHTTPClient != nil {
+		client.HTTPClient = inferenceHTTPClient
+	}
+
+	assessment, diagnostics := assess.Produce(context.Background(), client, result, changeContext, in.Assess, assess.Meta{
+		GeneratedAt:          clock().UTC().Format(time.RFC3339),
+		ModelID:              in.Assess.Model,
+		EndpointAuthority:    in.Authority,
+		SourceReportChecksum: checksum,
+	})
+	// The diagnostics are attached once, here, before anything renders or
+	// writes: an artifact that records why every group came back unknown
+	// and a report that does not would be two accounts of the same run.
+	assessment.Diagnostics = diagnostics
+
+	if err := writeAssessment(f, result, assessment); err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+
+	for _, d := range diagnostics {
+		fmt.Fprintf(stderr, "piace explain: %s: %s\n", d.Severity, d.Message)
+	}
+	if f.failOnInferenceError && assess.HasErrorDiagnostic(diagnostics) {
+		return exitcode.OperationalError
+	}
+	return exitcode.Success
+}
+
+// readResultDocument reads the stored result document from a path, or
+// from stdin when the path is `-`. Reading stdin is what lets a CI job
+// pipe `compare --json-out /dev/stdout` straight into `explain` without
+// an intermediate file.
+func readResultDocument(path string) ([]byte, error) {
+	if path == "-" {
+		raw, err := io.ReadAll(stdin)
+		if err != nil {
+			return nil, fmt.Errorf("reading the result document from stdin: %w", err)
+		}
+		return raw, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading the result document: %w", err)
+	}
+	return raw, nil
+}
+
+// writeAssessment writes the artifacts `explain` was asked for, 0644 for
+// the same reason a report is: a change assessment carries no credential
+// and no managed content, and CI has to be able to publish it.
+func writeAssessment(f explainFlags, result model.Result, a assess.Assessment) error {
+	if f.aiOut != "" {
+		if err := assess.WriteArtifact(f.aiOut, a); err != nil {
+			return err
+		}
+	}
+	if f.htmlOut != "" {
+		data, err := report.HTML(result, &a)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(f.htmlOut, data, 0o644); err != nil {
+			return fmt.Errorf("writing HTML report: %w", err)
+		}
+	}
+	return nil
 }

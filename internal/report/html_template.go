@@ -628,6 +628,36 @@ pre {
 <div class="banner {{if eq .Severity "error"}}banner-error{{else}}banner-warn{{end}}"><strong>{{.Operation}}.</strong> {{.Message}}</div>
 {{end}}
 {{end}}
+{{- with .Assessment}}
+
+<h2>{{.Label}} <span class="badge {{.RiskClass}}">{{.Risk}}</span></h2>
+<div class="banner banner-note">{{.Note}}</div>
+{{if .Stamp}}<p class="stamp">{{range $i, $s := .Stamp}}{{if $i}} &middot; {{end}}<span>{{$s}}</span>{{end}}</p>{{end}}
+{{if .Truncation}}<div class="banner banner-warn">{{.Truncation}}</div>{{end}}
+{{if .InputPartial}}<div class="banner banner-warn">{{.InputPartial}}</div>{{end}}
+{{range .Diagnostics}}<div class="banner {{if eq .Severity "error"}}banner-error{{else}}banner-warn{{end}}">{{.Message}}</div>
+{{end}}{{if .Summary}}<p class="prose">{{.Summary}}</p>{{end}}
+{{if .ReviewFocus}}<p class="sub">review focus</p><ul class="plain">{{range .ReviewFocus}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{if .Groups}}
+<section class="node">
+  <div class="disclosures">
+    <details>
+      <summary>Group risk indications <span class="count">{{.TotalGroups}}</span></summary>
+      <div class="disclosed">
+        <ul class="rows">
+          {{range .Groups}}
+          <li>
+            <span class="badge {{.RiskClass}}">{{.Risk}}</span>
+            <span class="body"><span class="ident">{{.Identity}}</span>{{if .Parameter}}<span class="param">{{.Parameter}}</span>{{end}}<span class="on">{{.Targets}}</span>{{if .Rationale}}<span class="note">{{.Rationale}}</span>{{end}}{{range .ReviewFocus}}<span class="note">{{.}}</span>{{end}}</span>
+          </li>
+          {{end}}
+        </ul>
+      </div>
+    </details>
+  </div>
+</section>
+{{end}}
+{{end}}
 
 <h2>Result document</h2>
 <details class="record">

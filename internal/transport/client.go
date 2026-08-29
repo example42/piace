@@ -210,6 +210,9 @@ func (c *Client) NewRequest(ctx context.Context, method, url string, body io.Rea
 // read sequence as a single deadline, not only connection setup; see
 // doc.go decision 1).
 //
+// Authorization: any Authorization header on req is deleted before the
+// request is sent. See the note in checkRedirect.
+//
 // Body size: the response body is read through an io.LimitedReader capped
 // at the Client's configured maximum plus one byte, so a body that exactly
 // reaches the limit succeeds and a body that exceeds it is detected and
@@ -222,6 +225,16 @@ func (c *Client) Do(req *http.Request, timeout time.Duration) (*Response, error)
 	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
 	req = req.WithContext(ctx)
+
+	// requirements.md 3.5: PIACE authenticates to the compiler and
+	// PuppetDB exclusively via mTLS, so no request this package sends
+	// carries a bearer token — whatever a caller set. checkRedirect
+	// strips it again on an allowed same-authority redirect.
+	//
+	// internal/inference is the one scoped exception, and it is a
+	// separate client precisely so this line can stay unconditional. See
+	// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+	req.Header.Del("Authorization")
 
 	// The request body is snapshotted before the request is sent, while
 	// req.GetBody still can replay it; net/http consumes the original

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -12,39 +13,60 @@ import (
 // the artifact must open over `file://` with no HTTP server, CDN, network
 // access, or sibling assets. Nothing in the document may reference an
 // external resource or execute script.
+//
+// Slice 7.6 runs it over both renderings. Self-containment asserted only
+// against the assessment-free page would pass vacuously the moment the
+// change-assessment section exists, and that section is the one part of
+// the document built from text a remote service wrote.
 func TestHTML_IsSelfContained(t *testing.T) {
-	data, err := HTML(sampleResult())
-	if err != nil {
-		t.Fatalf("HTML: %v", err)
-	}
-	out := strings.ToLower(string(data))
+	a := sampleAssessment()
+	for _, tc := range []struct {
+		name       string
+		assessment *assess.Assessment
+	}{{"no assessment", nil}, {"with a change assessment", &a}} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := HTML(sampleResult(), tc.assessment)
+			if err != nil {
+				t.Fatalf("HTML: %v", err)
+			}
+			out := strings.ToLower(string(data))
 
-	// An untrusted value containing "<script" is escaped to "&lt;script",
-	// so a whole-document tag scan is meaningful: any hit is real markup.
-	for _, forbidden := range []string{"<script", "<link", "<iframe", "<img", "<object", "<embed", "<a "} {
-		if strings.Contains(out, forbidden) {
-			t.Errorf("HTML report contains the external/executable element %q", forbidden)
-		}
-	}
-	// URL schemes are checked only over the page's own markup: the
-	// embedded JSON is escaped text and may legitimately quote a producer
-	// hostname or a service-reported URL from a diagnostic.
-	markup := out[:strings.Index(out, "<h2>result document</h2>")]
-	for _, forbidden := range []string{"http://", "https://", "url("} {
-		if strings.Contains(markup, forbidden) {
-			t.Errorf("HTML report markup references external content: %q", forbidden)
-		}
-	}
-	if !strings.Contains(out, "<style>") {
-		t.Error("HTML report has no inlined stylesheet")
+			// An untrusted value containing "<script" is escaped to
+			// "&lt;script", so a whole-document tag scan is meaningful:
+			// any hit is real markup.
+			for _, forbidden := range []string{"<script", "<link", "<iframe", "<img", "<object", "<embed", "<a "} {
+				if strings.Contains(out, forbidden) {
+					t.Errorf("HTML report contains the external/executable element %q", forbidden)
+				}
+			}
+			// URL schemes are checked only over the page's own markup: the
+			// embedded JSON is escaped text and may legitimately quote a
+			// producer hostname or a service-reported URL from a diagnostic.
+			markup := out[:strings.Index(out, "<h2>result document</h2>")]
+			for _, forbidden := range []string{"http://", "https://", "url("} {
+				if strings.Contains(markup, forbidden) {
+					t.Errorf("HTML report markup references external content: %q", forbidden)
+				}
+			}
+			if !strings.Contains(out, "<style>") {
+				t.Error("HTML report has no inlined stylesheet")
+			}
+		})
 	}
 }
 
 // TestHTML_EscapesUntrustedValues verifies contextual escaping actually
 // runs over Puppet-supplied text. sampleResult deliberately contains a
-// resource title of `</script><img src=x>`.
+// resource title of `</script><img src=x>`, and sampleAssessment a run
+// summary containing a script element.
+//
+// A change assessment's prose is written by a remote service over text
+// PIACE itself sent from a catalog, so it is untrusted twice over. It is
+// never wrapped in template.HTML, however convenient that would be for
+// line breaks in a rationale.
 func TestHTML_EscapesUntrustedValues(t *testing.T) {
-	data, err := HTML(sampleResult())
+	a := sampleAssessment()
+	data, err := HTML(sampleResult(), &a)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -52,6 +74,12 @@ func TestHTML_EscapesUntrustedValues(t *testing.T) {
 
 	if strings.Contains(out, "<img src=x>") {
 		t.Error("an untrusted resource title was emitted as live markup")
+	}
+	if strings.Contains(out, "<script>alert(1)</script>") {
+		t.Error("a model-generated run summary was emitted as live markup")
+	}
+	if !strings.Contains(out, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Error("the model-generated run summary does not appear escaped in the document")
 	}
 	if !strings.Contains(out, "&lt;/script&gt;&lt;img src=x&gt;") &&
 		!strings.Contains(out, "&lt;/script&gt;&lt;img src=x>") {
@@ -64,7 +92,7 @@ func TestHTML_EscapesUntrustedValues(t *testing.T) {
 // failure, compilation failure, the v3 warning, excluded differences, and
 // the final outcome must all be visible without opening a data blob.
 func TestHTML_VisiblyMarksRequiredStates(t *testing.T) {
-	data, err := HTML(sampleResult())
+	data, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -113,7 +141,7 @@ func TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity(t *testing.T) {
 // ABSENT must be present here, in the page itself rather than only in the
 // canonical JSON embedded at the bottom.
 func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
-	data, err := HTML(sampleResult())
+	data, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -165,7 +193,7 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 // TestHTML_VisiblyMarksRequiredStates cannot catch this — it substring
 // searches, and collapsed content still matches.
 func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
-	data, err := HTML(sampleResult())
+	data, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -200,7 +228,7 @@ func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
 // the count on the closed summary is what keeps it in the scanning path.
 // sampleResult holds one failed estimate of two.
 func TestHTML_MarksAFailedEstimateOnTheClosedList(t *testing.T) {
-	data, err := HTML(sampleResult())
+	data, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -220,7 +248,7 @@ func TestHTML_MarksAFailedEstimateOnTheClosedList(t *testing.T) {
 // per section. sampleResult holds two aggregate groups, one of each
 // shape, which the page splits into separate counted sections.
 func TestHTML_CountsAgreeWithWhatIsRendered(t *testing.T) {
-	data, err := HTML(sampleResult())
+	data, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -258,7 +286,7 @@ func TestHTML_EdgeOnlyTargetShowsItsEdges(t *testing.T) {
 	}}
 	r.Reduce()
 
-	data, err := HTML(r)
+	data, err := HTML(r, nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -281,7 +309,7 @@ func TestHTML_EmbedsTheCanonicalJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("JSON: %v", err)
 	}
-	data, err := HTML(result)
+	data, err := HTML(result, nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
@@ -296,12 +324,12 @@ func TestHTML_EmbedsTheCanonicalJSON(t *testing.T) {
 // TestHTML_IsByteIdenticalForIdenticalInput is design.md's Property 1
 // applied to the HTML artifact.
 func TestHTML_IsByteIdenticalForIdenticalInput(t *testing.T) {
-	first, err := HTML(sampleResult())
+	first, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}
 	for i := 0; i < 20; i++ {
-		next, err := HTML(sampleResult())
+		next, err := HTML(sampleResult(), nil)
 		if err != nil {
 			t.Fatalf("HTML: %v", err)
 		}
@@ -314,7 +342,7 @@ func TestHTML_IsByteIdenticalForIdenticalInput(t *testing.T) {
 // TestHTML_HasNoRemainingTemplateActions catches a malformed template
 // expression that html/template would render as literal text.
 func TestHTML_HasNoRemainingTemplateActions(t *testing.T) {
-	data, err := HTML(sampleResult())
+	data, err := HTML(sampleResult(), nil)
 	if err != nil {
 		t.Fatalf("HTML: %v", err)
 	}

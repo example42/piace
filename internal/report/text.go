@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -17,9 +18,15 @@ import (
 // the top and often truncated; requirements.md 10.2 requires both to be
 // present.
 //
+// a is the advisory change assessment, or nil. A nil assessment renders
+// nothing at all, so a `piace compare` log is what v0.1.0 printed. It is
+// a parameter rather than a field on Options because it is not a display
+// choice: Options carries presentation policy, and an assessment is
+// content that either exists or does not.
+//
 // opts selects display policy only — what this format prints, never what
 // it says about the run. See Options.
-func Text(r model.Result, opts Options) ([]byte, error) {
+func Text(r model.Result, a *assess.Assessment, opts Options) ([]byte, error) {
 	var b bytes.Buffer
 
 	fmt.Fprintf(&b, "PIACE %s (%s)\n", r.Invocation.ToolVersion, r.Invocation.TimestampUTC)
@@ -35,8 +42,46 @@ func Text(r model.Result, opts Options) ([]byte, error) {
 	writeTextAggregate(&b, r.Aggregate)
 	writeTextImpact(&b, r.ImpactEstimates, opts)
 	writeTextRunDiagnostics(&b, r.Diagnostics)
+	writeTextAssessment(&b, a)
 
 	return b.Bytes(), nil
+}
+
+// writeTextAssessment prints the run-level judgement and nothing below
+// it. See the doc comment on Text and doc.go's account of what each
+// format shows.
+//
+// It comes last, after every deterministic section including the run
+// diagnostics: the assessment is advisory, and a CI log that is
+// truncated at the bottom should lose a model's opinion before it loses
+// the comparison. AssessmentNote sits directly under the heading, above
+// the risk indication, so a log read line by line states what the
+// section is before it states what the model thinks.
+func writeTextAssessment(b *bytes.Buffer, a *assess.Assessment) {
+	if a == nil {
+		return
+	}
+	fmt.Fprintf(b, "\n%s:\n", AssessmentLabel)
+	fmt.Fprintf(b, "  %s\n", AssessmentNote)
+	if a.ModelID != "" {
+		fmt.Fprintf(b, "  model: %s\n", a.ModelID)
+	}
+	fmt.Fprintf(b, "  risk: %s\n", a.Run.Risk)
+	if a.Run.Summary != "" {
+		fmt.Fprintf(b, "  summary: %s\n", a.Run.Summary)
+	}
+	for _, f := range a.Run.ReviewFocus {
+		fmt.Fprintf(b, "  review focus: %s\n", f)
+	}
+	if a.GroupsTruncated {
+		fmt.Fprintf(b, "  assessed %d of %d aggregate groups\n", a.GroupsAssessed, a.GroupsTotal)
+	}
+	if a.InputPartial {
+		fmt.Fprintf(b, "  input partial: the result document records diagnostics\n")
+	}
+	for _, d := range a.Diagnostics {
+		fmt.Fprintf(b, "  %s: %s\n", strings.ToUpper(string(d.Severity)), d.Message)
+	}
 }
 
 func writeTextTargets(b *bytes.Buffer, targets []model.TargetResult) {
