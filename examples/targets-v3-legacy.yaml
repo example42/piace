@@ -1,0 +1,80 @@
+# targets-v3-legacy.yaml — a compiler too old for the v4 catalog endpoint.
+#
+# READ THIS BEFORE COPYING THE FILE.
+#
+# The v3 catalog endpoint has no persistence control. On EVERY v3 request the
+# compiler saves the facts you submitted — rewriting the target's stored
+# factset and its facts_environment to the candidate environment — and stores
+# the compiled catalog through its PuppetDB catalog cache terminus, rewriting
+# the target's stored catalog, catalog_environment and transaction_uuid.
+#
+# That is a property of the endpoint. Nothing PIACE sends can turn it off, and
+# anything reading PuppetDB state — reporting, exported resources, inventory,
+# classification keyed on facts_environment — sees candidate values until the
+# target's next agent run.
+#
+# ==> baseline.source MUST be `file` here. <==
+#
+# With `baseline.source: puppetdb`, PIACE reads the baseline, then compiles
+# the candidate, and the candidate compilation OVERWRITES THE BASELINE — for
+# the next target in the same run, and for every later run. PIACE does not
+# currently refuse that combination (requirements.md 1.8 says it should;
+# config validation does not yet enforce it). The configuration loads, the
+# first comparison looks normal, and the run corrupts the baseline it just
+# read. Nothing will stop you. Set `file` below and leave it there.
+#
+# Prefer examples/targets-puppetdb-baseline.yaml wherever the compiler
+# supports v4. This file exists for estates that cannot yet upgrade.
+
+version: 1
+
+defaults:
+  candidate:
+    environment: feature-1287
+    catalog_api: v3
+
+    # allow_v3_fallback and trusted_facts_compiler_lookup are valid only with
+    # catalog_api: v4. Setting either here is a configuration error.
+
+  facts:
+    source: puppetdb
+
+  baseline:
+    source: file                    # required, not optional, with v3
+    environment: production
+    file: snapshots/catalogs/{certname}.json
+
+  exclude:
+    - type: File
+      title: "/var/cache/*"
+
+  redact:
+    - type: File
+      parameter: content
+
+  # Left off here: with v3 the compiler has just rewritten each target's
+  # stored catalog, so a stored-catalog footprint query answers a question
+  # about state this very run produced. Enable it only if you understand that.
+  impact_estimate:
+    enabled: false
+
+  fail_on_diff: true
+
+targets:
+  - certname: web-01.ops.example.com
+  - certname: web-02.ops.example.com
+  - certname: app-01.ops.example.com
+
+# Capture the baseline with v4 if the compiler offers it at all — a v4
+# capture stores nothing, while a v3 capture stores what it compiled. A v3
+# capture is still the least harmful case, because it compiled the *baseline*
+# environment, which is what an agent run would have stored anyway:
+#
+#   piace capture catalog --targets examples/targets-v3-legacy.yaml \
+#                         --services examples/services.yaml \
+#                         --environment production --replace
+#
+# Every report from a v3 run carries a non-suppressible warning that $trusted
+# in the compiled catalog can reflect the catalog-reader certificate rather
+# than the target. It does not change the exit status; it makes the trust
+# semantics reviewable.

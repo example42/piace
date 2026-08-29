@@ -1,0 +1,100 @@
+# targets-puppetdb-baseline.yaml — the supported path.
+#
+# Usage pattern 1: compare each node's stored production catalog against a
+# catalog compiled for the feature environment CI just deployed. Nothing is
+# written server-side: every v4 request carries
+# `persistence: {facts: false, catalog: false}`.
+#
+#   piace compare --targets examples/targets-puppetdb-baseline.yaml \
+#                 --services examples/services.yaml \
+#                 --json-out report.json --html-out report.html
+#
+# This is the reviewable file: which nodes, which environments, what policy.
+# Keep it in the branch under test so a change to it shows up in review.
+
+version: 1
+
+defaults:
+  candidate:
+    # The environment CI deployed for this change. In a pipeline this is
+    # usually templated from the branch name.
+    environment: feature-1287
+    catalog_api: v4                 # v4 | v3 — no default; see the README
+    # allow_v3_fallback: false      # v4 only; opt-in, never implicit
+    # trusted_facts_compiler_lookup: false
+    #   v4 only. Set true ONLY if the compiler is configured to fetch the
+    #   target's trusted facts from PuppetDB when a request omits them.
+    #   PIACE never assumes this; without it, a target with no validated
+    #   trusted facts fails compilation rather than inventing them.
+
+  facts:
+    source: puppetdb                # submit each target's latest stored facts
+
+  baseline:
+    source: puppetdb                # latest stored catalog
+    environment: production         # a baseline in another environment fails
+                                    # the target before diffing
+
+  # Suppress differences that are noise rather than change. Type is exact and
+  # case-sensitive; title is a case-sensitive path.Match glob. An excluded
+  # resource's connected graph edges are suppressed with it.
+  exclude:
+    - type: File
+      title: "/var/cache/*"
+    - type: File
+      title: "/var/lib/puppet/state/*"
+    - type: Exec
+      title: "apt_update"
+
+  # Mask parameter values in every output format. Redaction runs after
+  # comparison, so masking never turns a real difference into a
+  # non-difference. Puppet Sensitive wrappers are detected automatically —
+  # these selectors are for values Puppet does not mark.
+  redact:
+    - type: File
+      parameter: content
+    - type: Exec
+      parameter: command
+
+  # Optional: ask PuppetDB how many other nodes' latest *stored* catalogs
+  # contain a changed Type[title]. An estimate, not proof those nodes would
+  # change. Both fields are required once enabled.
+  impact_estimate:
+    enabled: true
+    timeout: 10s
+    result_limit: 1000
+
+  # A non-excluded difference on such a target exits 10.
+  fail_on_diff: true
+
+targets:
+  # Per-target scalars override the defaults above. `exclude` and `redact`
+  # are append-only: global rules are prepended to per-target ones, never
+  # replaced.
+
+  - certname: web-01.ops.example.com
+  - certname: web-02.ops.example.com
+
+  - certname: app-01.ops.example.com
+    exclude:
+      # Application working directories churn on every deploy.
+      - type: File
+        title: "/srv/app/releases/*"
+
+  - certname: app-02.ops.example.com
+    exclude:
+      - type: File
+        title: "/srv/app/releases/*"
+
+  - certname: db-01.ops.example.com
+    # The database primary is compared but never blocks the pipeline: its
+    # changes are reviewed by hand rather than gated in CI.
+    fail_on_diff: false
+
+  - certname: lb-01.ops.example.com
+    # This node is classified from a different branch of the control repo and
+    # a wider impact query is worth the extra time here.
+    impact_estimate:
+      enabled: true
+      timeout: 30s
+      result_limit: 5000

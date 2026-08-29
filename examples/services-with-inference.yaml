@@ -1,0 +1,64 @@
+# services-with-inference.yaml — one services file for the whole pipeline.
+#
+# The same file drives `compare` and `explain`. `compare` cannot see the
+# `inference:` section at all — a services file's inference config is
+# invisible to it, and reaching the wrong endpoint fails the test suite.
+#
+#   piace compare --targets examples/targets-puppetdb-baseline.yaml \
+#                 --services examples/services-with-inference.yaml \
+#                 --json-out report.json
+#
+#   export PIACE_INFERENCE_TOKEN=...
+#   piace explain --json-in report.json \
+#                 --services examples/services-with-inference.yaml \
+#                 --change examples/change-context.yaml \
+#                 --ai-out assessment.json --html-out report.html
+
+version: 1
+
+compiler:
+  endpoint: https://puppet.ops.example.com:8140
+  ca_bundle:   /etc/piace/tls/ca.pem
+  client_cert: /etc/piace/tls/piace-catalog-reader.pem
+  private_key: /etc/piace/tls/piace-catalog-reader.key
+
+puppetdb:
+  endpoint: https://puppetdb.ops.example.com:8081
+  ca_bundle:   /etc/piace/tls/ca.pem
+  client_cert: /etc/piace/tls/piace-catalog-reader.pem
+  private_key: /etc/piace/tls/piace-catalog-reader.key
+
+# ---------------------------------------------------------------------------
+# Optional, advisory, and the only part of PIACE that talks to something other
+# than your compiler and PuppetDB. Read the README's "What leaves the
+# building" before enabling it.
+# ---------------------------------------------------------------------------
+inference:
+  # Any OpenAI-compatible chat-completions endpoint. https only.
+  endpoint: https://api.anthropic.com/v1/chat/completions
+  model: claude-sonnet-5
+
+  # The bearer token is always *referenced* — there is no field to inline one.
+  # Set exactly one of token_env or token_file; naming both is an error.
+  token_env: PIACE_INFERENCE_TOKEN
+  # token_file: /etc/piace/inference-token       # absolute path
+
+  timeout: 60s                  # default 60s
+  max_tokens: 4000              # default 4000
+  max_groups: 200               # default 200; caps how many aggregate groups
+                                # leave the process
+
+  # true (the default) replaces every certname with a per-run pseudonym
+  # (node-001, node-002, …) in the request body only. The assessment artifact
+  # is identical either way, so this changes nothing but what the provider
+  # sees. Setting it false is a decision, not a tweak.
+  pseudonymize: true
+
+  # A latency optimisation, not a trust boundary: every reply is validated
+  # locally whether or not structured output was requested.
+  structured_output: true
+
+  # Site policy handed to the model alongside the change. Capped at 4000
+  # bytes. A RELATIVE PATH RESOLVES AGAINST THIS FILE'S DIRECTORY — not the
+  # working directory, and not the target file's directory.
+  policy_notes_file: policy-notes.md
