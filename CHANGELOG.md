@@ -6,6 +6,48 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`piace explain`** — an optional, advisory **change assessment** of a stored
+  result document. It is a second, independent step: it reads a JSON report
+  `compare` already wrote, asks a configured **inference service** to judge the
+  aggregate groups in it, and writes a separately versioned assessment artifact
+  (`ai_schema_version: 1`) plus a re-rendered HTML report whose assessment
+  section sits *below* the deterministic outcome.
+- **`services.yaml` gains an `inference:` section** — endpoint (https only),
+  model, `token_env` or `token_file` (never an inline token), `timeout`,
+  `max_tokens`, `max_groups`, `pseudonymize`, `structured_output`, and
+  `policy_notes_file`. It loads independently: a services file containing
+  nothing but this section is valid for `explain`, so an assessment needs no
+  Puppet infrastructure named at all.
+- **`--change CHANGE.yaml`** — a caller-supplied **change context** describing
+  the repository change under test: refs, commit subjects, changed paths, and a
+  capped title and description. PIACE reads the file and never invokes git;
+  `scripts/change-context.sh` generates one for the common CI case. Its free
+  text is transmitted inside an explicit fence labelled as untrusted data.
+- **Pseudonymized identities** — certnames in an outbound inference request are
+  replaced by stable per-run substitutes, and the compiler and PuppetDB
+  authorities are absent from it entirely. Resource identities pass through
+  untouched: `File[/etc/sudoers]` is the signal. A pseudonym never appears in an
+  assessment or any report. `pseudonymize: false` sends real certnames and is
+  documented as the deliberate loosening it is.
+- **`--fail-on-inference-error`** — exit 30 when the assessment could not be
+  produced. Without it a failed assessment is recorded in the artifact with
+  every risk indication `unknown`, and the command still exits 0.
+- **`report.DecodeJSON`** — a result document can now be read back into the
+  model it was rendered from, strictly: unknown fields and trailing content are
+  refused, and numbers keep their exact decimal digits.
+
+### Unchanged
+
+- **`piace compare` is untouched by this feature.** Its result document stays
+  `schema_version: 1`, its reports are byte-identical for identical inputs, its
+  exit codes are the same, and it contacts no inference service. A report
+  rendered without an assessment is byte-for-byte the artifact v0.1.0 wrote,
+  asserted against a golden captured before the feature existed. `explain`
+  contacts no compiler and no PuppetDB, asserted by failing the test if either
+  configured endpoint is reached.
+
 ## [0.1.0] - 2026-08-28
 
 First release: the whole tool, so this entry describes what it does rather

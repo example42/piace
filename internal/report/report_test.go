@@ -94,7 +94,7 @@ func TestJSON_CanonicalizesNumberSpelling(t *testing.T) {
 // final outcome first, then per-target status, node changes,
 // warnings/errors, aggregate summary, impact summary.
 func TestText_SectionOrder(t *testing.T) {
-	data, err := Text(sampleResult(), Options{})
+	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestText_SectionOrder(t *testing.T) {
 // 9.4's PQL is deliberately not among them: it is discharged by the JSON
 // report — see TestJSON_KeepsWhatTextAndHTMLOmit.
 func TestText_RequiredContent(t *testing.T) {
-	data, err := Text(sampleResult(), Options{})
+	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestText_RequiredContent(t *testing.T) {
 // absent by accident: each one was previously rendered, and each is the
 // bulk that buried the resource changes a reviewer reads a CI log for.
 func TestText_OmitsEdgesAndQueryMechanics(t *testing.T) {
-	data, err := Text(sampleResult(), Options{})
+	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestText_OmitsEdgesAndQueryMechanics(t *testing.T) {
 // four resource changes and one edge change on its first target, and two
 // aggregate groups of which one is an edge group.
 func TestText_CountsOnlyWhatItPrints(t *testing.T) {
-	data, err := Text(sampleResult(), Options{})
+	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -195,7 +195,7 @@ func TestText_CountsOnlyWhatItPrints(t *testing.T) {
 // and there is exactly one structural colon separating the change from
 // its targets — so the parameter name is not followed by one.
 func TestText_AggregateLineIsUnambiguous(t *testing.T) {
-	data, err := Text(sampleResult(), Options{})
+	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestText_EdgeOnlyTargetIsNotReportedAsUnchanged(t *testing.T) {
 	}}
 	r.Reduce()
 
-	data, err := Text(r, Options{})
+	data, err := Text(r, nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -302,11 +302,11 @@ func TestText_ImpactNodesControlsTheCertnameSample(t *testing.T) {
 	}}
 	r.Reduce()
 
-	capped, err := Text(r, Options{})
+	capped, err := Text(r, nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
-	full, err := Text(r, Options{ImpactNodes: true})
+	full, err := Text(r, nil, Options{ImpactNodes: true})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestText_ImpactNodesControlsTheCertnameSample(t *testing.T) {
 // 9.3's prohibition and CONTEXT.md's _Avoid_ wording for impact
 // estimates.
 func TestText_NeverClaimsEstimatedNodesWillChange(t *testing.T) {
-	data, err := Text(sampleResult(), Options{})
+	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
@@ -353,12 +353,12 @@ func TestText_NeverClaimsEstimatedNodesWillChange(t *testing.T) {
 // TestText_IsByteIdenticalForIdenticalInput is design.md's Property 1
 // applied to the text report, which iterates provenance maps.
 func TestText_IsByteIdenticalForIdenticalInput(t *testing.T) {
-	first, err := Text(sampleResult(), Options{})
+	first, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
 		t.Fatalf("Text: %v", err)
 	}
 	for i := 0; i < 20; i++ {
-		next, err := Text(sampleResult(), Options{})
+		next, err := Text(sampleResult(), nil, Options{})
 		if err != nil {
 			t.Fatalf("Text: %v", err)
 		}

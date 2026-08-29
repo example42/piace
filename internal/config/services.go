@@ -11,6 +11,10 @@ type ServicesFile struct {
 	Version  int             `json:"version" yaml:"version"`
 	Compiler ServiceEndpoint `json:"compiler" yaml:"compiler"`
 	PuppetDB ServiceEndpoint `json:"puppetdb" yaml:"puppetdb"`
+	// Inference is optional and loads independently of the other two.
+	// `piace compare` ignores it entirely and contacts no inference
+	// service; `piace explain` reads only this section.
+	Inference *InferenceSection `json:"inference,omitempty" yaml:"inference"`
 }
 
 // ServiceEndpoint describes one independently configured mTLS HTTP

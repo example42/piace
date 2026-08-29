@@ -81,3 +81,11 @@ func TestRun_CaptureUnknownSubcommandIsOperationalError(t *testing.T) {
 		t.Errorf("run(capture) = %d, want %d", got, exitcode.OperationalError)
 	}
 }
+
+// TestRun_ExplainMissingFlagsIsOperationalError mirrors the compare case
+// for `explain`, whose required flags are --json-in and --services.
+func TestRun_ExplainMissingFlagsIsOperationalError(t *testing.T) {
+	if got := run([]string{"explain"}, os.Stdout, os.Stderr); got != exitcode.OperationalError {
+		t.Errorf("run(explain) = %d, want %d", got, exitcode.OperationalError)
+	}
+}

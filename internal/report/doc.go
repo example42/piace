@@ -52,6 +52,35 @@
 //     estimate's certnames past Options.inlineCertnameCap unless
 //     Options.ImpactNodes is set. The count is never elided, only names.
 //
+// # The change assessment is a fourth thing, and it is not part of that
+//
+// HTML and Text take a second input `piace explain` supplies and `piace
+// compare` never does: an advisory change assessment (internal/assess).
+// It is a parameter rather than a field of a model.Result on purpose —
+// see docs/adr/0002 — and a nil one renders nothing at all, not an empty
+// section and not a stray newline, so a report rendered without one is
+// byte-identical to what v0.1.0 produced. That identity is asserted
+// against a checked-in golden captured before the parameter existed.
+//
+// Where the deterministic sections above it are a record, the assessment
+// is an opinion, so the page marks it as one: AssessmentNote states in
+// both formats that it is advisory, model-generated and not
+// deterministic, and the section renders below every deterministic
+// section, never above one. What stays outside the section's disclosure
+// is the run risk indication and everything that qualifies it — the
+// model id, a truncated selection, a partial input, and the
+// assessment's own diagnostics — for the same reason the outcome badges
+// do: an assessment reading "unknown" with its reason folded away is a
+// page that looks broken rather than one that failed.
+//
+// Text carries the run risk indication and review focus and stops there.
+// Per-group rationale is model prose, one paragraph per group, and a CI
+// log has no way to skip a section; it is in HTML and in the JSON
+// artifact, both of which a reader can navigate. Nothing in an
+// assessment is ever wrapped in template.HTML: it is text a remote
+// service wrote, and it is untrusted in exactly the way a resource title
+// from a catalog is.
+//
 // So requirements.md 5.3 and 7.4 (edges identified and retained through
 // aggregation as a distinct kind), 6.5 (suppressed-difference counts),
 // 8.2 ("complete node diffs"), and 9.4 ("the exact generated PQL query")
@@ -131,3 +160,23 @@ const ImpactEstimateLabel = "potential impact estimate"
 // 8, and uses CONTEXT.md's terminology (never "affected nodes" or "blast
 // radius").
 const ImpactEstimateNote = "Reports only that a node's latest stored catalog contains this exact resource type and title. It does not state that the node will change, and PIACE does not compile these nodes."
+
+// AssessmentLabel is the visible heading of the change-assessment
+// section. The section is named for what it is — an assessment of a
+// change — and never for the outcome of the comparison, which the
+// deterministic sections above it already state.
+const AssessmentLabel = "Change assessment"
+
+// AssessmentNote is the fixed sentence shown beside AssessmentLabel in
+// every format that carries an assessment. Like ImpactEstimateNote it is
+// a package constant rather than per-format prose, so no format can
+// quietly describe a change assessment as something firmer than it is.
+//
+// It states the three things a reader has to know before reading a word
+// of what a model said: that this is advisory, that it is generated, and
+// that running the same command again may say something different. What
+// it is not is a disclaimer for the section's benefit — a risk
+// indication is an opinion about a change, and a page that presents it
+// beside a deterministic outcome without saying which is which is
+// misleading whatever the model got right.
+const AssessmentNote = "Advisory and model-generated: not deterministic, not part of the result document, and never able to affect the outcome or exit code above. Two runs over the same report may say different things."

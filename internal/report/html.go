@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"strings"
 
+	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/exitcode"
 	"github.com/example42/piace/internal/model"
 )
@@ -42,14 +43,14 @@ import (
 // Everything variable is interpolated through html/template, whose
 // contextual escaping is what makes an attacker-shaped resource title or
 // diagnostic message inert.
-func HTML(r model.Result) ([]byte, error) {
+func HTML(r model.Result, a *assess.Assessment) ([]byte, error) {
 	jsonData, err := JSON(r)
 	if err != nil {
 		return nil, err
 	}
 
 	var b bytes.Buffer
-	if err := htmlTemplate.Execute(&b, buildHTMLView(r, string(jsonData))); err != nil {
+	if err := htmlTemplate.Execute(&b, buildHTMLView(r, a, string(jsonData))); err != nil {
 		return nil, fmt.Errorf("rendering HTML report: %w", err)
 	}
 	return b.Bytes(), nil
@@ -94,6 +95,69 @@ type htmlView struct {
 	// count keeps it in the scanning path without lifting the failed
 	// entries out of their place in the list.
 	TotalEstimateFailures int
+	// Assessment is the advisory change assessment, nil when the report
+	// was rendered without one. Nil renders nothing at all — not an empty
+	// section, not a stray newline — because a `piace compare` report has
+	// to stay byte-identical to what v0.1.0 produced.
+	Assessment *htmlAssessment
+}
+
+// htmlAssessment is the display-ready projection of an
+// assess.Assessment. It is a separate view type rather than the
+// assessment itself for the same reason htmlView exists: the template
+// holds layout, and every decision about what a reader sees is made
+// here.
+//
+// Nothing in it is ever template.HTML. Summary, Rationale and
+// ReviewFocus are model-generated free text arriving from outside the
+// building, and are exactly as untrusted as a resource title from a
+// catalog — html/template's contextual escaping is what makes them
+// inert.
+type htmlAssessment struct {
+	Label     string
+	Note      string
+	Risk      string
+	RiskClass string
+	// Stamp is the provenance line: which model, which endpoint
+	// authority, when, and the checksum of the result document the
+	// assessment was derived from. It is the assessment's counterpart to
+	// the masthead's run stamp, and it is what lets a reader tell two
+	// assessments of the same report apart.
+	Stamp []string
+	// Truncation and InputPartial are stated on the page, never left to
+	// the artifact: a section that assessed a fifth of the groups, or was
+	// built on a run that failed to compare half its targets, reads as a
+	// complete review unless it says otherwise.
+	Truncation   string
+	InputPartial string
+	// Diagnostics are the assessment's own failures. They are banners
+	// outside every disclosure, like the run diagnostics above them,
+	// because the case they exist for is an assessment that says
+	// "unknown" for everything — which without a visible reason reads as
+	// a broken page rather than a failed request.
+	Diagnostics []htmlAssessmentDiagnostic
+	Summary     string
+	ReviewFocus []string
+	Groups      []htmlAssessmentGroup
+	TotalGroups int
+}
+
+type htmlAssessmentDiagnostic struct {
+	Severity string
+	Message  string
+}
+
+// htmlAssessmentGroup is one aggregate group's judgement, anchored to
+// the group by the same identity the deterministic aggregate section
+// above it shows, so a reader can tie an opinion to a difference.
+type htmlAssessmentGroup struct {
+	Identity    string
+	Parameter   string
+	Risk        string
+	RiskClass   string
+	Rationale   string
+	Targets     string
+	ReviewFocus []string
 }
 
 // htmlTally is one figure in the masthead's at-a-glance row. It is
@@ -196,7 +260,7 @@ type htmlDiagnostic struct {
 	Message   string
 }
 
-func buildHTMLView(r model.Result, canonicalJSON string) htmlView {
+func buildHTMLView(r model.Result, a *assess.Assessment, canonicalJSON string) htmlView {
 	view := htmlView{
 		ToolVersion:   r.Invocation.ToolVersion,
 		TimestampUTC:  r.Invocation.TimestampUTC,
@@ -255,7 +319,84 @@ func buildHTMLView(r model.Result, canonicalJSON string) htmlView {
 	}
 
 	view.Tally = buildHTMLTally(view, changes, edges)
+	view.Assessment = buildHTMLAssessment(a)
 	return view
+}
+
+// buildHTMLAssessment projects a change assessment for display, or
+// returns nil when there is none.
+func buildHTMLAssessment(a *assess.Assessment) *htmlAssessment {
+	if a == nil {
+		return nil
+	}
+	view := &htmlAssessment{
+		Label:       AssessmentLabel,
+		Note:        AssessmentNote,
+		Risk:        string(a.Run.Risk),
+		RiskClass:   riskClass(a.Run.Risk),
+		Stamp:       assessmentStamp(*a),
+		Summary:     a.Run.Summary,
+		ReviewFocus: a.Run.ReviewFocus,
+		TotalGroups: len(a.Groups),
+	}
+	if a.GroupsTruncated {
+		view.Truncation = fmt.Sprintf(
+			"Assessed %d of %d aggregate groups. The rest were ranked lower and never sent, so this section says nothing about them.",
+			a.GroupsAssessed, a.GroupsTotal)
+	}
+	if a.InputPartial {
+		view.InputPartial = "The result document this was built from is itself incomplete — the run recorded diagnostics above — so the assessment did not see the whole comparison."
+	}
+	for _, d := range a.Diagnostics {
+		view.Diagnostics = append(view.Diagnostics, htmlAssessmentDiagnostic{
+			Severity: string(d.Severity), Message: d.Message,
+		})
+	}
+	for _, g := range a.Groups {
+		view.Groups = append(view.Groups, htmlAssessmentGroup{
+			Identity:    g.Identity,
+			Parameter:   g.Parameter,
+			Risk:        string(g.Risk),
+			RiskClass:   riskClass(g.Risk),
+			Rationale:   g.Rationale,
+			Targets:     targetCountList(g.Certnames),
+			ReviewFocus: g.ReviewFocus,
+		})
+	}
+	return view
+}
+
+// assessmentStamp builds the provenance line. Empty fields are dropped
+// rather than rendered as empty separators: an assessment produced
+// without a checksum should show one fewer item, not a stray middle dot.
+func assessmentStamp(a assess.Assessment) []string {
+	var stamp []string
+	for _, part := range []string{a.ModelID, a.EndpointAuthority, a.GeneratedAt, a.SourceReportChecksum} {
+		if part != "" {
+			stamp = append(stamp, part)
+		}
+	}
+	return stamp
+}
+
+// riskClass maps a risk indication onto the badge classes the page
+// already defines for outcomes, rather than introducing a second
+// severity palette. Two reasons, and only one of them is aesthetic: a
+// page with one visual language for severity is read faster, and a
+// report rendered with no assessment must be byte-identical to v0.1.0's
+// — which a new rule in the stylesheet, emitted unconditionally, would
+// break.
+func riskClass(r assess.Risk) string {
+	switch r {
+	case assess.RiskLow:
+		return "clean"
+	case assess.RiskMedium:
+		return "allowed"
+	case assess.RiskHigh:
+		return "compile"
+	default:
+		return "operational"
+	}
 }
 
 // buildHTMLTally assembles the masthead figures, omitting any that is
