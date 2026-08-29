@@ -1,0 +1,41 @@
+# services.yaml — endpoints and mTLS identity for `piace compare` and
+# `piace capture`.
+#
+# This is the file that does not belong in a review diff: it names hosts and
+# key material, not policy. Keep it out of the branch under test, or template
+# it from CI secrets.
+#
+#   piace compare --targets examples/targets-puppetdb-baseline.yaml \
+#                 --services examples/services.yaml
+
+version: 1
+
+# The Puppet Server / OpenVox compiler that serves the deployed environments.
+# `compare` and `capture catalog` POST candidate catalog requests here.
+compiler:
+  endpoint: https://puppet.ops.example.com:8140
+
+  # IMPORTANT: TLS paths resolve against the *process working directory*, not
+  # against this file. Always use absolute paths.
+  ca_bundle:   /etc/piace/tls/ca.pem
+  client_cert: /etc/piace/tls/piace-catalog-reader.pem
+  private_key: /etc/piace/tls/piace-catalog-reader.key
+
+# PuppetDB, read-only: baseline catalogs, factsets, and impact estimates.
+puppetdb:
+  endpoint: https://puppetdb.ops.example.com:8081
+
+  # The two sections load independently. Reusing one identity for both is a
+  # deliberate choice, not a default — split them if PuppetDB's allowlist and
+  # the compiler's auth.conf should not name the same certificate.
+  ca_bundle:   /etc/piace/tls/ca.pem
+  client_cert: /etc/piace/tls/piace-catalog-reader.pem
+  private_key: /etc/piace/tls/piace-catalog-reader.key
+
+# The client certificate above must be a dedicated catalog-reader identity
+# whose subject CN is named in the compiler's auth.conf rule for
+# /puppet/v4/catalog. A stock compiler answers 403 until it is. See the
+# README, "Authorizing the catalog-reader certificate".
+#
+# Only https is accepted. Inline keys, bearer tokens, and insecure TLS are
+# rejected at load time.

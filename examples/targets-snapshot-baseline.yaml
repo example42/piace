@@ -1,0 +1,86 @@
+# targets-snapshot-baseline.yaml — frozen baseline.
+#
+# Usage pattern 2: capture the production catalog once, then compare against
+# that frozen copy as often as you like. Useful when PuppetDB's latest
+# catalog moves under you (an agent run mid-pipeline), when you want every
+# branch measured against the same point, and MANDATORY with catalog_api: v3.
+#
+#   # once, after each merge to the baseline environment
+#   piace capture catalog --targets examples/targets-snapshot-baseline.yaml \
+#                         --services examples/services.yaml \
+#                         --environment production --replace
+#
+#   # then, per change, as often as you like
+#   piace compare --targets examples/targets-snapshot-baseline.yaml \
+#                 --services examples/services.yaml
+#
+# `capture` takes no destination flag: it writes to baseline.file (catalog)
+# or facts.file (facts), and SKIPS with a warning any target whose matching
+# source is not `file`. So the source below must be set before the capture
+# that populates it.
+#
+# Re-capture after every promotion to the baseline environment. A stale
+# snapshot silently reports drift that was already merged.
+
+version: 1
+
+defaults:
+  candidate:
+    environment: feature-1287
+    catalog_api: v4
+
+  facts:
+    source: puppetdb
+
+  baseline:
+    source: file
+    environment: production
+
+    # Snapshot paths resolve against THIS FILE's directory (unlike the TLS
+    # paths in services.yaml, which resolve against the working directory).
+    # `{certname}` may appear only as a whole path component.
+    file: snapshots/catalogs/{certname}.json
+
+  exclude:
+    - type: File
+      title: "/var/cache/*"
+    - type: File
+      title: "/var/lib/puppet/state/*"
+
+  redact:
+    - type: File
+      parameter: content
+
+  impact_estimate:
+    enabled: true
+    timeout: 10s
+    result_limit: 1000
+
+  fail_on_diff: true
+
+targets:
+  - certname: web-01.ops.example.com
+  - certname: web-02.ops.example.com
+  - certname: app-01.ops.example.com
+    exclude:
+      - type: File
+        title: "/srv/app/releases/*"
+  - certname: app-02.ops.example.com
+    exclude:
+      - type: File
+        title: "/srv/app/releases/*"
+
+  - certname: db-01.ops.example.com
+    fail_on_diff: false
+
+  - certname: lb-01.ops.example.com
+
+  # A node whose facts are also frozen. `piace capture facts` writes this
+  # path — it always retrieves from PuppetDB, whatever the target's
+  # comparison-time facts.source is. Freezing facts as well as the catalog
+  # makes a run reproducible offline; the cost is that fact drift on the real
+  # node stops being visible.
+  - certname: build-01.ops.example.com
+    facts:
+      source: file
+      file: snapshots/facts/{certname}.json

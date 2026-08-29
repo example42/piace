@@ -1,0 +1,33 @@
+# services-explain-only.yaml — assessment without Puppet infrastructure.
+#
+# `explain` reads a stored result document and contacts one inference
+# service. It never touches a compiler or PuppetDB, so it needs neither
+# configured. A services file carrying nothing but `version:` and
+# `inference:` is valid for it.
+#
+# This is the shape to use when the assessment runs somewhere the Puppet mTLS
+# material is deliberately absent — a review job, a separate runner, or a
+# workstation reading a report someone else produced.
+#
+#   export PIACE_INFERENCE_TOKEN=...
+#   piace explain --json-in report.json \
+#                 --services examples/services-explain-only.yaml \
+#                 --ai-out assessment.json
+#
+# At least one of --ai-out and --html-out is required.
+#
+# Note that `compare` CANNOT use this file: it requires both a `compiler:`
+# and a `puppetdb:` section.
+
+version: 1
+
+inference:
+  endpoint: https://api.anthropic.com/v1/chat/completions
+  model: claude-sonnet-5
+  token_env: PIACE_INFERENCE_TOKEN
+  timeout: 60s
+  max_tokens: 4000
+  max_groups: 200
+  pseudonymize: true
+  structured_output: true
+  policy_notes_file: policy-notes.md

@@ -222,6 +222,9 @@ Two files, deliberately separate: the reviewable selection/policy file, and the
 endpoint/mTLS file that does not belong in a review diff. **Unknown keys are
 rejected** in both — a typo is a load error, not a silently ignored setting.
 
+Complete, loadable samples for every pattern below are in
+[`examples/`](examples/).
+
 ### `targets.yaml`
 
 ```yaml
@@ -632,4 +635,5 @@ intact, inside the fence.
 - [CONTEXT.md](CONTEXT.md) — the domain language used throughout code and reports
 - [docs/development.md](docs/development.md) — building, testing, CI, releases,
   package layout, project status
+- [examples/](examples/) — loadable sample configuration for every usage pattern
 - [docs/release.md](docs/release.md) — release artifacts and verification
