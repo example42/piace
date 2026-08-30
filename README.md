@@ -92,6 +92,14 @@ piace compare --targets targets.yaml --services services.yaml \
   --json-out report.json --html-out report.html
 ```
 
+In a pipeline the environment changes every run, so pass it instead of
+committing it: `--candidate-environment "$(printf '%s' "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" | tr '-' '_')"`
+overrides `candidate.environment` for every target, and the file can then omit
+it. Use the branch name, not the merge request number: the environment maps to
+the compiler by the branch it was deployed from, and the `tr` mirrors the
+dash-to-underscore rewrite r10k applies to a branch with a dash, which a Puppet
+environment name cannot contain.
+
 ### 2. Comparison against a captured snapshot
 
 Freeze the baseline once, compare against it as often as you like. Useful when
@@ -152,6 +160,7 @@ and PuppetDB.
 
 ```
 piace compare --targets TARGETS.yaml --services SERVICES.yaml \
+  [--candidate-environment ENVIRONMENT] \
   [--text-out PATH] [--json-out PATH] [--html-out PATH] [--impact-nodes]
 
 piace capture facts   --targets TARGETS.yaml --services SERVICES.yaml [--replace]
@@ -168,6 +177,7 @@ piace explain --json-in REPORT.json --services SERVICES.yaml \
 | --- | --- | --- |
 | `--targets` | compare, capture | Target/policy file (required) |
 | `--services` | all | Endpoint/TLS/inference file (required) |
+| `--candidate-environment` | compare | Compile every target's candidate catalog from this environment, overriding `candidate.environment` in the target file |
 | `--text-out` | compare | Text report path; default stdout |
 | `--json-out` | compare | Versioned, canonically encoded JSON report |
 | `--html-out` | compare, explain | Self-contained static HTML report |
@@ -181,10 +191,18 @@ piace explain --json-in REPORT.json --services SERVICES.yaml \
 | `--debug` | compare, capture | One metadata line per service request to stderr |
 | `--debug-dump-dir` | compare, capture | Also write raw bodies to `0600` files in DIR |
 
-`capture catalog --environment ENV` requests the catalog for `ENV` — typically
-the production/default environment, captured after merge, so development-branch
-runs baseline against a frozen catalog rather than a later one from another
-environment.
+`compare --candidate-environment ENV` compiles every target against `ENV`,
+overriding `candidate.environment` in both the `defaults:` block and any
+per-target `candidate:` block. The environment CI deployed is a per-pipeline
+value, so passing it at the invocation keeps the target file reviewable policy
+that no job has to rewrite; with the flag, the file may omit
+`candidate.environment` entirely. See [CI](docs/ci.md).
+
+`capture catalog --environment ENV` is a different flag with a different
+meaning: it requests the catalog for `ENV` — typically the production/default
+environment, captured after merge, so development-branch runs baseline against
+a frozen catalog rather than a later one from another environment. It never
+overrides `candidate.environment`.
 
 ### Reports
 
@@ -285,7 +303,7 @@ prepended to per-target ones, never replaced.
 | Key | Required | Values | Notes |
 | --- | --- | --- | --- |
 | `version` | yes | `1` | |
-| `candidate.environment` | yes | string | The deployed environment to compile against |
+| `candidate.environment` | yes, unless `--candidate-environment` is passed | string | The deployed environment to compile against. The flag overrides it for every target |
 | `candidate.catalog_api` | yes | `v4` \| `v3` | No default. See [Choosing the catalog API](#choosing-the-catalog-api) |
 | `candidate.allow_v3_fallback` | no | bool (`false`) | v4 only. Permits falling back to v3 when the compiler lacks v4 — opt-in, never implicit |
 | `candidate.trusted_facts_compiler_lookup` | no | bool (`false`) | v4 only. Asserts the compiler is configured to fetch the target's trusted facts from PuppetDB when the request omits them. PIACE never assumes this |

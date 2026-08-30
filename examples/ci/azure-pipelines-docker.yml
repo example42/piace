@@ -1,0 +1,255 @@
+# Azure Pipelines: compare on every pull request, then assess the result,
+# running the published example42/piace image instead of downloading the
+# binary.
+#
+# This is the docker twin of azure-pipelines.yml. Copy to azure-pipelines.yml
+# in your control repository, with the layout docs/ci.md describes:
+#
+#   ci/piace/targets.yaml            committed, reviewable policy
+#   ci/piace/services.yaml.tmpl      committed, rendered per job
+#   ci/piace/services-explain.yaml   committed, inference only
+#   ci/piace/policy-notes.md         committed, site policy for the model
+#   ci/piace/change-context.sh       committed, copied from PIACE's scripts/
+#
+# Two jobs, not one, because they need different credentials: compare holds
+# the catalog-reader identity and never sees the inference token, explain
+# holds the inference token and never sees a private key. A runner compromise
+# in either job yields one of the two.
+#
+# Before this runs, provision in the DevOps UI:
+#   * three Secure Files holding the catalog-reader PEMs. Azure has no
+#     multi-line variable: a PEM cannot be masked, so the file type is the
+#     only safe form, and DownloadSecureFile below is the built-in task,
+#   * the PIACE_INFERENCE_TOKEN pipeline secret (single-line, maskable).
+#
+# `example42/piace` is distroless: no shell, and its entrypoint is the binary
+# itself, so it has to be invoked with `docker run`. Hosted ubuntu images
+# ship Docker, so this runs unmodified there. Pin the tag: `:${PIACE_VERSION}`
+# follows the release the same way the binary's checksum does.
+
+trigger: none
+
+pr:
+  branches:
+    include:
+    - '*'
+
+variables:
+- name: PIACE_VERSION
+  value: '0.2.1'
+
+jobs:
+- job: compare
+  pool:
+    vmImage: 'ubuntu-latest'
+  # A pull request from a fork gets no secrets, so the job would fail at TLS
+  # load with exit 30 rather than doing anything useful. Skip it instead:
+  # the same-repo guard the other examples encode.
+  condition: eq(variables['System.PullRequest.IsFork'], 'False')
+  steps:
+  - checkout: self
+
+  # Agent.TempDirectory is per-job and outside the checkout, which is what
+  # makes it the right home for a private key: nothing here reaches an
+  # uploaded artifact or a later `git status`. The container mounts it
+  # read-only at /run/piace, so the services file is rendered with
+  # @PIACE_RUN@ pointing at the container path, not the host one.
+  - task: DownloadSecureFile@1
+    name: caBundle
+    inputs:
+      secureFile: piace-ca.pem
+  - task: DownloadSecureFile@1
+    name: clientCert
+    inputs:
+      secureFile: piace-client-cert.pem
+  - task: DownloadSecureFile@1
+    name: clientKey
+    inputs:
+      secureFile: piace-client-key.pem
+
+  # No `set -x` in this step, ever. The keys themselves are never echoed; a
+  # trace of the commands that write them would be.
+  - bash: |
+      set -euo pipefail
+      umask 077
+      install -d -m 0700 "$RUN_DIR"
+      install -m 0600 "$CA_BUNDLE"   "$RUN_DIR/ca.pem"
+      install -m 0600 "$CLIENT_CERT" "$RUN_DIR/client.pem"
+      install -m 0600 "$CLIENT_KEY"  "$RUN_DIR/client.key"
+      # PIACE expands nothing in a services file, and its TLS paths resolve
+      # against the process working directory (which is /work inside the
+      # container, where the checkout is mounted). The run directory is
+      # mounted at /run/piace, so the placeholder is rendered to the
+      # container path, not to a host path.
+      sed "s|@PIACE_RUN@|/run/piace|g" ci/piace/services.yaml.tmpl \
+        > "$RUN_DIR/services.yaml"
+      mkdir -p report
+    env:
+      RUN_DIR: $(Agent.TempDirectory)/piace-run
+      CA_BUNDLE: $(caBundle.secureFilePath)
+      CLIENT_CERT: $(clientCert.secureFilePath)
+      CLIENT_KEY: $(clientKey.secureFilePath)
+
+  # Exit 10 is a policy difference, which fails this step and so the job:
+  # that is `fail_on_diff: true` in targets.yaml doing its work. 20 and 30
+  # mean the run did not complete. `docker run` returns the container's exit
+  # code, so the gate reaches Azure unchanged. To review differences without
+  # blocking, set `continueOnError: true` on this task: the report still says
+  # what changed, but 20 and 30 slip through too, which is worse than GitLab's
+  # per-exit-code softening.
+  #
+  # The candidate environment is the one this pipeline deployed. It maps to
+  # the compiler by branch name, so use the source branch of this pull
+  # request, not the pull request number, and rewrite dashes to underscores:
+  # a Puppet environment name cannot contain a dash, and r10k deploys an
+  # environment that way. Match whatever mapping your deploy applies, not one
+  # invented here.
+  #
+  # Every value reaches the script as an environment variable, never through
+  # `$(...)` in the script text: the agent macro-expands task inputs before
+  # the shell runs, so an untrusted value substituted into the text would
+  # run. That is also why the scripts hold no shell `$( ... )` command
+  # substitution: the agent treats the token as a variable. SOURCE_BRANCH is
+  # refs/heads/feature-x; parameter expansion strips the prefix and maps the
+  # dash. The container's working directory is /work, where the checkout is
+  # mounted, so `--targets ci/piace/targets.yaml` resolves and the reports
+  # land back in it. `--user` maps the agent's uid so the non-root image can
+  # write into the mount; the uid is captured with process substitution,
+  # because `$( ... )` would be eaten by the agent's macro expansion.
+  - bash: |
+      set -euo pipefail
+      source_branch="${SOURCE_BRANCH#refs/heads/}"
+      candidate_environment="${source_branch//-/_}"
+      read -r uid < <(id -u)
+      read -r gid < <(id -g)
+      docker run --rm \
+        --user "${uid}:${gid}" \
+        --volume "$BUILD_SOURCESDIRECTORY:/work" \
+        --volume "$RUN_DIR:/run/piace:ro" \
+        "example42/piace:${VERSION}" \
+        compare --targets ci/piace/targets.yaml \
+                --services /run/piace/services.yaml \
+                --candidate-environment "$candidate_environment" \
+                --json-out report/report.json \
+                --html-out report/report.html
+    env:
+      RUN_DIR: $(Agent.TempDirectory)/piace-run
+      SOURCE_BRANCH: $(System.PullRequest.SourceBranch)
+      VERSION: $(PIACE_VERSION)
+
+  # compare writes report.json before it exits 10 or 30, so always() keeps
+  # the report from a gated run: that is the run most worth a human look.
+  # Retention is set in the pipeline settings, not here: both reports carry
+  # catalog values, redacted per targets.yaml but not otherwise sanitized, so
+  # keep it short. A hosted agent tears down after the job and a self-hosted
+  # one does not; the cleanup step costs nothing on the first and matters on
+  # the second.
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    inputs:
+      targetPath: report
+      artifactName: piace-report
+  - bash: rm -rf "$RUN_DIR"
+    condition: always()
+    env:
+      RUN_DIR: $(Agent.TempDirectory)/piace-run
+
+- job: explain
+  dependsOn: compare
+  # always(): the run worth assessing is usually the one that just failed the
+  # gate, and compare writes report.json before it exits. The fork check
+  # mirrors compare: a fork PR gets no secrets, and the guarded assess step
+  # would only no-op on a tokenless job. When there is no report (a hard
+  # failure at 30 usually leaves none) the guarded steps do nothing.
+  condition: and(always(), eq(variables['System.PullRequest.IsFork'], 'False'))
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+  - download: none
+  - checkout: self
+    # change-context.sh takes a merge base, which a shallow clone does not
+    # have, and the PR checkout is a temporary merge commit whose target ref
+    # is fetched explicitly below. The credentials must survive for that
+    # later fetch.
+    fetchDepth: 0
+    persistCredentials: true
+
+  # continueOnError: a missing report means compare died before publishing,
+  # and the guarded steps below then no-op rather than failing a job that can
+  # only advise.
+  - task: DownloadPipelineArtifact@2
+    continueOnError: true
+    inputs:
+      buildType: current
+      artifactName: piace-report
+      targetPath: $(Agent.SourcesDirectory)/report
+
+  # PIACE never invokes git. This script does, in the checkout, on the
+  # runner: commit subjects and changed paths only, never bodies. Read
+  # examples/change-context.yaml before enabling it. Everything in the
+  # generated file is forwarded to the inference service as data, and the
+  # change context is not pseudonymized.
+  #
+  # Azure exposes no pull request title or description variables (unlike
+  # GitLab and GitHub), so they come from the pull request REST API, using
+  # the OAuth token mapped from System.AccessToken. If that token is not
+  # granted to the job, this step fails and the assessment is skipped, which
+  # is an advisory outcome. `$(...)` never appears in the script; curl -o
+  # and jq hold the command substitution the agent would try to expand.
+  - bash: |
+      set -euo pipefail
+      test -f report/report.json || exit 0
+      base_ref="${TARGET_BRANCH#refs/heads/}"
+      git fetch origin "+refs/heads/$base_ref:refs/remotes/origin/$base_ref"
+      ci/piace/change-context.sh "origin/$base_ref" HEAD > change-context.yaml
+      curl -fsS -o pull-request.json \
+        -H "Authorization: Bearer $SYSTEM_ACCESSTOKEN" \
+        "${COLLECTION_URI}${PROJECT}/_apis/git/repositories/${REPOSITORY_ID}/pullrequests/${PR_ID}?api-version=6.0"
+      {
+        printf '  title: |\n'
+        jq -r '.title' pull-request.json | sed 's/^/    /'
+        printf '  description: |\n'
+        jq -r '.description // ""' pull-request.json | sed 's/^/    /'
+      } >> change-context.yaml
+    env:
+      TARGET_BRANCH: $(System.PullRequest.TargetBranch)
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      COLLECTION_URI: $(System.TeamFoundationCollectionUri)
+      PROJECT: $(System.TeamProject)
+      REPOSITORY_ID: $(Build.Repository.ID)
+      PR_ID: $(System.PullRequest.PullRequestId)
+
+  # The token is referenced by name; there is no field that inlines one.
+  # explain cannot change an exit code, so a failure here is advisory unless
+  # you pass --fail-on-inference-error. The change context file exists only
+  # when the describe step ran. `--env NAME` inherits the value from the step
+  # environment into the container without it ever appearing in a command
+  # line; the uid capture avoids `$( ... )` for the same reason as above.
+  - bash: |
+      set -euo pipefail
+      test -f report/report.json || exit 0
+      read -r uid < <(id -u)
+      read -r gid < <(id -g)
+      mkdir -p assessment
+      docker run --rm \
+        --env PIACE_INFERENCE_TOKEN \
+        --user "${uid}:${gid}" \
+        --volume "$BUILD_SOURCESDIRECTORY:/work" \
+        "example42/piace:${VERSION}" \
+        explain --json-in report/report.json \
+                --services ci/piace/services-explain.yaml \
+                --change change-context.yaml \
+                --ai-out assessment/assessment.json \
+                --html-out assessment/report.html
+    env:
+      PIACE_INFERENCE_TOKEN: $(PIACE_INFERENCE_TOKEN)
+      VERSION: $(PIACE_VERSION)
+
+  # continueOnError: when compare left no report there is no assessment to
+  # publish, and an absent directory must not turn an advisory job red.
+  - task: PublishPipelineArtifact@1
+    condition: always()
+    continueOnError: true
+    inputs:
+      targetPath: assessment
+      artifactName: piace-assessment

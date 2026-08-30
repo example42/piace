@@ -104,6 +104,7 @@ func run(args []string, stdout, stderr *os.File) exitcode.Code {
 
 func usage() string {
 	return `piace compare --targets TARGETS.yaml --services SERVICES.yaml \
+  [--candidate-environment ENVIRONMENT] \
   [--text-out PATH] [--json-out PATH] [--html-out PATH] [--impact-nodes]
 piace capture facts --targets TARGETS.yaml --services SERVICES.yaml
 piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
@@ -120,6 +121,15 @@ sections.
   --impact-nodes         list every certname an impact estimate returned
                          instead of a capped sample; affects the text
                          report only (compare only)
+  --candidate-environment ENVIRONMENT
+                         compile every target's candidate catalog from
+                         ENVIRONMENT, overriding candidate.environment in
+                         the target file for every target (compare only).
+                         The environment CI deployed is a per-pipeline
+                         value; this is what lets the target file stay
+                         reviewable policy instead of being rewritten by
+                         the job that runs it. With it, the target file
+                         may omit candidate.environment entirely
 
 explain reads a result document compare wrote and asks a configured
 inference service to assess the change it records. The assessment is
@@ -153,9 +163,16 @@ compare and capture also accept:
 type compareFlags struct {
 	targets  string
 	services string
-	textOut  string
-	jsonOut  string
-	htmlOut  string
+	// candidateEnvironment, when non-empty, replaces
+	// candidate.environment for every target. Unlike impactNodes it does
+	// reach resolve.Load, as an override applied to the decoded target
+	// file before resolution: it is configuration, not display policy,
+	// and the report's provenance must record what was actually
+	// compiled. See resolve.Overrides.
+	candidateEnvironment string
+	textOut              string
+	jsonOut              string
+	htmlOut              string
 	// impactNodes is display policy for the text report only; it never
 	// reaches resolve.Config, because what PIACE queries and what PIACE
 	// prints are separate concerns and an estimate's certname sample is
@@ -170,6 +187,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	var f compareFlags
 	fs.StringVar(&f.targets, "targets", "", "path to the target YAML file (required)")
 	fs.StringVar(&f.services, "services", "", "path to the services YAML file (required)")
+	fs.StringVar(&f.candidateEnvironment, "candidate-environment", "", "compile every target's candidate catalog from this environment, overriding candidate.environment in the target file")
 	fs.StringVar(&f.textOut, "text-out", "", "path to write the text report (default: stdout)")
 	fs.StringVar(&f.jsonOut, "json-out", "", "path to write the versioned JSON report")
 	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the static HTML report")
@@ -183,7 +201,9 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	cfg, err := resolve.Load(f.targets, f.services)
+	cfg, err := resolve.Load(f.targets, f.services, resolve.Overrides{
+		CandidateEnvironment: f.candidateEnvironment,
+	})
 	if err != nil {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
 		return exitcode.OperationalError
@@ -366,7 +386,7 @@ func runCaptureFacts(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	cfg, err := resolve.Load(f.targets, f.services)
+	cfg, err := resolve.Load(f.targets, f.services, resolve.Overrides{})
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture facts: %s\n", err)
 		return exitcode.OperationalError
@@ -411,7 +431,11 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	cfg, err := resolve.Load(f.targets, f.services)
+	// `capture catalog --environment` is deliberately not a candidate
+	// override: it names the environment to snapshot, which is a
+	// different thing from the candidate environment under test and
+	// typically the opposite one. See capture.candidateEnvironmentView.
+	cfg, err := resolve.Load(f.targets, f.services, resolve.Overrides{})
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError

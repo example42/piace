@@ -333,3 +333,94 @@ func TestAcceptance_ExclusionsSuppressDifferencesAndAreReported(t *testing.T) {
 		t.Error("the HTML report does not visibly mark excluded differences (requirements.md 8.5)")
 	}
 }
+
+// TestAcceptance_CandidateEnvironmentOverride covers `compare
+// --candidate-environment`: the environment CI deployed is a per-pipeline
+// value, so a pipeline must be able to name it on the command line
+// instead of rewriting the committed target file between checkout and
+// run.
+//
+// The target file here names no candidate environment at all (neither in
+// its defaults nor in the target's own block), which is only valid
+// because the override is applied before resolution. Both halves are
+// asserted at the socket and in the report: the request the compiler
+// actually received carries the overridden environment, and the
+// provenance the result document records is the environment compiled, not
+// the one the file asked for.
+func TestAcceptance_CandidateEnvironmentOverride(t *testing.T) {
+	const certname = "web-01.example.test"
+	const overridden = "pr-441"
+
+	h := newHarness(t)
+	h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+	// seedTarget serves a catalog labelled feature-123; the adapter
+	// verifies a response against the environment it requested, so the
+	// override has to reach the fixture too or this fails as a
+	// compilation failure rather than passing on a mislabelled catalog.
+	h.compiler.catalogs[certname] = compilerCatalog(certname, overridden, baseResources(), baseEdges())
+
+	const noEnvironmentDefaults = `  candidate:
+    catalog_api: v4
+  facts:
+    source: puppetdb
+  baseline:
+    source: puppetdb
+    environment: production
+  impact_estimate:
+    enabled: false
+    timeout: 5s
+    result_limit: 2
+  fail_on_diff: false
+`
+	targets := targetsYAML(noEnvironmentDefaults, target(certname))
+	h.writeConfigs(t, targets)
+
+	got := h.compare(t, "--candidate-environment", overridden)
+	if got.code != exitcode.Success {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", got.code, got.stdout, got.stderr)
+	}
+	if len(h.compiler.v4Bodies) != 1 {
+		t.Fatalf("compiler received %d v4 requests, want 1", len(h.compiler.v4Bodies))
+	}
+	if env := h.compiler.v4Bodies[0]["environment"]; env != overridden {
+		t.Errorf("v4 request environment = %v, want %q", env, overridden)
+	}
+	if !strings.Contains(got.json, `"environment":"`+overridden+`"`) {
+		t.Errorf("result document does not record the overridden environment:\n%s", got.json)
+	}
+
+	// Without the override the same file is a configuration error, which
+	// is what makes the flag the only thing supplying the value above.
+	h.writeConfigs(t, targets)
+	if again := h.compare(t); again.code != exitcode.OperationalError {
+		t.Errorf("exit without --candidate-environment = %d, want %d", again.code, exitcode.OperationalError)
+	}
+}
+
+// TestAcceptance_CandidateEnvironmentOverrideBeatsTheTargetFile pins the
+// precedence: a flag that lost to a per-target `candidate:` block would
+// leave a pipeline silently comparing against whatever the file happened
+// to name, which is the failure this flag exists to prevent.
+func TestAcceptance_CandidateEnvironmentOverrideBeatsTheTargetFile(t *testing.T) {
+	const certname = "web-01.example.test"
+	const overridden = "pr-441"
+
+	h := newHarness(t)
+	h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+	h.compiler.catalogs[certname] = compilerCatalog(certname, overridden, baseResources(), baseEdges())
+
+	perTarget := "  - certname: " + certname + "\n    candidate:\n" +
+		"      environment: stale-from-the-file\n      catalog_api: v4\n"
+	h.writeConfigs(t, targetsYAML(defaultDefaults, perTarget))
+
+	got := h.compare(t, "--candidate-environment", overridden)
+	if got.code != exitcode.Success {
+		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", got.code, got.stdout, got.stderr)
+	}
+	if env := h.compiler.v4Bodies[0]["environment"]; env != overridden {
+		t.Errorf("v4 request environment = %v, want %q", env, overridden)
+	}
+	if strings.Contains(got.json, "stale-from-the-file") {
+		t.Errorf("result document still carries the target file's environment:\n%s", got.json)
+	}
+}

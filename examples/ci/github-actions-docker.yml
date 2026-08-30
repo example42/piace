@@ -1,7 +1,10 @@
-# GitHub Actions: compare on every pull request, then assess the result.
+# GitHub Actions: compare on every pull request, then assess the result,
+# running the published example42/piace image instead of downloading the
+# binary.
 #
-# Copy to .github/workflows/piace.yml in your control repository, with the
-# layout docs/ci.md describes:
+# This is the docker twin of github-actions.yml. Copy to
+# .github/workflows/piace.yml in your control repository, with the layout
+# docs/ci.md describes:
 #
 #   ci/piace/targets.yaml            committed, reviewable policy
 #   ci/piace/services.yaml.tmpl      committed, rendered per job
@@ -13,6 +16,13 @@
 # the catalog-reader identity and never sees the inference token, `explain`
 # holds the inference token and never sees a private key. A runner compromise
 # in either job yields one of the two.
+#
+# `example42/piace` is distroless: no shell, and its entrypoint is the binary
+# itself, so it cannot be the job's `container:` (which expects a shell) and
+# `docker run` is the only way to use it. Hosted ubuntu runners ship Docker
+# and reach the compiler and PuppetDB from a `run:` step, so this runs
+# unmodified there. Pin the tag: `:${PIACE_VERSION}` follows the release the
+# same way the binary's checksum does.
 
 name: piace
 
@@ -42,30 +52,11 @@ jobs:
           # not have.
           fetch-depth: 0
 
-      # Pinned to a version and verified against the manifest published with
-      # it. A runner that fetches "the latest binary" from the internet on
-      # every run is a supply chain you do not control.
-      - name: Install piace
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/piace-bin"
-          cd "$RUNNER_TEMP/piace-bin"
-          base="https://github.com/example42/piace/releases/download/v${PIACE_VERSION}"
-          curl -fsSLO "$base/piace-${PIACE_VERSION}-linux-amd64"
-          curl -fsSLO "$base/SHA256SUMS"
-          # Verifying one line of the manifest rather than the whole file: the
-          # other platforms were not downloaded, and a manifest line that
-          # matches nothing on disk must fail rather than pass quietly.
-          grep " piace-${PIACE_VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
-          install -m 0755 "piace-${PIACE_VERSION}-linux-amd64" piace
-          echo "$RUNNER_TEMP/piace-bin" >> "$GITHUB_PATH"
-          # Once the detached signature is attached to the release, verify it
-          # here first and drop the checksum line above to a second step:
-          #   gpg --verify SHA256SUMS.asc SHA256SUMS
-
       # $RUNNER_TEMP is per-job and outside the checkout, which is what makes
       # it the right home for a private key: nothing here reaches actions/cache,
-      # an uploaded artifact, or a later `git status`.
+      # an uploaded artifact, or a later `git status`. The container mounts it
+      # read-only at /run/piace, so the services file is rendered with
+      # @PIACE_RUN@ pointing at the container path, not the host one.
       #
       # No `set -x` in this step, ever. The secrets themselves are never
       # echoed; a trace of the commands that write them would be.
@@ -81,14 +72,16 @@ jobs:
           printf '%s\n' "$PIACE_CA_BUNDLE"   > "$RUNNER_TEMP/piace-run/ca.pem"
           printf '%s\n' "$PIACE_CLIENT_CERT" > "$RUNNER_TEMP/piace-run/client.pem"
           printf '%s\n' "$PIACE_PRIVATE_KEY" > "$RUNNER_TEMP/piace-run/client.key"
-          sed "s|@PIACE_RUN@|$RUNNER_TEMP/piace-run|g" ci/piace/services.yaml.tmpl \
+          sed "s|@PIACE_RUN@|/run/piace|g" ci/piace/services.yaml.tmpl \
             > "$RUNNER_TEMP/piace-run/services.yaml"
 
       # Exit 10 is a policy difference, which fails the step and so the job:
       # that is `fail_on_diff: true` in targets.yaml doing its work. 20 and 30
-      # mean the run did not complete. To review differences without blocking
-      # the pull request, set `fail_on_diff: false` rather than swallowing the
-      # exit code here, so the report still says what changed.
+      # mean the run did not complete. `docker run` returns the container's
+      # exit code, so the gate reaches GitHub unchanged. To review differences
+      # without blocking the pull request, set `fail_on_diff: false` rather
+      # than swallowing the exit code here, so the report still says what
+      # changed.
       #
       # The candidate environment is the one this workflow deployed: a
       # per-run value, passed at the invocation so the committed target file
@@ -103,17 +96,28 @@ jobs:
       # the requested environment equals the one deployed; match whatever
       # mapping your deploy step applies, not one invented here. It arrives
       # through `env:` for the reason the change context step below explains.
+      #
+      # The container's working directory is /work, where the checkout is
+      # mounted, so `--targets ci/piace/targets.yaml` resolves and the
+      # reports land back in the checkout. `--user` maps the runner's uid so
+      # the non-root image can write into the mount. Every path piace reads
+      # resolves inside the container, not on the runner.
       - name: Compare
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
-          candidate_environment="$(printf '%s' "$HEAD_REF" | tr '-' '_')"
-          piace compare \
-            --targets ci/piace/targets.yaml \
-            --services "$RUNNER_TEMP/piace-run/services.yaml" \
-            --candidate-environment "$candidate_environment" \
-            --json-out report.json \
-            --html-out report.html
+          set -euo pipefail
+          candidate_environment="${HEAD_REF//-/_}"
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "$PWD:/work" \
+            --volume "$RUNNER_TEMP/piace-run:/run/piace:ro" \
+            "example42/piace:${PIACE_VERSION}" \
+            compare --targets ci/piace/targets.yaml \
+                    --services /run/piace/services.yaml \
+                    --candidate-environment "$candidate_environment" \
+                    --json-out report.json \
+                    --html-out report.html
 
       # Both reports carry catalog values, redacted per targets.yaml but not
       # otherwise sanitized. Keep the retention short and remember that anyone
@@ -145,18 +149,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Install piace
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/piace-bin"
-          cd "$RUNNER_TEMP/piace-bin"
-          base="https://github.com/example42/piace/releases/download/v${PIACE_VERSION}"
-          curl -fsSLO "$base/piace-${PIACE_VERSION}-linux-amd64"
-          curl -fsSLO "$base/SHA256SUMS"
-          grep " piace-${PIACE_VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
-          install -m 0755 "piace-${PIACE_VERSION}-linux-amd64" piace
-          echo "$RUNNER_TEMP/piace-bin" >> "$GITHUB_PATH"
 
       # GitHub has no per-exit-code handling, so `compare` fails its job on
       # 10, 20 and 30 alike and this job cannot tell them apart from
@@ -203,18 +195,25 @@ jobs:
 
       # The token is referenced by name; there is no field that inlines one.
       # `explain` cannot change an exit code, so a failure here is advisory
-      # unless you pass --fail-on-inference-error.
+      # unless you pass --fail-on-inference-error. `--env NAME` inherits the
+      # value from the step environment into the container without it ever
+      # appearing in a command line.
       - name: Assess
         if: steps.reports.outcome == 'success'
         env:
           PIACE_INFERENCE_TOKEN: ${{ secrets.PIACE_INFERENCE_TOKEN }}
         run: |
-          piace explain \
-            --json-in report.json \
-            --services ci/piace/services-explain.yaml \
-            --change change-context.yaml \
-            --ai-out assessment.json \
-            --html-out report.html
+          set -euo pipefail
+          docker run --rm \
+            --env PIACE_INFERENCE_TOKEN \
+            --user "$(id -u):$(id -g)" \
+            --volume "$PWD:/work" \
+            "example42/piace:${PIACE_VERSION}" \
+            explain --json-in report.json \
+                    --services ci/piace/services-explain.yaml \
+                    --change change-context.yaml \
+                    --ai-out assessment.json \
+                    --html-out report.html
 
       - name: Upload the assessment
         if: always() && steps.reports.outcome == 'success'

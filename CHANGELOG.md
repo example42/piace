@@ -4,6 +4,36 @@ All notable changes to PIACE are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`piace compare --candidate-environment ENVIRONMENT`**: compiles every
+  target's candidate catalog from ENVIRONMENT, overriding
+  `candidate.environment` in both the `defaults:` block and any per-target
+  `candidate:` block. The environment CI deployed is the one per-pipeline
+  value in an otherwise static policy file; passing it at the invocation is
+  what lets a pipeline stop rewriting its own committed target file between
+  checkout and run. The override is applied to the target file before
+  resolution, so it is validated and recorded in a report's provenance
+  exactly as a file-supplied value, and with it the target file may omit
+  `candidate.environment` entirely. `capture catalog --environment` is
+  unchanged and unrelated: it names the environment to snapshot, not the
+  candidate environment under test.
+
+### Fixed
+
+- **[docs/ci.md](docs/ci.md) and [examples/ci/](examples/ci/)**: the shipped
+  pipelines never bound `candidate.environment` to the environment CI had just
+  deployed, and never added the merge request title and description to the
+  change context, so a copied pipeline compared against a hardcoded environment
+  and assessed a change without the sentence that says what it is for. Both are
+  now rendered by the pipelines, the first through `--candidate-environment`.
+- **[examples/ci/github-actions.yml](examples/ci/github-actions.yml)**: the
+  pull request base ref, title and body now reach the job through `env:`
+  instead of `${{ }}` inside a `run:` block, where they were substituted into
+  the script before a shell saw them.
+
 ## [0.2.1] - 2026-08-30
 
 ### Added

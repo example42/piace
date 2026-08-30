@@ -7,14 +7,19 @@ import (
 )
 
 // LoadTargetFile decodes and fully resolves a `--targets` YAML file from
-// path: strict decode (unknown-field rejection), version check, default
-// resolution, per-target override, exclude/redact append-only merge, and
-// every validation rule in design.md section 3.2. Relative facts.file/
-// baseline.file values resolve against path's containing directory.
+// path: strict decode (unknown-field rejection), version check,
+// invocation overrides, default resolution, per-target override,
+// exclude/redact append-only merge, and every validation rule in
+// design.md section 3.2. Relative facts.file/baseline.file values resolve
+// against path's containing directory.
+//
+// ov is applied to the decoded document before resolution, so an
+// overridden field is validated and reported exactly as a file-supplied
+// one; see Overrides. Pass the zero value to override nothing.
 //
 // It performs no network or service I/O; only local filesystem access to
 // read path itself.
-func LoadTargetFile(path string) ([]Target, error) {
+func LoadTargetFile(path string, ov Overrides) ([]Target, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening target file: %w", err)
@@ -27,7 +32,7 @@ func LoadTargetFile(path string) ([]Target, error) {
 	}
 
 	dir := filepath.Dir(path)
-	return ResolveTargets(tf, dir)
+	return ResolveTargets(ov.apply(tf), dir)
 }
 
 // LoadServicesFile decodes and fully resolves a `--services` YAML file
@@ -50,14 +55,15 @@ func LoadServicesFile(path string) (Services, error) {
 }
 
 // Load decodes and resolves both the target and services files, per
-// design.md section 3. Both files are always attempted and every problem
-// from both is accumulated into one error: a user configuring both files
-// wrong sees every problem from one run, per design.md section 3.2's
-// "Invalid configuration is one operational diagnostic" rule.
-func Load(targetsPath, servicesPath string) (Config, error) {
+// design.md section 3, applying ov to the target file as LoadTargetFile
+// documents. Both files are always attempted and every problem from both
+// is accumulated into one error: a user configuring both files wrong sees
+// every problem from one run, per design.md section 3.2's "Invalid
+// configuration is one operational diagnostic" rule.
+func Load(targetsPath, servicesPath string, ov Overrides) (Config, error) {
 	var c errorCollector
 
-	targets, targetsErr := LoadTargetFile(targetsPath)
+	targets, targetsErr := LoadTargetFile(targetsPath, ov)
 	appendErr(&c, targetsErr)
 
 	services, servicesErr := LoadServicesFile(servicesPath)

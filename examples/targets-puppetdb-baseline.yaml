@@ -16,8 +16,14 @@ version: 1
 
 defaults:
   candidate:
-    # The environment CI deployed for this change. In a pipeline this is
-    # usually templated from the branch name.
+    # The environment CI deployed for this change. In a pipeline, pass
+    # `compare --candidate-environment "$candidate_environment"` instead, where
+    # candidate_environment is the source branch of the merge under test with
+    # dashes rewritten to underscores (a Puppet environment name cannot contain
+    # a dash, and r10k deploys branches that way): it overrides this value for
+    # every target, so the file stays reviewable policy and the job never
+    # rewrites it. With the flag this line may be omitted entirely.
+    # See docs/ci.md.
     environment: feature-1287
     catalog_api: v4                 # v4 | v3 — no default; see the README
     # allow_v3_fallback: false      # v4 only; opt-in, never implicit

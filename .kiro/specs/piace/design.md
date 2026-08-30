@@ -39,6 +39,7 @@ runtime dependencies; or render managed file content bytes.
 
 ```text
 piace compare --targets TARGETS.yaml --services SERVICES.yaml \
+  [--candidate-environment ENVIRONMENT] \
   [--text-out PATH] [--json-out PATH] [--html-out PATH]
 piace capture facts --targets TARGETS.yaml --services SERVICES.yaml
 piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
@@ -47,7 +48,11 @@ piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
 
 `compare` produces all requested reports from one result object. Omitting an
 artifact option writes text to stdout and suppresses that optional artifact;
-CI can request all three explicitly. The capture commands select targets from
+CI can request all three explicitly. `--candidate-environment` overrides
+`candidate.environment` for every target: the environment CI deployed is a
+per-pipeline value, and a pipeline must be able to name it without rewriting
+its own committed target file. `capture catalog --environment` is a separate
+flag naming the environment to snapshot, and never a candidate override. The capture commands select targets from
 the same target file and write the configured local snapshot paths. They never
 write to PuppetDB.
 
@@ -128,7 +133,10 @@ still leaves the compilation itself mutating: see section 5.
 6. `facts.source: file` requires `facts.file`; `baseline.source: file` requires
    `baseline.file`. PuppetDB sources reject a file value. Every target needs a
    candidate environment, fact source, baseline source, baseline environment,
-   API version, and `fail_on_diff` after resolution.
+   API version, and `fail_on_diff` after resolution. An invocation override
+   (section 2.1's `--candidate-environment`) is substituted into the decoded
+   target file before resolution, so it satisfies that requirement and is
+   validated and recorded as a file-supplied value would be.
 7. Impact limits must be positive; the effective network request deadline is
    the smaller of the service deadline and the target impact timeout.
 
