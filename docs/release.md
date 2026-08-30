@@ -18,6 +18,12 @@ distribution".
 | `SHA256SUMS` | One SHA-256 line per binary, sorted by filename |
 | `SHA256SUMS.asc` | Detached OpenPGP signature over `SHA256SUMS` |
 
+Published alongside them, from the same artifacts:
+
+| Image | Contents |
+| --- | --- |
+| `example42/piace:<version>` | A `linux/amd64` + `linux/arm64` manifest list; `:latest` moves with every non-prerelease |
+
 The signature covers the **manifest**, not each binary individually. One
 signature then transitively covers every artifact, and a consumer needs
 exactly one trusted public key rather than one signature per platform.
@@ -68,6 +74,26 @@ artifacts attests to integrity, never to origin. The release notes say so
 in as many words, so a consumer is not left following a verification step
 that cannot yet succeed.
 
+### The container image
+
+Once the release exists, a fourth job packages those same binaries as
+`example42/piace:<version>` and pushes it to Docker Hub. It waits on the
+release rather than running beside it, so the GitHub Release stays the
+primary artifact: if the push fails, the release is already out and
+re-running the `publish container image` job on its own finishes the
+work. A prerelease publishes its version tag but does not move `latest`.
+
+The image job needs two repository secrets, and fails visibly on the
+first tag pushed without them:
+
+| Secret | Value |
+| --- | --- |
+| `DOCKERHUB_USERNAME` | A Docker Hub account with push access to `example42/piace` |
+| `DOCKERHUB_TOKEN` | A Docker Hub **access token** for that account with Read & Write scope, not the account password |
+
+Use an access token: it is scoped, revocable on its own, and does not
+carry the account's Hub session.
+
 ## Generating the artifacts by hand
 
 CI runs exactly this, and it stays usable directly for an air-gapped or
@@ -98,6 +124,49 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> \
   directory.
 - `-X main.toolVersion=<version>` stamps the version the tool reports and
   records in every result document's invocation metadata.
+
+## Building the image by hand
+
+The `Dockerfile` copies release artifacts; it does not compile. Build
+them first, then hand the same version in as a build argument:
+
+```sh
+scripts/build-release.sh 1.0.0
+docker build --build-arg VERSION=1.0.0 -t piace:1.0.0 .
+```
+
+The image is `gcr.io/distroless/static-debian12:nonroot` plus the one
+binary: no shell, no package manager, and a CA bundle only because
+`piace explain` verifies an inference service against the system roots
+(the compiler and PuppetDB transports carry their own CA bundle from the
+services file, and trust nothing else). Assembling it from the built
+artifacts rather than from a `golang` builder stage is what makes the
+binary inside the image the same bytes `SHA256SUMS` certifies.
+
+It runs as uid 65532, which cannot write to a bind mount owned by
+someone else, and writing a report into the mounted workspace is the
+common case, so pass the invoking user:
+
+```sh
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --volume "$PWD:/work" \
+  example42/piace:1.0.0 \
+  compare --targets targets.yaml --services services.yaml --html-out report.html
+```
+
+The working directory is `/work`. Every path in `targets.yaml` and
+`services.yaml` (CA bundle, client certificate, key, snapshots, output
+files) is resolved inside the container, so they have to be reachable
+under that mount.
+
+The image deliberately carries the binary and nothing else, which decides
+where it fits. `scripts/change-context.sh` is not in it and cannot be: it
+needs bash, git, and a checkout with history, none of which belong in an
+image whose job is to hold one static binary. It runs on the runner, which
+has all three, and PIACE reads the file it produces. For the same reason the
+image cannot serve as a GitLab or GitHub CI job image, which must provide a
+shell: in CI, install the verified binary instead. See [ci.md](ci.md).
 
 ## Signing the manifest
 

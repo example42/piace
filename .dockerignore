@@ -1,0 +1,9 @@
+# An allowlist, not a denylist. The build context is exactly the release
+# binaries the Dockerfile copies: no source, no fixtures, no .git.
+#
+# Written this way round on purpose: `dist/` is gitignored, so a
+# .dockerignore modelled on .gitignore would exclude the one directory
+# the build actually needs and the failure would read as a missing
+# artifact rather than a mistake in this file.
+*
+!dist/piace-*
