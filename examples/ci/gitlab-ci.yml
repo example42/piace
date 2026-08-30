@@ -1,0 +1,147 @@
+# GitLab CI: compare on every merge request, then assess the result.
+#
+# Copy to .gitlab-ci.yml, or `include:` it, with the layout docs/ci.md
+# describes:
+#
+#   ci/piace/targets.yaml            committed, reviewable policy
+#   ci/piace/services.yaml.tmpl      committed, rendered per job
+#   ci/piace/services-explain.yaml   committed, inference only
+#   ci/piace/policy-notes.md         committed, site policy for the model
+#   ci/piace/change-context.sh       committed, copied from PIACE's scripts/
+#
+# Two jobs, not one, because they need different credentials: `piace-compare`
+# holds the catalog-reader identity and never sees the inference token,
+# `piace-explain` holds the inference token and never sees a private key.
+#
+# `image:` is a plain Alpine, not example42/piace. The docker executor runs a
+# job script by passing `sh` or `bash` to the image, so a job image has to
+# provide a shell (and grep) and an entrypoint that runs them. The published
+# PIACE image is distroless: no shell, and its entrypoint is the binary
+# itself. Install the verified binary into a shell image instead. The clone is
+# not the problem, that happens in the runner's helper container.
+
+variables:
+  PIACE_VERSION: "0.2.1"
+  # change-context.sh takes a merge base. GitLab clones shallow by default,
+  # and a shallow clone does not have one.
+  GIT_DEPTH: "0"
+  # Outside the checkout: nothing here reaches `cache:`, `artifacts:`, or a
+  # later `git status`. The docker and Kubernetes executors give each job a
+  # fresh container, so this directory is private to the job. A shell or ssh
+  # executor does not: there, every job on the host runs as the same user and
+  # can read this path.
+  PIACE_RUN: "/tmp/piace-run"
+
+stages:
+  - assess
+
+.piace-install: &piace-install
+  # Pinned to a version and verified against the manifest published with it.
+  # A runner that fetches "the latest binary" on every run is a supply chain
+  # you do not control. Alpine's busybox has wget and sha256sum built in, so
+  # this needs no apk and works on a runner with no package mirror.
+  - |
+    set -eu
+    base="https://github.com/example42/piace/releases/download/v${PIACE_VERSION}"
+    wget -q -O "piace-${PIACE_VERSION}-linux-amd64" "$base/piace-${PIACE_VERSION}-linux-amd64"
+    wget -q -O SHA256SUMS "$base/SHA256SUMS"
+    # One line of the manifest, not the whole file: the other platforms were
+    # not downloaded, and a line matching nothing on disk must fail rather
+    # than pass quietly.
+    grep " piace-${PIACE_VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
+    install -m 0755 "piace-${PIACE_VERSION}-linux-amd64" /usr/local/bin/piace
+
+piace-compare:
+  stage: assess
+  image: alpine:3.21
+  rules:
+    # Merge requests from a fork do not get protected variables, so the job
+    # would fail at TLS load with exit 30 rather than doing anything useful.
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_PATH == $CI_PROJECT_PATH
+  before_script:
+    - *piace-install
+  script:
+    # PIACE_CA_BUNDLE, PIACE_CLIENT_CERT and PIACE_PRIVATE_KEY are **file
+    # type** CI/CD variables: GitLab writes each value to a temporary file and
+    # puts that file's path in the variable. Use file type rather than
+    # variable type for all three. A PEM is multi-line, and a multi-line value
+    # cannot be masked, so a variable-type key is one `echo` away from a job
+    # log. Mark all three Protected as well, so an unprotected branch never
+    # sees them.
+    - install -d -m 0700 "$PIACE_RUN"
+    - install -m 0600 "$PIACE_CA_BUNDLE"   "$PIACE_RUN/ca.pem"
+    - install -m 0600 "$PIACE_CLIENT_CERT" "$PIACE_RUN/client.pem"
+    - install -m 0600 "$PIACE_PRIVATE_KEY" "$PIACE_RUN/client.key"
+    # PIACE expands nothing in a services file, and its TLS paths resolve
+    # against the process working directory, so the run directory has to be
+    # substituted in before the run rather than referenced from it.
+    - sed "s|@PIACE_RUN@|$PIACE_RUN|g" ci/piace/services.yaml.tmpl > "$PIACE_RUN/services.yaml"
+    - |
+      piace compare \
+        --targets ci/piace/targets.yaml \
+        --services "$PIACE_RUN/services.yaml" \
+        --json-out report.json \
+        --html-out report.html
+  after_script:
+    # after_script runs even when the job fails, times out or is cancelled,
+    # which is exactly when a private key is most likely to be left behind.
+    - rm -rf "$PIACE_RUN"
+  allow_failure:
+    # 10 is a policy difference: a real finding, reported as a warning so the
+    # assessment job still runs and a reviewer sees the report. 20 (the
+    # candidate did not compile) and 30 (the run did not complete) stay hard
+    # failures. Drop this block to block the merge request on 10 as well.
+    exit_codes: 10
+  artifacts:
+    when: always
+    expire_in: 1 week
+    # Both reports carry catalog values, redacted per targets.yaml but not
+    # otherwise sanitized. `access:` keeps them away from roles that can see
+    # the pipeline but have no business reading a catalog.
+    access: 'developer'
+    paths:
+      - report.json
+      - report.html
+
+piace-explain:
+  stage: assess
+  image: alpine:3.21
+  needs:
+    # piace-compare is `allow_failure: exit_codes: 10`, so a policy difference
+    # counts as success for the DAG and this job still runs: that is the
+    # pipeline most worth assessing, and `compare` writes report.json before
+    # it exits 10. A hard failure (20 or 30) skips this job, which is right,
+    # because there is no complete result document to assess.
+    - job: piace-compare
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_PATH == $CI_PROJECT_PATH
+  before_script:
+    - *piace-install
+    # git is not in the base Alpine image, and this job needs a checkout with
+    # history to describe the change.
+    - apk add --no-cache git bash
+  script:
+    # PIACE never invokes git. This script does, in the checkout, on the
+    # runner: commit subjects and changed paths only, never bodies. Read
+    # examples/change-context.yaml before enabling it. Everything in the
+    # generated file is forwarded to the inference service as data, and the
+    # change context is not pseudonymized.
+    - ci/piace/change-context.sh "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" HEAD > change-context.yaml
+    # PIACE_INFERENCE_TOKEN is a masked, protected variable of type variable:
+    # a bearer token is single-line, so unlike a PEM it can be masked. The
+    # services file references it by name; there is no field that inlines one.
+    - |
+      piace explain \
+        --json-in report.json \
+        --services ci/piace/services-explain.yaml \
+        --change change-context.yaml \
+        --ai-out assessment.json \
+        --html-out report.html
+  artifacts:
+    when: always
+    expire_in: 1 week
+    access: 'developer'
+    paths:
+      - assessment.json
+      - report.html

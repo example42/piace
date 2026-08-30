@@ -20,6 +20,7 @@ TLS paths, and delete the comments you no longer need.
 | [`services-explain-only.yaml`](services-explain-only.yaml) | `explain` | Assessment on a runner with no Puppet mTLS material |
 | [`change-context.yaml`](change-context.yaml) | `explain` | The repository change under test |
 | [`policy-notes.md`](policy-notes.md) | `explain` | Site policy handed to the model as context |
+| [`ci/`](ci/) | `compare`, `explain` | Working GitHub Actions and GitLab CI pipelines, and the services template they render |
 
 Two files, deliberately separate: the reviewable selection/policy file
 (`targets-*.yaml`), and the endpoint/mTLS file that does not belong in a review
@@ -67,5 +68,18 @@ TLS paths do not exist. They load, which is the part these files are for.
   `catalog_api: v3` with `baseline.source: puppetdb` loads, looks normal, and
   corrupts the baseline it just read. See
   [`targets-v3-legacy.yaml`](targets-v3-legacy.yaml).
+
+## In a pipeline
+
+[`ci/`](ci/) holds the same configuration arranged for CI: two jobs so the
+identity that reads every catalog in the estate is never in the same job as
+the inference token, the identity written to a per-job directory outside the
+checkout, and a services file rendered from
+[`ci/services.yaml.tmpl`](ci/services.yaml.tmpl) because PIACE expands no
+variables and its TLS paths resolve against the process working directory.
+
+Read [docs/ci.md](../docs/ci.md) alongside them: it covers where each file
+belongs, how the exit code becomes a gate, and what changes when the runner is
+one you do not control.
 
 Full reference: the [README](../README.md).

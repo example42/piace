@@ -4,6 +4,23 @@ All notable changes to PIACE are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-30
+
+### Added
+
+- **A published container image**: cutting a `v*` tag now also pushes
+  `example42/piace:<version>` to Docker Hub, as a `linux/amd64` +
+  `linux/arm64` manifest list; `:latest` moves with every non-prerelease. The
+  image is the release binary the workflow already verified, copied onto
+  `distroless/static`, so what a `docker pull` runs is the bytes `SHA256SUMS`
+  certifies. It runs as a non-root user out of `/work`: see the README's
+  Install section for the mount and `--user` flags.
+- **[docs/ci.md](docs/ci.md) and [examples/ci/](examples/ci/)**: copy-ready
+  GitHub Actions and GitLab CI pipelines, where each configuration file belongs
+  in a control repository, and what changes when the runner is one you do not
+  control. Two jobs by design, so the catalog-reader identity and the inference
+  token are never held by the same job.
+
 ## [0.2.0] - 2026-08-29
 
 ### Added
@@ -156,5 +173,7 @@ than what changed.
 The last two are recorded as skipped tests carrying their confirmation
 procedures in `cmd/piace/acceptance_assumptions_test.go`.
 
-[Unreleased]: https://github.com/example42/piace/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/example42/piace/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/example42/piace/releases/tag/v0.2.1
+[0.2.0]: https://github.com/example42/piace/releases/tag/v0.2.0
 [0.1.0]: https://github.com/example42/piace/releases/tag/v0.1.0

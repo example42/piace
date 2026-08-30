@@ -32,6 +32,23 @@ go build -o piace ./cmd/piace
 Go 1.22+, no other dependency. Release artifacts, checksums and signature
 verification: [docs/release.md](docs/release.md).
 
+Or run the published image, which is the same release binary on a
+distroless base. It runs as a non-root user and works out of `/work`, so
+mount your workspace there and pass your own uid; without both, writing a
+report into the mount fails with a permission error:
+
+```sh
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --volume "$PWD:/work" \
+  example42/piace:latest \
+  compare --targets targets.yaml --services services.yaml --html-out report.html
+```
+
+Every path in `targets.yaml` and `services.yaml` (CA bundle, client
+certificate, key, snapshots, outputs) is resolved inside the container,
+so keep them under the mount.
+
 ## Quick start
 
 1. **Write `services.yaml`** — where your compiler and PuppetDB are, and the
@@ -48,7 +65,9 @@ piace compare --targets targets.yaml --services services.yaml \
 ```
 
 The text report goes to stdout; the exit code tells CI what happened. See
-[Exit codes](#exit-codes).
+[Exit codes](#exit-codes), and [docs/ci.md](docs/ci.md) for the pipeline
+around it: file layout, credential handling, and copy-ready GitHub Actions and
+GitLab CI jobs.
 
 ---
 
@@ -636,4 +655,6 @@ intact, inside the fence.
 - [docs/development.md](docs/development.md) — building, testing, CI, releases,
   package layout, project status
 - [examples/](examples/) — loadable sample configuration for every usage pattern
+- [docs/ci.md](docs/ci.md): running PIACE in CI, pipeline shape, where each
+  file belongs, and credentials on a runner you do not control
 - [docs/release.md](docs/release.md) — release artifacts and verification
