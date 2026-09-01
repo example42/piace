@@ -229,14 +229,17 @@ jobs:
         "${COLLECTION_URI}${PROJECT}/_apis/git/repositories/${REPOSITORY_ID}/pullrequests/${PR_ID}?api-version=6.0"
       jq -r '.title' pull-request.json > pr-title.txt
       jq -r '.description // ""' pull-request.json > pr-body.txt
+      export HEAD_REF="${SOURCE_BRANCH#refs/heads/}"
       piace change-context \
         --base-ref-env BASE_REF \
+        --head-ref-env HEAD_REF \
         --title-file pr-title.txt \
         --description-file pr-body.txt \
         > change-context.yaml
     env:
       BIN_DIR: $(Agent.TempDirectory)/piace-bin
       TARGET_BRANCH: $(System.PullRequest.TargetBranch)
+      SOURCE_BRANCH: $(System.PullRequest.SourceBranch)
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       COLLECTION_URI: $(System.TeamFoundationCollectionUri)
       PROJECT: $(System.TeamProject)

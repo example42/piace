@@ -42,6 +42,8 @@ inference:
   model: claude-sonnet-5
   # Named, never inlined. The comparison job is not granted this variable.
   token_env: PIACE_INFERENCE_TOKEN
-  # Relative to this file, like every path in a config file. Drop the line if
-  # you have no site policy to hand the model.
-  policy_notes_file: policy-notes.md
+  # Relative to this file, like every path in a config file. In a control
+  # repository this sits beside services.yaml and reads
+  # `policy_notes_file: policy-notes.md`; here it points one directory up at
+  # the sample. Drop the line if you have no site policy to hand the model.
+  policy_notes_file: ../policy-notes.md

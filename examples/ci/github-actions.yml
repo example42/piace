@@ -205,11 +205,17 @@ jobs:
         if: steps.reports.outcome == 'success'
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
+          # --head-ref-env is not decoration here: a pull_request checkout is
+          # detached at a temporary merge commit, so asking git for the branch
+          # name yields the literal "HEAD" and the assessment never learns
+          # which branch it is reading.
           BASE_REF="origin/$BASE_REF" piace change-context \
             --base-ref-env BASE_REF \
+            --head-ref-env HEAD_REF \
             --title-env PR_TITLE \
             --description-env PR_BODY \
             > change-context.yaml

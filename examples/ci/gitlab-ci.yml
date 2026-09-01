@@ -146,6 +146,7 @@ piace-explain:
     - |
       piace change-context \
         --base-ref "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" \
+        --head-ref-env CI_MERGE_REQUEST_SOURCE_BRANCH_NAME \
         --title-env CI_MERGE_REQUEST_TITLE \
         --description-env CI_MERGE_REQUEST_DESCRIPTION \
         > change-context.yaml

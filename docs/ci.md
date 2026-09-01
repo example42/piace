@@ -117,7 +117,9 @@ Committed to the control repository, under one directory:
 Written per job, into a private directory outside the checkout, and removed
 when the job ends: `ca.pem`, `client.pem` and `client.key`, `0600` in a `0700`
 directory, with their absolute paths exported as the variables the services
-file names.
+file names. GitLab is the exception: a **file type** variable already writes
+the value outside the checkout and hands the job its path, so a GitLab job
+creates nothing and has nothing to clean up.
 
 Produced by the run, in the workspace, uploaded as job artifacts:
 `report.json`, `report.html`, `assessment.json`.
@@ -279,9 +281,10 @@ user and can read the same paths. On a shared shell runner, treat the identity
 as disclosed to every project that can schedule work there, and use a
 dedicated runner instead.
 
-**Clean up on the failure paths.** GitLab's `after_script` runs even when the
-job fails, times out or is cancelled; GitHub needs `if: always()`. That is
-precisely when a key is most likely to be left behind.
+**Clean up on the failure paths,** wherever the job itself wrote the key.
+GitHub needs `if: always()` and Azure a `condition: always()`, which is
+precisely when a key is most likely to be left behind. A GitLab job using file
+type variables writes nothing and has nothing to remove.
 
 **Do not trace the secret-handling steps.** PIACE never prints credentials,
 and `--debug` reports only request metadata and response member names, so it
