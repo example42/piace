@@ -75,13 +75,15 @@ type changeContextFile struct {
 	Change  changeWire `yaml:"change"`
 }
 
+// omitempty is for the encoder's benefit only: a decoder ignores it, and
+// a generated document that carries an empty title should not spell it.
 type changeWire struct {
-	BaseRef      string   `yaml:"base_ref"`
-	HeadRef      string   `yaml:"head_ref"`
-	Commits      []Commit `yaml:"commits"`
-	ChangedPaths []string `yaml:"changed_paths"`
-	Title        string   `yaml:"title"`
-	Description  string   `yaml:"description"`
+	BaseRef      string   `yaml:"base_ref,omitempty"`
+	HeadRef      string   `yaml:"head_ref,omitempty"`
+	Commits      []Commit `yaml:"commits,omitempty"`
+	ChangedPaths []string `yaml:"changed_paths,omitempty"`
+	Title        string   `yaml:"title,omitempty"`
+	Description  string   `yaml:"description,omitempty"`
 }
 
 // LoadChangeContext reads and bounds a change context file. An empty path

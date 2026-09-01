@@ -1,6 +1,6 @@
-// Command piace is the PIACE CLI entry point. It provides four
-// subcommands: `compare`, `capture facts`, `capture catalog`, and
-// `explain`. See design.md section 2.1 ("CLI surface").
+// Command piace is the PIACE CLI entry point. It provides five
+// subcommands: `compare`, `capture facts`, `capture catalog`, `explain`
+// and `change-context`. See design.md section 2.1 ("CLI surface").
 //
 // This file wires argument parsing, transport/adapter construction, and
 // stable exit codes. All domain behavior lives in internal packages:
@@ -90,6 +90,8 @@ func run(args []string, stdout, stderr *os.File) exitcode.Code {
 		return runCapture(args[1:], stdout, stderr)
 	case "explain":
 		return runExplain(args[1:], stdout, stderr)
+	case "change-context":
+		return runChangeContext(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		fmt.Fprintln(stdout, usage())
 		return exitcode.Success
@@ -112,6 +114,10 @@ piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
 piace explain --json-in REPORT.json --services SERVICES.yaml \
   [--ai-out PATH] [--html-out PATH] [--change CHANGE.yaml] \
   [--fail-on-inference-error] [--debug] [--debug-dump-dir DIR]
+piace change-context (--base-ref REF | --base-ref-env VAR) \
+  [--head-ref REF | --head-ref-env VAR] \
+  [--title-env VAR | --title-file PATH] \
+  [--description-env VAR | --description-file PATH]
 
 The text report summarizes for a CI log: it omits dependency-graph edge
 changes and each impact estimate's PQL and request options, and names only
@@ -150,7 +156,29 @@ no inference service.
                          recorded in the artifact and the command still
                          exits 0
 
-All four subcommands also accept:
+change-context writes a change context file to stdout for explain to
+read. It is the one subcommand that invokes git, and it is optional:
+explain --change reads a file the caller produced by any means, so a
+repository under a different VCS still describes its change by hand.
+Commit subjects are collected, never bodies.
+  --base-ref REF         the ref the change branched from (required, or
+                         --base-ref-env)
+  --head-ref REF         the ref under test (default HEAD)
+  --base-ref-env VAR, --head-ref-env VAR
+                         read the ref from the named environment variable
+                         instead
+  --title-env VAR, --title-file PATH
+                         the change title, by variable name or path
+  --description-env VAR, --description-file PATH
+                         the change description, by variable name or path
+
+  There is no --title or --description flag on purpose. A pull request
+  title is attacker-supplied text, and a CI system that substitutes it
+  into script text before a shell runs (GitHub ${{ }}, Azure $( )) turns
+  one into arbitrary code execution on the runner. Naming the variable
+  keeps its value off the command line.
+
+compare, capture and explain also accept:
   --debug                print one line per service request to stderr (method,
                          URL, status, duration, body sizes, response top-level
                          JSON keys); no body content is printed. For explain
