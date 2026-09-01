@@ -36,8 +36,10 @@ func LoadTargetFile(path string, ov Overrides) ([]Target, error) {
 }
 
 // LoadServicesFile decodes and fully resolves a `--services` YAML file
-// from path. It performs no network or service I/O; only local filesystem
-// access to read path itself. TLS file existence/readability is validated
+// from path. Relative TLS paths resolve against path's containing
+// directory. It performs no network or service I/O; only local filesystem
+// access to read path itself, and to read any file an environment variable
+// the file names points at. TLS file existence/readability is validated
 // later, at transport construction (task 3).
 func LoadServicesFile(path string) (Services, error) {
 	f, err := os.Open(path)
@@ -51,7 +53,7 @@ func LoadServicesFile(path string) (Services, error) {
 		return Services{}, err
 	}
 
-	return ResolveServices(sf)
+	return ResolveServices(sf, filepath.Dir(path))
 }
 
 // Load decodes and resolves both the target and services files, per

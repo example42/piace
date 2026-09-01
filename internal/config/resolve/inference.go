@@ -75,7 +75,7 @@ func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 		c.addf("services.inference.model: missing")
 	}
 
-	token := resolveInferenceToken(in, &c)
+	token := resolveInferenceToken(in, dir, &c)
 
 	timeout := DefaultInferenceTimeout
 	if in.Timeout != "" {
@@ -118,10 +118,7 @@ func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 
 	var notes string
 	if in.PolicyNotesFile != "" {
-		path := in.PolicyNotesFile
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(dir, path)
-		}
+		path := resolveAgainst(dir, in.PolicyNotesFile)
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			c.addf("services.inference.policy_notes_file: %s", err)
@@ -156,7 +153,11 @@ func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 // configuration error rather than a precedence rule nobody remembers, and
 // naming neither is refused outright: PIACE never mints or discovers a
 // credential on its own.
-func resolveInferenceToken(in config.InferenceSection, c *errorCollector) string {
+//
+// dir is the services file's directory, against which a relative
+// token_file resolves, the same rule policy_notes_file and the TLS paths
+// follow.
+func resolveInferenceToken(in config.InferenceSection, dir string, c *errorCollector) string {
 	switch {
 	case in.TokenEnv != "" && in.TokenFile != "":
 		c.addf("services.inference: set token_env or token_file, not both")
@@ -168,14 +169,15 @@ func resolveInferenceToken(in config.InferenceSection, c *errorCollector) string
 		}
 		return token
 	case in.TokenFile != "":
-		raw, err := os.ReadFile(in.TokenFile)
+		path := resolveAgainst(dir, in.TokenFile)
+		raw, err := os.ReadFile(path)
 		if err != nil {
 			c.addf("services.inference.token_file: %s", err)
 			return ""
 		}
 		token := strings.TrimSpace(string(raw))
 		if token == "" {
-			c.addf("services.inference.token_file: %s is empty", in.TokenFile)
+			c.addf("services.inference.token_file: %s is empty", path)
 		}
 		return token
 	default:
@@ -189,4 +191,14 @@ func boolOrDefault(p *bool, def bool) bool {
 		return def
 	}
 	return *p
+}
+
+// resolveAgainst applies the one path rule a config file follows: a
+// relative path resolves against the directory of the file that named it,
+// an absolute one is taken as written.
+func resolveAgainst(dir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(dir, path)
 }
