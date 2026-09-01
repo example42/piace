@@ -4,14 +4,14 @@
 //
 // # Scope
 //
-// Diff is the single entry point: given a resolved resolve.Target and two
-// already-normalized catalogs (internal/normalize, internal/normalize) for that
-// target's certname — before (baseline) and after (candidate) — it
+// Diff is the single entry point: given a resolved resolve.Target and
+// two already-normalized catalogs (internal/normalize) for that target's
+// certname, before being the baseline and after the candidate, it
 // produces exactly one model.NodeDiff plus any diagnostics discovered
-// while resolving File-content evidence (internal/filecontent, internal/filecontent).
-// It does not fetch, normalize, or aggregate anything itself: those are
-// source retrieval and normalization, and internal/aggregate (cross-target
-// aggregation), which is deliberately not implemented here.
+// while resolving File-content evidence (internal/filecontent). It does
+// not fetch, normalize, or aggregate anything itself: retrieval and
+// normalization happen upstream, and cross-target aggregation in
+// internal/aggregate.
 //
 // # Ordering
 //
@@ -27,7 +27,7 @@
 //     only those with a change), and every resource/parameter/edge
 //     difference touching an excluded identity is removed from the
 //     result. model.NodeDiff.HasDifference is computed immediately after
-//     this step, from the remaining (non-excluded) differences only —
+//     this step, from the remaining (non-excluded) differences only:
 //     an excluded difference never counts as "a difference" for
 //     HasDifference, policy evaluation, or aggregation. Exclusion
 //     suppresses differences only, never diagnostics: File-content
@@ -39,7 +39,7 @@
 //     interesting, not that a failure to look may go unreported.
 //  3. Redaction: applied last, strictly after HasDifference is already
 //     fixed, so a redacted value can never remove a change from being
-//     counted as a difference — it only masks the value in place.
+//     counted as a difference: it only masks the value in place.
 //     Redaction has two independent sources, both described below.
 //
 // # Redaction source 1: Puppet `Sensitive` wrapper detection
@@ -53,10 +53,10 @@
 // response, the same category of documented-but-unverified assumption
 // internal/filecontent/doc.go already carries for its own wire shapes.
 //
-// Puppet's Pcore "generic data" representation (the format used when a
-// catalog is compiled with rich data enabled — see
+// Puppet's Pcore "generic data" representation, the format used when a
+// catalog is compiled with rich data enabled (see
 // https://github.com/puppetlabs/puppet-specifications/blob/master/language/data-types/pcore-data-representation.md
-// and pcore-generic-data.md) represents any value outside the plain
+// and pcore-generic-data.md), represents any value outside the plain
 // JSON-compatible subset as a JSON object carrying a reserved `__ptype`
 // key naming the Pcore type, with the wrapped payload usually under a
 // `__pvalue` key. Puppet's Ruby serializer
@@ -82,13 +82,13 @@
 // still-wrapped map, never unwrapped or interpreted, so it is never
 // copied into the serializable result.
 //
-// A catalog compiled without rich data enabled never produces this
-// shape at all (Sensitive values either fail to serialize or are
-// converted to a plain "Sensitive [value redacted]" string by Puppet
-// itself before the wire response is built); this package's Sensitive
-// detection is therefore a defense-in-depth complement to, not a
-// replacement for, whatever the compiler itself already does — it costs
-// nothing when the shape never appears.
+// A catalog compiled without rich data enabled never produces this shape
+// at all: Sensitive values either fail to serialize or are converted to
+// a plain "Sensitive [value redacted]" string by Puppet itself before
+// the wire response is built. This package's Sensitive detection is
+// therefore a defense-in-depth complement to whatever the compiler
+// already does rather than a replacement for it, and it costs nothing
+// when the shape never appears.
 //
 // # Redaction source 2: configured selectors
 //
@@ -108,20 +108,16 @@
 // no evidence-only projection to route them through.
 //
 // For a File resource's synthesized content-bearing change (see
-// "File-content-bearing parameter handling" below), this package follows
-// the existing test-fixture convention already established in
-// internal/config/target_test.go and
-// internal/config/resolve/target_test.go — a File-content redaction
-// selector is always written as {Type: "File", Parameter: "content"}
-// regardless of which of the four raw content-bearing parameters
-// (content/source/checksum/checksum_value) actually produced the
-// difference. redactChange (redact.go) is triggered by exactly that
-// selector shape and clears the evidence's Algorithm field, replacing
-// both digests with model.RedactedValue and setting Redacted: true —
-// preserving State (the change classification) exactly as
-// internal/filecontent computed it. A redacted content selector emits a
-// stable REDACTED value while preserving the change classification, and
-// no digest reaches a report.
+// "File-content-bearing parameter handling" below), a File-content
+// redaction selector is always written as {Type: "File", Parameter:
+// "content"} regardless of which of the four raw content-bearing
+// parameters (content, source, checksum, checksum_value) actually
+// produced the difference. redactChange (redact.go) is triggered by
+// exactly that selector shape and clears the evidence's Algorithm field,
+// replacing both digests with model.RedactedValue and setting Redacted:
+// true, preserving State exactly as internal/filecontent computed it. A
+// redacted content selector emits a stable REDACTED value while
+// preserving the change classification, and no digest reaches a report.
 //
 // # File-content-bearing parameter handling
 //

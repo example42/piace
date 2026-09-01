@@ -28,9 +28,9 @@ const DefaultTimeout = 30 * time.Second
 const DefaultMaxResponseBodyBytes int64 = 64 * 1024 * 1024
 
 // Client is one hardened, independent mTLS HTTP client for a single
-// resolve.Endpoint (compiler or PuppetDB). Two Clients built from two
+// resolve.Endpoint, compiler or PuppetDB. Two Clients built from two
 // NewClient calls never share a *tls.Config or *http.Transport, even
-// when their resolve.Endpoint values name identical certificate files —
+// when their resolve.Endpoint values name identical certificate files:
 // each call constructs its own tls.Config and http.Transport from
 // scratch.
 type Client struct {
@@ -189,10 +189,11 @@ type Response struct {
 	Body       []byte
 }
 
-// NewRequest wraps http.NewRequestWithContext. It exists so every request
-// this package's callers build goes through one helper (per doc.go's
-// framing of the deadline as a helper, not only a global Client.Timeout);
-// it does not itself apply the deadline — Do does, per request.
+// NewRequest wraps http.NewRequestWithContext. It exists so every
+// request this package's callers build goes through one helper, per
+// doc.go's framing of the deadline as a helper rather than only a global
+// Client.Timeout. It does not itself apply the deadline; Do does, per
+// request.
 func (c *Client) NewRequest(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
 	return http.NewRequestWithContext(ctx, method, url, body)
 }
@@ -272,8 +273,8 @@ func (c *Client) Do(req *http.Request, timeout time.Duration) (*Response, error)
 // snapshotRequestBody replays req's body via GetBody, which
 // http.NewRequestWithContext populates for the in-memory readers this
 // package's callers use. It returns nil for a request with no body, or
-// one whose body cannot be replayed — debug observation must never
-// change what is sent or fail a request.
+// one whose body cannot be replayed: debug observation must never change
+// what is sent or fail a request.
 func snapshotRequestBody(req *http.Request) []byte {
 	if req.GetBody == nil {
 		return nil

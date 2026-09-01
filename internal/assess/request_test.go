@@ -25,7 +25,7 @@ func buildBody(t *testing.T, cfg Config, cc ChangeContext) (string, Pseudonyms) 
 
 // --- Increment 2: pseudonymized identity ---
 
-// Slice 2.1 and 2.4: no real certname and no service authority leaves.
+// no real certname and no service authority leaves.
 func TestRequestCarriesNoRealNodeNameOrServiceAuthority(t *testing.T) {
 	body, p := buildBody(t, testConfig(), ChangeContext{})
 
@@ -39,7 +39,7 @@ func TestRequestCarriesNoRealNodeNameOrServiceAuthority(t *testing.T) {
 	}
 }
 
-// Slice 2.4 again, stated separately: authorities are omitted outright
+// Stated separately: authorities are omitted outright
 // rather than pseudonymized. A model has no use for them.
 func TestRequestOmitsServiceAuthoritiesEvenWithoutPseudonymization(t *testing.T) {
 	cfg := testConfig()
@@ -53,7 +53,7 @@ func TestRequestOmitsServiceAuthoritiesEvenWithoutPseudonymization(t *testing.T)
 	}
 }
 
-// Slice 2.2: the mapping is stable and injective within a run.
+// the mapping is stable and injective within a run.
 func TestPseudonymsAreStableAndInjective(t *testing.T) {
 	_, p := buildBody(t, testConfig(), ChangeContext{})
 
@@ -69,7 +69,7 @@ func TestPseudonymsAreStableAndInjective(t *testing.T) {
 	}
 }
 
-// Slice 2.3: resource identities are the signal and pass through whole.
+// resource identities are the signal and pass through whole.
 func TestResourceIdentitiesAreNotPseudonymized(t *testing.T) {
 	body, _ := buildBody(t, testConfig(), ChangeContext{})
 
@@ -80,7 +80,7 @@ func TestResourceIdentitiesAreNotPseudonymized(t *testing.T) {
 	}
 }
 
-// Slice 2.5: the opt-out sends real certnames and nothing else changes.
+// the opt-out sends real certnames and nothing else changes.
 func TestPseudonymizationOptOutSendsRealCertnames(t *testing.T) {
 	cfg := testConfig()
 	cfg.Pseudonymize = false
@@ -96,7 +96,7 @@ func TestPseudonymizationOptOutSendsRealCertnames(t *testing.T) {
 
 // --- Increment 3: building the request ---
 
-// Slice 3.1: ranking is by reach, then kind, then canonical identity.
+// ranking is by reach, then kind, then canonical identity.
 func TestGroupsAreRankedByHowManyNodesTheyReach(t *testing.T) {
 	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
 	if err != nil {
@@ -137,8 +137,8 @@ func TestEdgeGroupsAreNotSentForAssessment(t *testing.T) {
 	}
 }
 
-// Slice 3.2: over the cap, the top N are sent and the omission is counted
-// exactly — unlike an impact estimate, the total is known locally.
+// Over the cap, the top N are sent and the omission is counted exactly.
+// Unlike an impact estimate, the total is known locally.
 func TestOverTheGroupCapTheRequestSaysWhatItLeftOut(t *testing.T) {
 	cfg := testConfig()
 	cfg.MaxGroups = 1
@@ -159,7 +159,7 @@ func TestOverTheGroupCapTheRequestSaysWhatItLeftOut(t *testing.T) {
 	}
 }
 
-// Slice 3.3 and 3.4: caller-supplied free text is fenced and labelled,
+// caller-supplied free text is fenced and labelled,
 // and an instruction-shaped description stays inside the fence.
 func TestChangeContextFreeTextIsFencedAsUntrustedData(t *testing.T) {
 	cc := ChangeContext{
@@ -192,7 +192,7 @@ func TestChangeContextFreeTextIsFencedAsUntrustedData(t *testing.T) {
 	}
 }
 
-// Slice 3.5: site policy notes reach the request at one designated point.
+// site policy notes reach the request at one designated point.
 func TestPolicyNotesAreCarriedAndCapped(t *testing.T) {
 	cfg := testConfig()
 	cfg.PolicyNotes = strings.Repeat("p", MaxPolicyNotesBytes*2)
@@ -213,10 +213,10 @@ func TestPolicyNotesAreCarriedAndCapped(t *testing.T) {
 	}
 }
 
-// Slice 3.6: the assembled request equals a checked-in golden fixture, so
-// changing what PIACE asks the inference service — the task prompt, the
-// fences, the order of the blocks, the sampling options, the
-// structured-output nesting — is a visible diff in review rather than a
+// The assembled request equals a checked-in golden fixture, so changing
+// what PIACE asks the inference service, whether the task prompt, the
+// fences, the order of the blocks, the sampling options or the
+// structured-output nesting, is a visible diff in review rather than a
 // runtime surprise.
 //
 // The golden is over the whole marshalled request, not over the TaskPrompt
@@ -256,7 +256,7 @@ func TestAssembledRequestEqualsItsGoldenFixture(t *testing.T) {
 	}
 }
 
-// Slice 3.6, stated separately: the system message is the binary-fixed
+// the system message is the binary-fixed
 // prompt verbatim, and its vocabulary is the one CONTEXT.md fixes.
 func TestTaskPromptIsFixed(t *testing.T) {
 	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
@@ -276,7 +276,7 @@ func TestTaskPromptIsFixed(t *testing.T) {
 	}
 }
 
-// Slice 3.7: the disclosure boundary, at the seam that decides it.
+// the disclosure boundary, at the seam that decides it.
 func TestRequestDisclosesNoSecretOrManagedBytes(t *testing.T) {
 	body, _ := buildBody(t, testConfig(), ChangeContext{})
 
@@ -312,9 +312,9 @@ func TestRequestDisclosesNoSecretOrManagedBytes(t *testing.T) {
 	}
 }
 
-// Slice 3.8: the structured-output field, in the shape the OpenAI API
-// reference documents. No sampling parameter is sent unless one is
-// configured — see TestRequestSamplingAndTokenLimit.
+// The structured-output field, in the shape the OpenAI API reference
+// documents. No sampling parameter is sent unless one is configured; see
+// TestRequestSamplingAndTokenLimit.
 func TestRequestAsksForStructuredOutput(t *testing.T) {
 	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
 	if err != nil {
@@ -398,8 +398,8 @@ func TestRequestSamplingAndTokenLimit(t *testing.T) {
 		t.Errorf("body missing the configured fields: %s", raw)
 	}
 
-	// An explicit zero temperature is still sent — a pointer distinguishes
-	// it from unset.
+	// An explicit zero temperature is still sent, because a pointer
+	// distinguishes it from unset.
 	zero := 0.0
 	cfg2 := testConfig()
 	cfg2.Temperature = &zero

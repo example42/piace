@@ -15,11 +15,10 @@ import (
 )
 
 // Adapter is the PuppetDB-backed implementation of FactSource and
-// CatalogSource. It wraps a *transport.Client already built (by internal/transport's
-// package) from the resolved PuppetDB resolve.Endpoint, and issues only
-// GET requests against PuppetDB's v4 query API — see doc.go's "Scope"
-// section for why no write/command-endpoint call is possible from this
-// package.
+// CatalogSource. It wraps a *transport.Client already built from the
+// resolved PuppetDB resolve.Endpoint, and issues only GET requests
+// against PuppetDB's v4 query API. See doc.go's "Scope" section for why
+// no write or command endpoint call is possible from this package.
 type Adapter struct {
 	client  *transport.Client
 	baseURL *url.URL
@@ -60,11 +59,11 @@ func (a *Adapter) get(ctx context.Context, segment, certname string) (*transport
 	return a.client.Do(req, 0)
 }
 
-// diagnosticFromTransportError builds a model.Diagnostic from a transport-
-// layer error (connection/TLS/timeout/redirect/size failures — see
-// transport.Error), preferring the already-safe Kind/Host/Message fields
-// of a classified *transport.Error and falling back to
-// transport.SafeMessage for any other error reaching this package.
+// diagnosticFromTransportError builds a model.Diagnostic from a
+// transport-layer error (connection, TLS, timeout, redirect and size
+// failures; see transport.Error), preferring the already-safe Kind, Host
+// and Message fields of a classified *transport.Error and falling back
+// to transport.SafeMessage for any other error reaching this package.
 func diagnosticFromTransportError(op model.DiagnosticOperation, certname string, err error) model.Diagnostic {
 	var te *transport.Error
 	if errors.As(err, &te) {

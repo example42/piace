@@ -50,16 +50,15 @@ const certnameToken = "{certname}"
 // "/"-separated path component, enforcing the rule that the token may
 // occur only as an entire path component.
 //
-// The documented examples fix the exact rule: `snapshots/catalogs/
-// {certname}.json` is valid (the component's stem is exactly the token,
-// with a file extension suffix permitted) while `snapshots/
-// {certname}-catalog.json` is invalid (extra text directly abuts the
-// token with no separating extension dot). So the rule implemented here
-// is: the token must appear at the start of the component, and whatever
-// follows it in that component must be empty or start with a "."
-// (i.e. only a file extension may follow the token) — no other prefix or
-// suffix text is permitted, and the token may not repeat within one
-// component.
+// The documented examples fix the exact rule:
+// `snapshots/catalogs/{certname}.json` is valid, the component's stem
+// being exactly the token with a file extension suffix permitted, while
+// `snapshots/{certname}-catalog.json` is invalid, extra text abutting
+// the token with no separating extension dot. So the token must appear
+// at the start of the component, and whatever follows it there must be
+// empty or start with a ".": only a file extension may follow, no other
+// prefix or suffix text is permitted, and the token may not repeat
+// within one component.
 func expandCertnameSegment(seg, certname string) (string, error) {
 	if !strings.Contains(seg, certnameToken) {
 		return seg, nil
@@ -157,11 +156,12 @@ func validateHTTPSEndpoint(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// validateTLSPath checks a CA bundle/client certificate/private key
+// validateTLSPath checks a CA bundle, client certificate or private key
 // configuration value for syntactic validity only: non-empty and free of
-// NUL bytes (which no filesystem accepts). It intentionally does not
-// check existence or readability — see doc.go: that crosses into internal/transport's
-// concern once configuration is fully valid and TLS transports are built.
+// NUL bytes, which no filesystem accepts. It intentionally does not
+// check existence or readability, which crosses into
+// internal/transport's concern once configuration is fully valid and TLS
+// transports are built. See doc.go.
 func validateTLSPath(kind, value string) error {
 	if value == "" {
 		return fmt.Errorf("%s is empty", kind)

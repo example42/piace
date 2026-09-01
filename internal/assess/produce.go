@@ -17,8 +17,8 @@ type Completer interface {
 }
 
 // Meta is the provenance stamped onto a change assessment: when it was
-// produced, by which model, from which endpoint, and — the one that ties
-// it to a specific comparison — the checksum of the result document it
+// produced, by which model, from which endpoint, and, the one that ties
+// it to a specific comparison, the checksum of the result document it
 // was derived from.
 type Meta struct {
 	GeneratedAt          string
@@ -136,10 +136,10 @@ func unknownAssessment(planned []PlannedGroup) Assessment {
 //
 // Only an error-severity diagnostic makes a document partial. A warning
 // does not: model.OutcomeForDiagnostic is explicit that a warning
-// "contributes nothing" to the outcome, and a complete run emits them
-// routinely — a v3 compatibility notice, a directory content source.
-// Keying on the presence of any diagnostic would tell the reader of a
-// successful comparison that their input was incomplete.
+// contributes nothing to the outcome, and a complete run emits them
+// routinely, a v3 compatibility notice or a directory content source
+// among them. Keying on the presence of any diagnostic would tell the
+// reader of a successful comparison that their input was incomplete.
 func inputIsPartial(r model.Result) bool {
 	if hasResultError(r.Diagnostics) {
 		return true

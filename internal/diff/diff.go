@@ -20,7 +20,7 @@ import (
 // same certname; Diff does not fetch, normalize, or re-validate them.
 // retriever is passed through to internal/filecontent for File resources
 // whose content evidence needs compiler-backed retrieval, and may be nil
-// when no retrieval is available — internal/filecontent then reports
+// when no retrieval is available: internal/filecontent then reports
 // content_indeterminate with a diagnostic rather than claiming a
 // verified comparison.
 //
@@ -51,17 +51,15 @@ func Diff(
 	for i := range resourceChanges {
 		fingerprint, err := fingerprintResourceChange(resourceChanges[i])
 		if err != nil {
-			// A canonical-encoding failure means a value escaped the
-			// model.Value domain internal/normalize is required to
-			// enforce, so this branch is unreachable for any catalog
-			// that normalization accepted. If it is ever reached, the
-			// change is still reported — dropping it would hide a real
-			// difference — but with an empty Fingerprint, which the
-			// aggregate builder treats as "cannot group" rather than as a
-			// token every other unfingerprintable change shares. The
-			// error-severity diagnostic already forces an operational
-			// failure outcome, so no result relying on that grouping
-			// can be reported as clean.
+			// A canonical-encoding failure means a value escaped the model.Value
+			// domain internal/normalize is required to enforce, so this branch is
+			// unreachable for any catalog that normalization accepted. If it is ever
+			// reached the change is still reported, since dropping it would hide a
+			// real difference, but with an empty Fingerprint, which the aggregate
+			// builder treats as "cannot group" rather than as a token every other
+			// unfingerprintable change shares. The error-severity diagnostic already
+			// forces an operational failure outcome, so no result relying on that
+			// grouping can be reported as clean.
 			diagnostics = append(diagnostics, model.Diagnostic{
 				Severity:  model.SeverityError,
 				Operation: model.OperationNormalize,

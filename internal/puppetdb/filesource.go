@@ -25,9 +25,8 @@ import (
 // already imports internal/snapshot with no cycle risk, since
 // internal/snapshot imports nothing from this codebase's tree.
 //
-// FileSource never performs any network I/O and never mutates PuppetDB —
-// it only reads local snapshot files written by the capture workflow (see
-// capture.go).
+// FileSource never performs any network I/O and never mutates PuppetDB:
+// it only reads local snapshot files written by the capture workflow.
 type FileSource struct{}
 
 // NewFileSource builds a FileSource. It takes no arguments: unlike
@@ -157,11 +156,12 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 	return cat, prov, nil
 }
 
-// snapshotDiagnostic builds a model.Diagnostic for a local snapshot
-// load/validation failure. Unlike transport.Diagnostic (used by the
-// PuppetDB adapter for a remote service failure), there is no host/status
-// metadata to record here — message is already a safe, locally
-// constructed string (never raw file content), so it is used as-is.
+// snapshotDiagnostic builds a model.Diagnostic for a local snapshot load
+// or validation failure. Unlike transport.Diagnostic, used by the
+// PuppetDB adapter for a remote service failure, there is no host or
+// status metadata to record here, and message is already a safe, locally
+// constructed string that never carries raw file content, so it is used
+// as-is.
 func snapshotDiagnostic(op model.DiagnosticOperation, certname, message string) model.Diagnostic {
 	return model.Diagnostic{
 		Severity:  model.SeverityError,

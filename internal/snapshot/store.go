@@ -26,7 +26,7 @@ var ErrExists = errors.New("snapshot: destination already exists (use --replace 
 //     is atomic within one filesystem/directory on every platform Go
 //     targets);
 //   - best-effort fsyncs the containing directory afterward, so the
-//     rename itself is durable — this is skipped, without failing the
+//     rename itself is durable. This is skipped, without failing the
 //     write, on platforms/filesystems that reject an fsync on a
 //     directory file descriptor (e.g. this is a documented no-op on
 //     Windows; some filesystems return ENOTSUP), since a missing durable-
@@ -34,9 +34,9 @@ var ErrExists = errors.New("snapshot: destination already exists (use --replace 
 //     limitation this package cannot fix, not a correctness regression
 //     introduced here.
 //
-// Write does not itself verify env.PayloadChecksum against env.Payload —
-// callers are expected to have just computed it via Checksum (see the
-// capture workflow) — but it does refuse to write an envelope whose
+// Write does not itself verify env.PayloadChecksum against env.Payload,
+// callers being expected to have just computed it via Checksum (see the
+// capture workflow), but it does refuse to write an envelope whose
 // checksum field is empty, since that would silently produce a snapshot
 // Load could never validate.
 //
@@ -172,12 +172,12 @@ func Load(path string) (Envelope, error) {
 // CompilerAPIVersion, InputFactsetIdentity) plus a well-formed
 // CapturedAt timestamp.
 //
-// wantTarget is compared against env.Target exactly (case-sensitive; a
-// certname is not case-folded anywhere else in this codebase either).
-// Validate does not check env.FormatVersion or env.PayloadChecksum —
-// Load already enforces both unconditionally, and Validate is meant to be
-// callable on any Envelope Load has already returned, not to re-verify
-// what Load guarantees.
+// wantTarget is compared against env.Target exactly, case-sensitively, a
+// certname not being case-folded anywhere else in this codebase either.
+// Validate does not check env.FormatVersion or env.PayloadChecksum: Load
+// already enforces both unconditionally, and Validate is meant to be
+// callable on any Envelope Load has already returned rather than to
+// re-verify what Load guarantees.
 func Validate(env Envelope, wantKind Kind, wantTarget string) error {
 	if env.Kind != wantKind {
 		return fmt.Errorf("snapshot: target %q: envelope kind %q does not match expected kind %q",

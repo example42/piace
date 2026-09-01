@@ -18,11 +18,9 @@ const fileResourceType = "File"
 // contentBearingParameter is the stable parameter label a synthesized
 // File-content ResourceChange reports, regardless of which of the four
 // raw parameters below actually differed. It intentionally reuses
-// filecontent's own "content" parameter name (see
-// filecontent.doc.go's "Identifying a recognized compatible checksum"
-// section) so a configured redaction selector of {Type: "File",
-// Parameter: "content"} — the only shape any existing test fixture in
-// this codebase uses — matches it directly.
+// filecontent's own "content" parameter name (see filecontent's doc.go)
+// so a configured redaction selector of {Type: "File", Parameter:
+// "content"} matches it directly.
 const contentBearingParameter = "content"
 
 // fileContentBearingParameters is the exact set of File parameter names

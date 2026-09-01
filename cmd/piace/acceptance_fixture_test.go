@@ -59,9 +59,9 @@ func newHarness(t *testing.T) *harness {
 }
 
 // writeConfigs writes services.yaml and targets.yaml. TLS paths are
-// absolute: internal/transport resolves them against the process working
-// directory, not against the services file (see acceptance_test.go's
-// TestAcceptance_TLSPathsResolveAgainstWorkingDirectory).
+// absolute, which is unambiguous wherever the file sits. The relative and
+// environment-named forms have their own coverage in
+// acceptance_disclosure_test.go.
 func (h *harness) writeConfigs(t *testing.T, targetsYAML string) {
 	t.Helper()
 	services := fmt.Sprintf(`version: 1
@@ -264,10 +264,10 @@ func compilerCatalog(certname, environment string, resources []resourceSpec, edg
 		})
 	}
 	// A compiler serializes each edge vertex as a `Type[title]` reference
-	// string (Puppet::Relationship#to_data_hash calls source.to_s /
+	// string (Puppet::Relationship#to_data_hash calls source.to_s and
 	// target.to_s), not as the `{type, title}` object of PuppetDB's wire
-	// format v8. Emitting the object form here — as this fixture
-	// originally did — exercises a shape no compiler ever sends. See
+	// format v8. Emitting the object form here, as this fixture originally
+	// did, exercises a shape no compiler ever sends. See
 	// internal/normalize/wire.go's resourceSpecWire.
 	edgeList := make([]map[string]any, 0, len(edges))
 	for _, e := range edges {
@@ -296,7 +296,7 @@ func nonNilParams(p map[string]any) map[string]any {
 //
 // IMPORTANT: that shape is derived from Puppet's Ruby serializer source,
 // not from a captured live response. Serving it here proves PIACE redacts
-// the shape it assumes; it does NOT confirm the assumption. Task 12's
+// the shape it assumes; it does NOT confirm the assumption. The
 // "confirm against a rich-data-enabled compiler" remains outstanding.
 func sensitiveWrapper(value string) map[string]any {
 	return map[string]any{"__ptype": "Sensitive", "__pvalue": value}

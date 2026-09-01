@@ -14,7 +14,7 @@ import (
 //
 // The whole pipeline runs twice, and the second run serves the same
 // catalogs with a different resource, parameter, and edge *insertion
-// order* — the nondeterminism a real PuppetDB can exhibit and the one a
+// order*: the nondeterminism a real PuppetDB can exhibit, and the one a
 // re-render test cannot catch. Every artifact must come out
 // byte-identical.
 //
@@ -57,11 +57,11 @@ func TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs(t *testing.T) {
 	}
 	edgesReversed := []edgeSpec{edgesForward[1], edgesForward[0]}
 
-	// Both runs go through ONE harness, so the two service endpoints —
-	// and therefore the run-level provenance the report records — are
-	// identical. Two harnesses would listen on different random ports,
-	// which is genuinely different configuration and would make the
-	// comparison test the wrong thing.
+	// Both runs go through ONE harness, so the two service endpoints, and
+	// therefore the run-level provenance the report records, are identical.
+	// Two harnesses would listen on different random ports, which is
+	// genuinely different configuration and would make the comparison test
+	// the wrong thing.
 	h := newHarness(t)
 	h.pdb.impactCertnames = []string{"db-02.example.test", "db-01.example.test"}
 

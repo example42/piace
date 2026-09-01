@@ -11,12 +11,11 @@ import (
 // StubCompiler is a CompilerCatalogRequester that always fails with a
 // clear, per-target diagnostic rather than serving a v3 or v4 compiler
 // request. It is a test double for this package's own workflow tests
-// (workflow_test.go), so
-// `capture catalog`'s target-loop, envelope-construction, and per-target
-// error-isolation logic can be exercised without a real compiler — see
-// compiler.go's doc comment for the real implementation
-// (internal/compiler.Adapter), which cmd/piace/main.go uses in
-// production.
+// (workflow_test.go), so `capture catalog`'s target loop, envelope
+// construction and per-target error isolation can be exercised without a
+// real compiler. See compiler.go's doc comment for the real
+// implementation, internal/compiler.Adapter, which cmd/piace/main.go
+// uses in production.
 type StubCompiler struct{}
 
 // RequestCandidate always returns a non-nil diagnostic with Operation

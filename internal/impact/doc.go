@@ -1,7 +1,7 @@
 // Package impact implements PIACE's impact estimator:
 // `ImpactQuerier.Estimate(resourceIdentity, limits) -> ImpactEstimate`.
 //
-// # Scope, and requirement 9.8 by construction
+// # Scope, and why no estimate node is ever compiled
 //
 // This package issues read-only PQL queries against PuppetDB's query API
 // and nothing else. There is no code path in it capable of reaching a
@@ -34,11 +34,11 @@
 // documentation/api/query/v4/resources.markdown in puppetlabs/puppetdb)
 // splits the two forms:
 //
-//   - GET /pdb/query/v4 — the root query endpoint — takes "either a PQL
+//   - GET /pdb/query/v4, the root query endpoint, takes "either a PQL
 //     query string or an AST JSON array specifying the query and
 //     entity". A PQL query names its own entity, which is precisely what
 //     the leading `resources[certname]` above does.
-//   - GET /pdb/query/v4/resources — the entity-scoped endpoint — takes a
+//   - GET /pdb/query/v4/resources, the entity-scoped endpoint, takes a
 //     JSON-encoded (AST) query already scoped to resources. A PQL string
 //     that re-names its entity is not a documented input there.
 //
@@ -94,13 +94,13 @@
 // (\n, \r, \t).
 //
 // The documentation does not establish a \uXXXX form, so a resource
-// title containing any other control byte (U+0000-U+001F) has no
+// title containing any other control byte (U+0000 to U+001F) has no
 // encoding this package can prove safe. Such an identity is skipped with
-// a reported estimate_impact diagnostic naming the identity — never the
-// offending bytes — rather than emitting a query that might be
-// malformed or, worse, alter the query's meaning. This mirrors
-// internal/filecontent's refusal to guess at an unsupported `source`
-// URI scheme.
+// a reported estimate_impact diagnostic naming the identity, never the
+// offending bytes, rather than emitting a query that might be malformed
+// or, worse, alter the query's meaning. This mirrors
+// internal/filecontent's refusal to guess at an unsupported `source` URI
+// scheme.
 //
 // # Failure classification
 //

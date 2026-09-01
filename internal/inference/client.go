@@ -81,8 +81,8 @@ func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Clie
 func (c *Client) Authority() string { return c.url.Host }
 
 // chatResponse is the part of a chat-completions envelope PIACE reads.
-// Everything else — usage, fingerprints, tool calls — is the service's
-// business.
+// Everything else, usage, fingerprints and tool calls among it, is the
+// service's business.
 type chatResponse struct {
 	Choices []struct {
 		Message struct {

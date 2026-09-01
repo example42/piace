@@ -192,7 +192,7 @@ func TestText_CountsOnlyWhatItPrints(t *testing.T) {
 // line. The count is not bracketed, because a bracketed number directly
 // after a bracketed resource title reads as a second resource reference,
 // and there is exactly one structural colon separating the change from
-// its targets — so the parameter name is not followed by one.
+// its targets, so the parameter name is not followed by one.
 func TestText_AggregateLineIsUnambiguous(t *testing.T) {
 	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {

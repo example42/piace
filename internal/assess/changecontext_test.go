@@ -16,7 +16,7 @@ func writeFile(t *testing.T, dir, name, content string) string {
 	return path
 }
 
-// TestLoadChangeContextReadsACallerSuppliedChange covers slice 1.1: the
+// TestLoadChangeContextReadsACallerSuppliedChange: the
 // fully populated shape PIACE documents for CI to produce.
 func TestLoadChangeContextReadsACallerSuppliedChange(t *testing.T) {
 	path := writeFile(t, t.TempDir(), "change.yaml", `
@@ -62,7 +62,7 @@ change:
 	}
 }
 
-// TestLoadChangeContextRejectsWhatItDoesNotKnow covers slice 1.2. The
+// TestLoadChangeContextRejectsWhatItDoesNotKnow. The
 // unknown-field rule is what enforces "commit subjects, never bodies":
 // a `body` key has no field to land in and is refused rather than
 // forwarded to an inference service.
@@ -99,7 +99,7 @@ change:
 	}
 }
 
-// TestLoadChangeContextCapsFreeTextRatherThanFailing covers slice 1.3.
+// TestLoadChangeContextCapsFreeTextRatherThanFailing.
 // A long pull-request description is not a reason to fail a pipeline, so
 // it is truncated and the truncation is recorded where a reader can see
 // it.
@@ -139,7 +139,7 @@ func TestLoadChangeContextTruncatesOnRuneBoundaries(t *testing.T) {
 	}
 }
 
-// TestLoadChangeContextIsOptional covers slice 1.4: a run with no
+// TestLoadChangeContextIsOptional: a run with no
 // repository change to describe is ordinary, not an error.
 func TestLoadChangeContextIsOptional(t *testing.T) {
 	cc, err := LoadChangeContext("")

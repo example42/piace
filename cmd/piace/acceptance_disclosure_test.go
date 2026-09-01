@@ -15,12 +15,12 @@ import (
 // values.
 //
 // internal/diff tests redaction at the change level. Only this level can
-// show that the values do not reappear through a different door —
+// show that the values do not reappear through a different door:
 // provenance, a diagnostic message, an aggregate group, or the canonical
-// JSON the HTML artifact embeds. The run is therefore built so that every
-// disclosure channel is actually populated: a Sensitive parameter that
-// changed, a selector-redacted parameter, inline File content, and File
-// content retrieved from the compiler.
+// JSON the HTML artifact embeds. The run is therefore built so that
+// every disclosure channel is actually populated, with a Sensitive
+// parameter that changed, a selector-redacted parameter, inline File
+// content, and File content retrieved from the compiler.
 func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	h := newHarness(t)
 

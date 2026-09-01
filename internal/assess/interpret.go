@@ -56,7 +56,7 @@ type Assessment struct {
 	ModelID         string `json:"model_id,omitempty"`
 	// EndpointAuthority is the inference service's host, recorded so a
 	// reader can audit where an assessment came from without opening the
-	// services file — the same reason model.ServiceProvenance exists.
+	// services file. That is the same reason model.ServiceProvenance exists.
 	EndpointAuthority string `json:"endpoint_authority,omitempty"`
 	// SourceReportChecksum ties an assessment to the exact result
 	// document it was derived from.
@@ -77,9 +77,9 @@ type Assessment struct {
 	GroupsAssessed  int  `json:"groups_assessed"`
 	GroupsTruncated bool `json:"groups_truncated"`
 
-	// InputPartial records that the result document itself was
-	// incomplete — a retrieval or compilation failure — so the assessment
-	// says what it could not see rather than reading as a full review.
+	// InputPartial records that the result document itself was incomplete,
+	// from a retrieval or compilation failure, so the assessment says what
+	// it could not see rather than reading as a full review.
 	InputPartial bool `json:"input_partial,omitempty"`
 
 	ChangeContext *ChangeContext `json:"change_context,omitempty"`

@@ -43,8 +43,6 @@ func randomIdentifier(rng *rand.Rand, prefix string) string {
 // environment exactly equal what was requested. That is candidate
 // identity integrity applied at the adapter layer that produces the only
 // candidate PIACE ever compares.
-//
-// **Validates: Requirements 1.5**
 func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 
@@ -66,11 +64,11 @@ func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 
 		wantAccept := returnedCertname == requestedCertname && returnedEnv == requestedEnv
 
-		// Alternate the candidate API across iterations: identity
-		// integrity is a property of both endpoints, and the two do not
-		// share a response envelope (v4 wraps the catalog document, v3
-		// does not — see doc.go), so exercising only one would leave the
-		// other's identity check unproven.
+		// Alternate the candidate API across iterations: identity integrity is a
+		// property of both endpoints, and the two do not share a response
+		// envelope, since v4 wraps the catalog document and v3 does not (see
+		// doc.go), so exercising only one would leave the other's identity check
+		// unproven.
 		useV4 := i%2 == 0
 		body := wireCatalogBody(returnedCertname, returnedEnv)
 		target := v3Target(requestedCertname, requestedEnv)
@@ -124,8 +122,6 @@ func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 // rule that every v3 request attaches a prominent, non-suppressible
 // warning, across many inputs, since the warning must never depend on
 // incidental request content.
-//
-// **Validates: Requirements 2.5**
 func TestProperty_V3WarningAlwaysEmitted(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 
@@ -168,8 +164,6 @@ func TestProperty_V3WarningAlwaysEmitted(t *testing.T) {
 // authorization, timeout, malformed response, and identity or
 // environment mismatch. This iterates every status code in a
 // representative set combined with both AllowV3Fallback settings.
-//
-// **Validates: Requirements 2.3, 2.4**
 func TestProperty_FallbackOnlyOnVerifiedUnsupportedV4(t *testing.T) {
 	statusCodes := []int{
 		http.StatusBadRequest,          // 400 - malformed request, never fallback

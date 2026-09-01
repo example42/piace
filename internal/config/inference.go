@@ -4,7 +4,7 @@ package config
 // external service PIACE contacts that is not the compiler or PuppetDB.
 //
 // It loads independently of the compiler and puppetdb sections, so a
-// services file containing only this block is valid for `piace explain` —
+// services file containing only this block is valid for `piace explain`,
 // which needs no mTLS identity and constructs no compiler or PuppetDB
 // client. See CONTEXT.md.
 //

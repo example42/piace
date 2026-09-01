@@ -36,8 +36,8 @@
 //     request options and full certname list are all on the page, inside
 //     closed <details>. Every list of rows is closed and every summary
 //     carries the count of what it holds, so the page a reader lands on is
-//     an index of the run — the outcome, the reasons, the tally, and one
-//     line per target with a counted chip per section — and one click
+//     an index of the run: the outcome, the reasons, the tally, and one
+//     line per target with a counted chip per section, and one click
 //     reaches any of it. Nothing is capped, because a closed disclosure
 //     already keeps a thousand certnames out of the reading path without
 //     dropping a name. What stays outside every disclosure is everything
@@ -67,9 +67,9 @@
 // both formats that it is advisory, model-generated and not
 // deterministic, and the section renders below every deterministic
 // section, never above one. What stays outside the section's disclosure
-// is the run risk indication and everything that qualifies it — the
-// model id, a truncated selection, a partial input, and the
-// assessment's own diagnostics — for the same reason the outcome badges
+// is the run risk indication and everything that qualifies it, meaning
+// the model id, a truncated selection, a partial input, and the
+// assessment's own diagnostics, for the same reason the outcome badges
 // do: an assessment reading "unknown" with its reason folded away is a
 // page that looks broken rather than one that failed.
 //
@@ -110,7 +110,7 @@
 // artifact gets shared, printed, and pasted into tickets, and one
 // appearance is one thing to check.
 //
-// # requirement 9.3's label
+// # The impact-estimate label
 //
 // The result has to be labelled a **potential impact estimate**, and
 // must never state that selected nodes will change. internal/impact
@@ -127,7 +127,7 @@
 // its own, because ImpactEstimateNote stands immediately above it and
 // says, once for the whole section, what a listed certname does and does
 // not mean. Any format that ever prints an estimate line without that
-// header would be stating something requirement 9.3 forbids.
+// header would be stating exactly what an estimate must never claim.
 //
 // # HTML safety
 //
@@ -139,9 +139,9 @@
 // script context in the document and no script-context escaping to get
 // wrong.
 //
-// Every value the page shows — resource titles, parameter values,
-// diagnostic messages, PQL text — originates in Puppet code or a service
-// response and is untrusted. All of it is interpolated through
+// Every value the page shows, resource titles, parameter values,
+// diagnostic messages and PQL text alike, originates in Puppet code or a
+// service response and is untrusted. All of it is interpolated through
 // html/template, whose contextual escaping is the mechanism that makes a
 // title containing `</script>` or `<img onerror=...>` inert. No renderer
 // here concatenates HTML by hand.
@@ -158,8 +158,8 @@ const ImpactEstimateLabel = "potential impact estimate"
 const ImpactEstimateNote = "Reports only that a node's latest stored catalog contains this exact resource type and title. It does not state that the node will change, and PIACE does not compile these nodes."
 
 // AssessmentLabel is the visible heading of the change-assessment
-// section. The section is named for what it is — an assessment of a
-// change — and never for the outcome of the comparison, which the
+// section. The section is named for what it is, an assessment of a
+// change, and never for the outcome of the comparison, which the
 // deterministic sections above it already state.
 const AssessmentLabel = "Change assessment"
 
@@ -171,10 +171,10 @@ const AssessmentLabel = "Change assessment"
 // It states the three things a reader has to know before reading a word
 // of what a model said: that this is advisory, that it is generated, and
 // that running the same command again may say something different. What
-// it is not is a disclaimer for the section's benefit — a risk
-// indication is an opinion about a change, and a page that presents it
-// beside a deterministic outcome without saying which is which is
-// misleading whatever the model got right.
+// it is not is a disclaimer for the section's benefit. A risk indication
+// is an opinion about a change, and a page that presents it beside a
+// deterministic outcome without saying which is which is misleading
+// whatever the model got right.
 //
 // The last sentence is the one omission a reader could otherwise mistake
 // for a judgement: the assessment covers resource-change groups only, and

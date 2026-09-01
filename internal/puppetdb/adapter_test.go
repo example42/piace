@@ -148,12 +148,12 @@ func (f *tlsFixture) endpoint(t *testing.T, rawURL string) resolve.Endpoint {
 	}
 }
 
-// newMTLSTestServer starts an httptest.Server requiring and verifying the
-// fixture's client certificate, and additionally asserts (via t.Errorf,
-// not t.Fatalf, since it runs in the server goroutine) that every request
-// it receives uses GET — this is the "no write/command-endpoint call is
-// ever attempted" check, applied uniformly across every test in this file
-// rather than as one dedicated test.
+// newMTLSTestServer starts an httptest.Server requiring and verifying
+// the fixture's client certificate, and additionally asserts, via
+// t.Errorf rather than t.Fatalf since it runs in the server goroutine,
+// that every request it receives uses GET. That is the
+// no-write-endpoint-is-ever-attempted check, applied uniformly across
+// every test in this file rather than as one dedicated test.
 func newMTLSTestServer(t *testing.T, fixture *tlsFixture, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

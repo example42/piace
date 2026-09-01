@@ -111,9 +111,9 @@ func NewResult(toolVersion, timestampUTC string) Result {
 // entry point that classifies targets, calls Finalize, and builds the
 // reason list in one step.
 //
-// Run-level diagnostics are folded in as well as per-target outcomes so
-// a failed or timed-out impact estimate — which belongs to no target,
-// since estimates are deduplicated run-wide — still reduces to an
+// Run-level diagnostics are folded in as well as per-target outcomes, so
+// a failed or timed-out impact estimate, which belongs to no target
+// since estimates are deduplicated run-wide, still reduces to an
 // operational outcome.
 func (r *Result) Finalize() {
 	outcomes := make([]exitcode.Outcome, 0, len(r.Targets)+len(r.Diagnostics))

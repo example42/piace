@@ -45,17 +45,17 @@ package report
 // the one on screen. Engines hide <details> content two ways, so both
 // are overridden.
 //
-// The template is layout only. Every decision about what a section shows
-// — how a change splits into sign, identity and values; which aggregate
-// groups are edges; which figures the masthead tallies — is made in
-// html.go, where it is testable in Go rather than in template
+// The template is layout only. Every decision about what a section
+// shows, how a change splits into sign, identity and values, which
+// aggregate groups are edges, which figures the masthead tallies, is
+// made in html.go, where it is testable in Go rather than in template
 // conditionals.
 const htmlSource = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PIACE report — {{.Outcome}}</title>
+<title>PIACE report: {{.Outcome}}</title>
 <style>
 :root {
   color-scheme: light;
@@ -458,7 +458,7 @@ pre {
   /* Everything the screen keeps one click away still prints: a closed
      disclosure must not silently drop rows from a shared or filed copy.
      Engines hide the content two ways, so both are overridden. The
-     canonical JSON is the exception — it is the same document a second
+     canonical JSON is the exception: it is the same document a second
      time, machine-readable, and half a megabyte of it on paper serves
      nobody; a reader who opens it before printing still gets it. */
   details:not(.record) > *:not(summary) { display: block !important; }

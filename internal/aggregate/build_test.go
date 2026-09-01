@@ -73,7 +73,7 @@ func TestBuild_GroupsEquivalentChangesAcrossTargets(t *testing.T) {
 	}
 }
 
-// Requirement 7.1: equivalence requires equal evidence. Two targets whose
+// equivalence requires equal evidence. Two targets whose
 // same parameter changed to different values are two groups.
 func TestBuild_DistinctFingerprintsDoNotMerge(t *testing.T) {
 	diffs := []model.NodeDiff{
@@ -94,8 +94,8 @@ func TestBuild_DistinctFingerprintsDoNotMerge(t *testing.T) {
 	}
 }
 
-// The same anti-merge property with the values already redacted — the
-// case the fingerprint exists for.
+// The same anti-merge property with the values already redacted, which
+// is the case the fingerprint exists for.
 func TestBuild_DistinctRedactedChangesDoNotMerge(t *testing.T) {
 	diffs := []model.NodeDiff{
 		{Certname: "web-01", ResourceChanges: []model.ResourceChange{
@@ -125,7 +125,7 @@ func TestBuild_UnfingerprintableChangesEachGetTheirOwnGroup(t *testing.T) {
 	}
 }
 
-// Requirement 7.4: edge changes survive aggregation as a distinct kind.
+// edge changes survive aggregation as a distinct kind.
 func TestBuild_EdgeGroupsUseEdgeKeyAndGroupWithoutFingerprint(t *testing.T) {
 	diffs := []model.NodeDiff{
 		{Certname: "web-01", EdgeChanges: []model.EdgeChange{
@@ -182,7 +182,7 @@ func TestBuild_EdgeAddedAndRemovedAreDistinctGroups(t *testing.T) {
 	}
 }
 
-// Requirement 7.3 / NodeChangeRef.Index: the index is a position within
+// the index is a position within
 // the referenced target's own change slice.
 func TestBuild_NodeChangeRefsIndexIntoTheRightSlice(t *testing.T) {
 	diffs := []model.NodeDiff{
@@ -301,7 +301,7 @@ func TestBuild_IsByteIdenticalAcrossRuns(t *testing.T) {
 }
 
 // A group's certname list holds each contributing target once, but every
-// contributing change still gets a reference (requirement 7.3).
+// contributing change still gets its own reference.
 func TestBuild_DuplicateChangeInOneTargetKeepsBothRefsButOneCertname(t *testing.T) {
 	diffs := []model.NodeDiff{{
 		Certname: "web-01",
@@ -339,7 +339,7 @@ func TestBuild_NoDiffsProducesEmptyAggregate(t *testing.T) {
 // tiebreaker is load-bearing for: two groups sharing a public key are
 // otherwise emitted in first-encounter order, which target-file order
 // determines. A byte-identical-across-runs test cannot catch that,
-// because the group slice is built in deterministic encounter order —
+// because the group slice is built in deterministic encounter order;
 // only reordering the input exposes it.
 func TestBuild_GroupOrderIsIndependentOfTargetOrder(t *testing.T) {
 	a := model.NodeDiff{Certname: "web-01", ResourceChanges: []model.ResourceChange{

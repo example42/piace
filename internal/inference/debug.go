@@ -5,11 +5,11 @@
 // package is separate: see the Client doc comment and CONTEXT.md.
 // internal/inference must not import internal/transport.
 //
-// Redaction boundary: an Event carries only safe metadata by default —
-// method, URL, host, status, duration, body sizes, content type, and the
-// response body's *top-level JSON member names*. Member names, not
-// values: an Anthropic error body yields ["type", "error"], enough to
-// see the shape without putting an account or quota detail into a CI
+// Redaction boundary: an Event carries only safe metadata by default,
+// being method, URL, host, status, duration, body sizes, content type,
+// and the response body's *top-level JSON member names*. Member names,
+// not values: an Anthropic error body yields ["type", "error"], enough
+// to see the shape without putting an account or quota detail into a CI
 // log.
 //
 // Raw bodies are carried only when a caller opts in with

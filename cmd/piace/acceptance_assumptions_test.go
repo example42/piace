@@ -68,9 +68,9 @@ func TestOutstanding_PuppetDBImpactEndpointAssumptions(t *testing.T) {
 // that shape and proves no artifact discloses the payload. But the
 // fixture serves the assumed shape, so the test confirms PIACE redacts
 // what it expects to see. If a real compiler emits a different encoding,
-// this suite passes and the value is NOT redacted — the failure mode is
-// silent disclosure, which is why this confirmation matters more than its
-// one-line description suggests.
+// this suite passes and the value is NOT redacted. The failure mode is
+// silent disclosure, which is why this confirmation matters more than
+// its one-line description suggests.
 //
 // How to confirm: compile a catalog containing a `Sensitive` parameter
 // against the deployed compiler with rich data enabled, capture the
@@ -86,9 +86,9 @@ func TestOutstanding_SensitiveWireShape(t *testing.T) {
 //
 // What must be confirmed against a deployed OpenAI-compatible provider:
 //
-//  1. That it accepts the `response_format` object PIACE sends —
+//  1. That it accepts the `response_format` object PIACE sends,
 //     `{"type":"json_schema","json_schema":{"name":...,"strict":true,
-//     "schema":{...}}}` — at the chat-completions endpoint, rather than
+//     "schema":{...}}}`, at the chat-completions endpoint, rather than
 //     rejecting it as an unknown field or an unsupported type.
 //
 //  2. That `strict: true` is honored. The assessment schema is built for
@@ -97,22 +97,22 @@ func TestOutstanding_SensitiveWireShape(t *testing.T) {
 //     and `review_focus` required-and-possibly-empty rather than absent.
 //     Chat Completions is non-strict by default, so a provider that
 //     silently ignores the flag returns a shape PIACE's own validation
-//     then has to degrade — correctly, but with diagnostics on every run.
+//     then has to degrade, correctly but with diagnostics on every run.
 //
 //  3. (Resolved.) PIACE used to hard-code `temperature: 0` and `seed: 0`
 //     into every request. Both Claude 4+ and OpenAI's GPT-5 family reject
 //     any non-default `temperature` with a 400, and `seed` was ignored or
 //     rejected everywhere, so no sampling parameter is sent now unless
 //     `services.inference.temperature` is set. Pinning them never made an
-//     assessment reproducible anyway — a provider-side model revision
+//     assessment reproducible anyway, since a provider-side model revision
 //     still moves the bytes.
 //
-// What IS already covered, and why it is not enough:
-// internal/assess's request tests assert the exact nesting, the exact
-// fields, and their presence or absence under `structured_output: false`.
-// The stub service in acceptance_explain_test.go accepts anything, and a
-// golden fixture ossifies whatever it is given — so both would go on
-// passing against a shape no provider accepts.
+// What IS already covered, and why it is not enough: internal/assess's
+// request tests assert the exact nesting, the exact fields, and their
+// presence or absence under `structured_output: false`. But the stub
+// service in acceptance_explain_test.go accepts anything, and a golden
+// fixture ossifies whatever it is given, so both would go on passing
+// against a shape no provider accepts.
 //
 // This assumption is, however, the least load-bearing of the three in
 // this file. Structured output is a latency optimisation, never a trust

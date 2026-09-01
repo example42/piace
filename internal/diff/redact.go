@@ -17,7 +17,7 @@ const (
 // redactChanges implements pass 3 (see doc.go). It runs strictly after
 // applyExclusions and after NodeDiff.HasDifference has already been
 // computed, so masking a value can never turn a real difference into a
-// non-difference — it only replaces what a report may display.
+// non-difference: it only replaces what a report may display.
 //
 // Both redaction sources are applied to every remaining change:
 //
@@ -108,9 +108,9 @@ func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType
 // nesting depth), which is evidence about the secret.
 //
 // The walk never mutates its input: every map and slice containing a
-// redacted descendant is rebuilt, so the caller's pre-redaction tree —
-// the one pass 1 compared and fingerprintResourceChange digested —
-// stays intact.
+// redacted descendant is rebuilt, so the caller's pre-redaction tree,
+// the one pass 1 compared and fingerprintResourceChange digested, stays
+// intact.
 func redactSensitiveValue(v model.Value) model.Value {
 	switch val := v.(type) {
 	case map[string]model.Value:
@@ -136,9 +136,9 @@ func redactSensitiveValue(v model.Value) model.Value {
 // isSensitiveWrapper reports whether m is the Pcore generic-data
 // encoding of a Sensitive-wrapped value: a JSON object whose reserved
 // `__ptype` key holds exactly the string "Sensitive". The payload key
-// (`__pvalue`) is deliberately not required to be present — a wrapper
-// missing it is still a declared Sensitive value and must still be
-// masked rather than passed through.
+// (`__pvalue`) is deliberately not required to be present, since a
+// wrapper missing it is still a declared Sensitive value and must still
+// be masked rather than passed through.
 func isSensitiveWrapper(m map[string]model.Value) bool {
 	ptype, ok := m[pcoreTypeKey]
 	if !ok {

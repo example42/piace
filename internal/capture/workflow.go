@@ -24,9 +24,9 @@ type Workflow struct {
 	// used when a target's Facts.Source resolves to puppetdb.
 	PuppetDBFacts puppetdb.FactSource
 	// FileFacts is the file-backed FactSource (puppetdb.FileSource), used
-	// when a target's Facts.Source resolves to file — a target can select a
-	// file-backed factset as the input to catalog capture just as it can
-	// for comparison. Both read the configured fact source, and neither
+	// when a target's Facts.Source resolves to file. A target can select a
+	// file-backed factset as the input to catalog capture just as it can for
+	// comparison: both read the configured fact source, and neither
 	// privileges one source for capture.
 	FileFacts puppetdb.FactSource
 	// Compiler requests the candidate catalog for `capture catalog`.
@@ -60,8 +60,8 @@ func (w *Workflow) factSourceFor(target resolve.Target) puppetdb.FactSource {
 // Without this view the request would carry the target's candidate
 // environment while the envelope recorded --environment, producing a
 // snapshot whose requested_environment metadata contradicted its own
-// payload. Every later validation that trusts that metadata — the
-// baseline-environment check a file-backed baseline runs most of all —
+// payload. Every later validation that trusts that metadata, the
+// baseline-environment check a file-backed baseline runs most of all,
 // would then be validating against a label rather than against the
 // catalog. The compiler adapter's own environment verification checks
 // the response against the requested environment, so overriding it here

@@ -13,10 +13,10 @@ import (
 //
 // It deliberately drives run() rather than compare.Workflow. The
 // pipeline-with-fakes level is already covered by
-// internal/compare/workflow_test.go; what only this level can exercise is
-// everything between the CLI boundary and the socket — PEM loading, real
-// mTLS handshakes, HTTP status and JSON decoding inside the adapters,
-// artifact writing, and the process exit code.
+// internal/compare/workflow_test.go; what only this level can exercise
+// is everything between the CLI boundary and the socket: PEM loading,
+// real mTLS handshakes, HTTP status and JSON decoding inside the
+// adapters, artifact writing, and the process exit code.
 //
 // Two of the acceptance suite's acceptance conditions cannot be discharged here and
 // remain outstanding; see acceptance_assumptions_test.go, which states
@@ -225,12 +225,11 @@ func TestAcceptance_OutcomePrecedence(t *testing.T) {
 			}
 			h.writeConfigs(t, targetsYAML(defaultDefaults, entries...))
 
-			// compilefail participates only when selected; when it does,
-			// its candidate request must fail rather than 404 into a
-			// fallback, so no catalog is registered for it and the fake
-			// compiler answers 404 — which IS a verified-unsupported
-			// status. Force a 500 instead by registering a status
-			// override for the whole compiler when that target is in play.
+			// compilefail participates only when selected; when it does, its
+			// candidate request must fail rather than 404 into a fallback, so no
+			// catalog is registered for it and the fake compiler answers 404, which
+			// IS a verified-unsupported status. Force a 500 instead by registering a
+			// status override for the whole compiler when that target is in play.
 			for _, certname := range tc.targets {
 				if certname == "compilefail.example.test" {
 					// A semantic rejection is served as the whole

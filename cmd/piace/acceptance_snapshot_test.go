@@ -68,15 +68,14 @@ func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 	assertEnvelope(t, catalogSnapshot, "catalog", certname,
 		[]string{"requested_environment", "compiler_api", "input_factset_identity"})
 
-	// A catalog snapshot's requested_environment must describe the
-	// catalog it actually holds. `capture catalog --environment ENV` once
-	// recorded ENV in the envelope while requesting the target's own
+	// A catalog snapshot's requested_environment must describe the catalog
+	// it actually holds. `capture catalog --environment ENV` once recorded
+	// ENV in the envelope while requesting the target's own
 	// candidate.environment, so a snapshot could claim production while
-	// holding a feature-branch catalog — and every later check that
-	// trusts that metadata, including the baseline-environment rule a
-	// file-backed baseline runs, would validate against the label rather
-	// than the catalog. Asserting the two agree is what names that bug if
-	// it returns.
+	// holding a feature-branch catalog, and every later check that trusts
+	// that metadata, the baseline-environment rule included, would validate
+	// against the label rather than the catalog. Asserting the two agree is
+	// what names that bug if it returns.
 	var envelope map[string]any
 	if err := json.Unmarshal([]byte(readFile(t, catalogSnapshot)), &envelope); err != nil {
 		t.Fatal(err)

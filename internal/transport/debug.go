@@ -45,9 +45,9 @@ const (
 	// ShapeScalar is a bare JSON string/number/bool/null.
 	ShapeScalar BodyShape = "scalar"
 	// ShapeNonJSON is a body that does not parse as JSON. That is an
-	// ordinary, expected outcome for an endpoint that does not serve
-	// JSON — the compiler's file_content endpoint returns
-	// application/octet-stream — so the name states the fact rather than
+	// ordinary, expected outcome for an endpoint that does not serve JSON,
+	// the compiler's file_content endpoint returning
+	// application/octet-stream, so the name states the fact rather than
 	// implying a fault.
 	ShapeNonJSON BodyShape = "non-json"
 )
@@ -70,8 +70,8 @@ type Event struct {
 	ResponseBodyBytes int
 	ContentType       string
 	Shape             BodyShape
-	// TopLevelKeys holds the response body's top-level JSON member names
-	// in wire order (member *names* only — never values), truncated at
+	// TopLevelKeys holds the response body's top-level JSON member names in
+	// wire order, member *names* only and never values, truncated at
 	// maxTopLevelKeys. Empty unless Shape is ShapeObject.
 	TopLevelKeys []string
 	// KeysTruncated reports that TopLevelKeys was cut at maxTopLevelKeys.

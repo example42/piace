@@ -58,8 +58,6 @@ func buildCompilerResourceJSON(id model.ResourceIdentity, paramValue string) str
 // This locks the identity-construction contract across many random
 // inputs: the same input always normalizes to the same sorted identity
 // set.
-//
-// **Validates: Requirements 5.1**
 func TestProperty_ResourceIdentityRoundTrips(t *testing.T) {
 	rng := rand.New(rand.NewSource(42))
 
@@ -110,8 +108,6 @@ func TestProperty_ResourceIdentityRoundTrips(t *testing.T) {
 // by the ordered pair (Source, Target) and preserves every edge exactly
 // once: a graph edge key is the ordered pair (source identity, target
 // identity), and direction is significant.
-//
-// **Validates: Requirements 5.3**
 func TestProperty_EdgeSortKeyIsOrderedPair(t *testing.T) {
 	rng := rand.New(rand.NewSource(43))
 
@@ -119,11 +115,11 @@ func TestProperty_EdgeSortKeyIsOrderedPair(t *testing.T) {
 		poolSize := 2 + rng.Intn(6)
 		pool := randomResourceIdentities(rng, poolSize)
 
-		// maxPairs bounds how many distinct ordered (source, target)
-		// pairs the pool can produce (including self-loops), so
-		// edgeCount below never requests more unique pairs than exist —
-		// otherwise the seenPairs retry loop below would spin forever
-		// once every possible pair had already been generated.
+		// maxPairs bounds how many distinct ordered (source, target) pairs the
+		// pool can produce, self-loops included, so edgeCount below never
+		// requests more unique pairs than exist. Otherwise the seenPairs retry
+		// loop below would spin forever once every possible pair had already
+		// been generated.
 		maxPairs := poolSize * poolSize
 		edgeCount := 1 + rng.Intn(8)
 		if edgeCount > maxPairs {
@@ -195,8 +191,6 @@ func TestProperty_EdgeSortKeyIsOrderedPair(t *testing.T) {
 // forms), the resulting model.Number is always identical regardless of
 // spelling, reusing the one canonicalization algorithm already
 // implemented for snapshot payload checksums.
-//
-// **Validates: Requirements 5.2, 8.6**
 func TestProperty_NumberCanonicalizationMatchesSnapshotAlgorithm(t *testing.T) {
 	rng := rand.New(rand.NewSource(44))
 
@@ -259,8 +253,6 @@ func TestProperty_NumberCanonicalizationMatchesSnapshotAlgorithm(t *testing.T) {
 // and a zero NormalizedCatalog, never a partially-populated or silently
 // empty result: an unknown required shape is a reported normalization
 // error, never silently discarded.
-//
-// **Validates: Requirements 10.5**
 func TestProperty_MalformedShapesAlwaysProduceDiagnostic(t *testing.T) {
 	rng := rand.New(rand.NewSource(45))
 

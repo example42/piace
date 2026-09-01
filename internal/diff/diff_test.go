@@ -135,9 +135,9 @@ func TestDiff_ResourceAddedRemovedAndParameterChanged(t *testing.T) {
 	}
 }
 
-// Requirement 5.1: added/removed resources are identified by identity
-// only. Their parameters — which for a File resource would be the
-// managed content bytes themselves — must never reach the projection.
+// Added and removed resources are identified by identity only. Their
+// parameters, which for a File resource would be the managed content
+// bytes themselves, must never reach the projection.
 func TestDiff_AddedResourceCarriesNoParameterProjection(t *testing.T) {
 	after := catalog([]model.Resource{
 		resource("File", "/etc/secret.conf", map[string]model.Value{

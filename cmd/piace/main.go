@@ -327,12 +327,12 @@ func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*comp
 // contains no credentials, private material, managed content bytes, or
 // unredacted sensitive values by construction.
 func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
-	// Display policy applies to the text report alone. report.JSON takes
-	// no options by design — it is the complete machine-readable record,
-	// and a flag that changed what it contained would make one run's
-	// artifact incomparable with another's — and report.HTML takes none
-	// because it shows everything too, using disclosure rather than
-	// omission to stay readable.
+	// Display policy applies to the text report alone. report.JSON takes no
+	// options by design: it is the complete machine-readable record, and a
+	// flag that changed what it contained would make one run's artifact
+	// incomparable with another's. report.HTML takes none because it shows
+	// everything too, using disclosure rather than omission to stay
+	// readable.
 	//
 	// The nil passed to both renderers is the change assessment. `compare`
 	// never has one: it does not contact an inference service, and an
@@ -570,8 +570,8 @@ type explainFlags struct {
 
 // runExplain produces a change assessment from a stored result document.
 //
-// It contacts exactly one service — the configured inference service —
-// and constructs no compiler client and no PuppetDB client, whatever a
+// It contacts exactly one service, the configured inference service, and
+// constructs no compiler client and no PuppetDB client, whatever a
 // services file happens to name. That is not an optimisation: `explain`
 // sends catalog-derived data outside the building, and the set of hosts
 // it can reach while doing so has to be short enough to state in one

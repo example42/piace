@@ -4,7 +4,7 @@ package model
 // `Sensitive`-wrapped value or a value matched by a configured
 // config.RedactionSelector, in every output format: "Configured
 // selectors replace matched values with the constant `"<redacted>"`."
-// The differ (internal/diff, internal/diff) is the only writer of this constant
+// The differ (internal/diff) is the only writer of this constant
 // into a ResourceChange.Before/After or FileContentEvidence; this
 // package only defines the shared literal so every consumer
 // (JSON/text/HTML renderers, aggregate builder) recognizes exactly one
@@ -41,7 +41,7 @@ type ResourceChange struct {
 	FileContent *FileContentEvidence `json:"file_content,omitempty"`
 	// Fingerprint is a stable, equality-preserving digest of this change's
 	// *unredacted* canonical comparison evidence, computed by the differ
-	// (internal/diff, internal/diff) before its redaction pass runs.
+	// (internal/diff) before its redaction pass runs.
 	//
 	// Equivalent aggregate keys include kind, identity, parameter name when
 	// relevant, and the unredacted canonical comparison evidence. Redaction
@@ -50,13 +50,13 @@ type ResourceChange struct {
 	// changes in aggregate groups, and must retain no secret material in
 	// logs or aggregate keys.
 	//
-	// Those three constraints have exactly one solution shape: the
-	// aggregate builder (internal/aggregate) needs to decide *equality* of the
-	// unredacted evidence, not to read it. Fingerprint carries that
-	// equality and nothing else — two changes whose unredacted evidence is
-	// identical share a Fingerprint; two distinct sensitive values do not,
-	// so they can never merge into one aggregate group even though both
-	// Before/After projections read RedactedValue.
+	// Those three constraints have exactly one solution shape: the aggregate
+	// builder (internal/aggregate) needs to decide *equality* of the
+	// unredacted evidence, not to read it. Fingerprint carries that equality
+	// and nothing else. Two changes whose unredacted evidence is identical
+	// share a Fingerprint; two distinct sensitive values do not, so they can
+	// never merge into one aggregate group even though both Before and After
+	// projections read RedactedValue.
 	//
 	// It is `json:"-"`: it never reaches a serialized report, a template,
 	// a log line, or persistent aggregate state, per section 7.1's "raw
@@ -107,12 +107,11 @@ type NodeDiff struct {
 // label.
 //
 // Exactly one of Identity and Edge is set, determined by Kind:
-// ResourceAdded/ResourceRemoved/ParameterChanged set Identity;
-// EdgeAdded/EdgeRemoved set Edge. Requirements.md 7.4 requires edge
-// changes to survive aggregation as a distinct change kind, and an edge
-// has no single resource identity to key on — its equivalence is the
-// ordered (source, target) pair, which is already complete evidence, so
-// an edge group needs no fingerprint.
+// ResourceAdded, ResourceRemoved and ParameterChanged set Identity;
+// EdgeAdded and EdgeRemoved set Edge. Edge changes survive aggregation
+// as a distinct change kind, and an edge has no single resource identity
+// to key on: its equivalence is the ordered (source, target) pair, which
+// is already complete evidence, so an edge group needs no fingerprint.
 type AggregateChangeKey struct {
 	Kind ChangeKind `json:"kind"`
 	// Identity is set for the three resource-level kinds.
@@ -139,11 +138,11 @@ type AggregateGroup struct {
 // diff.
 type NodeChangeRef struct {
 	Certname string `json:"certname"`
-	// Index is the position of the referenced change within that
-	// target's NodeDiff — in ResourceChanges for the three resource-level
-	// kinds, and in EdgeChanges for the two edge-level kinds. The
-	// containing AggregateGroup's Key.Kind selects which slice, since a
-	// group is always of exactly one kind.
+	// Index is the position of the referenced change within that target's
+	// NodeDiff: in ResourceChanges for the three resource-level kinds, and
+	// in EdgeChanges for the two edge-level kinds. The containing
+	// AggregateGroup's Key.Kind selects which slice, since a group is always
+	// of exactly one kind.
 	Index int `json:"index"`
 }
 

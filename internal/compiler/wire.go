@@ -55,15 +55,15 @@ type v4CatalogEnvelope struct {
 // "resources", "edges", ...}`. It is the whole v3 response body, and the
 // value of a v4 response's "catalog" member (see v4CatalogEnvelope).
 // Unlike internal/puppetdb's query-API Catalog carrier, the identity
-// field here is `name`, not `certname`, and resources/edges are
-// plain JSON arrays, not a `{href, data}` expansion. Fields this package
-// does not consume (tags, classes, catalog_format, metadata,
+// field here is `name`, not `certname`, and resources and edges are
+// plain JSON arrays rather than a `{href, data}` expansion. Fields this
+// package does not consume (tags, classes, catalog_format, metadata,
 // recursive_metadata) are intentionally not declared and are dropped by
-// encoding/json on unmarshal — the same lossy-typed-struct-roundtrip
-// approach internal/puppetdb's Factset/Catalog carriers already use for
+// encoding/json on unmarshal, the same lossy typed-struct round trip
+// internal/puppetdb's Factset and Catalog carriers already use for
 // snapshot payload construction (see internal/capture/workflow.go's
-// buildCatalogEnvelope, which marshals the typed puppetdb.Catalog, not
-// raw response bytes).
+// buildCatalogEnvelope, which marshals the typed puppetdb.Catalog rather
+// than raw response bytes).
 type wireCatalog struct {
 	Name            string          `json:"name"`
 	Version         wireVersion     `json:"version"`
@@ -196,12 +196,12 @@ type v3Facts struct {
 }
 
 // newTransactionUUID generates a random RFC 4122 version-4 UUID for the
-// v3/v4 catalog request's `transaction_uuid` field. PIACE has no
-// transaction to correlate against a Puppet report (it never triggers a
-// run or persists anything, per v4Persistence above), so this value only
-// needs to be a syntactically valid, unique identifier for the single
-// request it accompanies — not sourced from, or matched against, any
-// other PIACE-generated identifier.
+// v3 and v4 catalog request's `transaction_uuid` field. PIACE has no
+// transaction to correlate against a Puppet report, since it never
+// triggers a run or persists anything (see v4Persistence above), so this
+// value only needs to be a syntactically valid, unique identifier for
+// the single request it accompanies. It is neither sourced from nor
+// matched against any other PIACE-generated identifier.
 func newTransactionUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {

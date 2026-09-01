@@ -2,15 +2,16 @@
 // the assembly of the shared result document.
 //
 // It owns no domain logic of its own. Every rule it depends on already
-// lives in the package that owns it — baseline-environment rejection in
-// internal/puppetdb, v3/v4 policy and candidate identity verification in
-// internal/compiler, the value domain in internal/normalize, the fixed
-// diff/exclude/redact ordering in internal/diff, grouping in
-// internal/aggregate, bounded PQL in internal/impact, and outcome
-// precedence in internal/model's Reduce. This package sequences those
-// calls, attributes each diagnostic to the right place in the shared
-// result document, and nothing else. It deliberately re-validates
-// nothing: a second copy of a rule is a second rule.
+// lives in the package that owns it: baseline-environment rejection in
+// internal/puppetdb, v3 and v4 policy and candidate identity
+// verification in internal/compiler, the value domain in
+// internal/normalize, the fixed diff, exclude and redact ordering in
+// internal/diff, grouping in internal/aggregate, bounded PQL in
+// internal/impact, and outcome precedence in internal/model's Reduce.
+// This package sequences those calls, attributes each diagnostic to the
+// right place in the shared result document, and nothing else. It
+// deliberately re-validates nothing: a second copy of a rule is a second
+// rule.
 //
 // # Per-target isolation
 //
@@ -50,7 +51,7 @@
 //     ordered. The work itself still runs in target-file order, because
 //     impact.EstimateAll resolves an identity exhibited by several
 //     targets to "the first target in target-file order that both enables
-//     estimation and exhibits that identity" — sorting the output rather
+//     estimation and exhibits that identity", so sorting the output rather
 //     than the input keeps that documented tie-break intact.
 //
 // # Impact estimation and the nil querier

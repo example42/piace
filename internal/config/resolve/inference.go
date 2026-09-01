@@ -35,8 +35,8 @@ type Inference struct {
 // LoadInferenceFile decodes a services file and resolves only its
 // `inference:` section. The compiler and puppetdb sections are neither
 // required nor validated, so a services file containing nothing but
-// `inference:` loads — which is what lets `piace explain` run with a file
-// that names no Puppet infrastructure at all.
+// `inference:` loads. That is what lets `piace explain` run with a file
+// naming no Puppet infrastructure at all.
 func LoadInferenceFile(path string) (Inference, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -53,8 +53,8 @@ func LoadInferenceFile(path string) (Inference, error) {
 
 // ResolveInference validates the inference section and reads the bearer
 // token it references. dir is the services file's directory, against
-// which a relative policy_notes_file resolves — the same rule snapshot
-// paths follow relative to the target file.
+// which a relative policy_notes_file resolves, the same rule every path
+// in a config file follows.
 func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 	var c errorCollector
 

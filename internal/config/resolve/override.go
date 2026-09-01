@@ -42,10 +42,10 @@ func (ov Overrides) apply(tf config.TargetFile) config.TargetFile {
 
 	tf.Defaults.Candidate.Environment = ov.CandidateEnvironment
 
-	// A per-target `candidate:` block replaces the defaults block
-	// wholesale (see mergeScalars), so overriding the defaults alone
-	// would leave every target that declares one on its file value —
-	// or, worse, on no value at all.
+	// A per-target `candidate:` block replaces the defaults block wholesale
+	// (see mergeScalars), so overriding the defaults alone would leave every
+	// target that declares one on its file value, or worse, on no value at
+	// all.
 	targets := make([]config.Target, len(tf.Targets))
 	copy(targets, tf.Targets)
 	for i := range targets {

@@ -15,10 +15,10 @@ import (
 // Adapter is the v3/v4 compiler-backed implementation of
 // capture.CompilerCatalogRequester (see internal/capture/compiler.go for
 // the interface contract this type satisfies). It wraps a
-// *transport.Client already built (by internal/transport) from the
-// resolved compiler resolve.Endpoint, and issues only the documented
-// catalog-compilation POST requests described in doc.go — never a
-// PuppetDB request of any kind (see doc.go's "Scope" section).
+// *transport.Client already built from the resolved compiler
+// resolve.Endpoint, and issues only the documented catalog-compilation
+// POST requests described in doc.go, never a PuppetDB request of any
+// kind (see doc.go's "Scope" section).
 type Adapter struct {
 	client  *transport.Client
 	baseURL *url.URL

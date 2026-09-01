@@ -12,8 +12,8 @@ import (
 // TestAcceptance_ExplainDebugPrintsInferenceStatus covers `explain
 // --debug`: one stderr line for the inference request carrying the HTTP
 // status and the response body's top-level JSON shape, and nothing from
-// inside the body — which is exactly what diagnoses a provider that
-// rejects the request with a 400.
+// inside the body. That is exactly what diagnoses a provider rejecting
+// the request with a 400.
 func TestAcceptance_ExplainDebugPrintsInferenceStatus(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))

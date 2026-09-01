@@ -411,12 +411,13 @@ func TestCatalog_LargeIntegerPreservesAllDigits(t *testing.T) {
 }
 
 // TestCatalog_CompilerShape_StringResourceReferenceEdges covers the edge
-// vertex form a real compiler actually returns: a `Type[title]` reference
-// string, not a `{type, title}` object. Puppet::Relationship#to_data_hash
-// serializes each vertex as `source.to_s`/`target.to_s`, so this is what
-// every v3/v4 catalog response and every `capture catalog` snapshot
-// carries — the object form only appears in a terminus-submitted wire
-// format v8 catalog.
+// vertex form a real compiler actually returns: a `Type[title]`
+// reference string, not a `{type, title}` object.
+// Puppet::Relationship#to_data_hash serializes each vertex as
+// `source.to_s` and `target.to_s`, so this is what every v3 and v4
+// catalog response and every `capture catalog` snapshot carries. The
+// object form only appears in a terminus-submitted wire format v8
+// catalog.
 func TestCatalog_CompilerShape_StringResourceReferenceEdges(t *testing.T) {
 	raw := compilerShapedCatalog("web-01.example.test", "production",
 		`[

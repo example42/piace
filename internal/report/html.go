@@ -15,13 +15,13 @@ import (
 // document that opens over `file://` with no HTTP server, CDN, network
 // access, or sibling assets.
 //
-// Self-containment is structural, not a review promise: the template is a
-// package constant with one inlined <style> block, no <script>, no <img>,
-// no <link>, no `url(...)`, and no URL of any kind. There is nothing in
-// the document that could issue a request — which also means no webfont,
-// so the type system is built from system font stacks, and every
-// disclosure marker is drawn in CSS rather than set in a glyph a reader's
-// machine may not have.
+// Self-containment is structural, not a review promise: the template is
+// a package constant with one inlined <style> block, no <script>, no
+// <img>, no <link>, no `url(...)`, and no URL of any kind. There is
+// nothing in the document that could issue a request, which also means
+// no webfont, so the type system is built from system font stacks and
+// every disclosure marker is drawn in CSS rather than set in a glyph a
+// reader's machine may not have.
 //
 // Expand/collapse is <details>, so the page stays interactive with no
 // JavaScript and the document has no script context for an untrusted
@@ -77,7 +77,7 @@ type htmlView struct {
 	// kind, and this format keeps all of it.
 	Aggregate     []htmlGroup
 	EdgeAggregate []htmlEdgeGroup
-	// EstimateLabel/EstimateNote carry requirement 9.3's wording into the
+	// EstimateLabel and EstimateNote carry the mandatory wording into the
 	// document; see doc.go.
 	EstimateLabel   string
 	EstimateNote    string
@@ -94,10 +94,10 @@ type htmlView struct {
 	// count keeps it in the scanning path without lifting the failed
 	// entries out of their place in the list.
 	TotalEstimateFailures int
-	// Assessment is the advisory change assessment, nil when the report
-	// was rendered without one. Nil renders nothing at all — not an empty
-	// section, not a stray newline — because a `piace compare` report has
-	// to stay byte-identical to what v0.1.0 produced.
+	// Assessment is the advisory change assessment, nil when the report was
+	// rendered without one. Nil renders nothing at all, not an empty section
+	// and not a stray newline, because a `piace compare` report has to stay
+	// byte-identical to one rendered before the assessment existed.
 	Assessment *htmlAssessment
 }
 
@@ -110,8 +110,7 @@ type htmlView struct {
 // Nothing in it is ever template.HTML. Summary, Rationale and
 // ReviewFocus are model-generated free text arriving from outside the
 // building, and are exactly as untrusted as a resource title from a
-// catalog — html/template's contextual escaping is what makes them
-// inert.
+// catalog. html/template's contextual escaping is what makes them inert.
 type htmlAssessment struct {
 	Label     string
 	Note      string
@@ -130,10 +129,10 @@ type htmlAssessment struct {
 	Truncation   string
 	InputPartial string
 	// Diagnostics are the assessment's own failures. They are banners
-	// outside every disclosure, like the run diagnostics above them,
-	// because the case they exist for is an assessment that says
-	// "unknown" for everything — which without a visible reason reads as
-	// a broken page rather than a failed request.
+	// outside every disclosure, like the run diagnostics above them, because
+	// the case they exist for is an assessment that says "unknown" for
+	// everything, which without a visible reason reads as a broken page
+	// rather than a failed request.
 	Diagnostics []htmlAssessmentDiagnostic
 	Summary     string
 	ReviewFocus []string
@@ -196,9 +195,10 @@ type htmlTarget struct {
 }
 
 // htmlChange is one resource-level difference, split into the parts the
-// page styles independently — a colored sign gutter, a monospace
-// identity, a parameter name, and a before/after pair. Splitting happens
-// here rather than in the template so the layout stays free of logic.
+// page styles independently: a colored sign gutter, a monospace
+// identity, a parameter name, and a before and after pair. Splitting
+// happens here rather than in the template so the layout stays free of
+// logic.
 type htmlChange struct {
 	// Sign is the gutter mark; Class is the CSS class keyed to it.
 	Sign      string
@@ -239,7 +239,7 @@ type htmlEdgeGroup struct {
 
 // htmlEstimate is one impact estimate. Count is what the bounded query
 // returned; Certnames, PQL and Request are the detail behind the
-// disclosure — all of it present, none of it in the scanning path.
+// disclosure, all of it present and none of it in the scanning path.
 type htmlEstimate struct {
 	Identity  string
 	Status    string
@@ -342,7 +342,7 @@ func buildHTMLAssessment(a *assess.Assessment) *htmlAssessment {
 			a.GroupsAssessed, a.GroupsTotal)
 	}
 	if a.InputPartial {
-		view.InputPartial = "The result document this was built from is itself incomplete — the run recorded diagnostics above — so the assessment did not see the whole comparison."
+		view.InputPartial = "The result document this was built from is itself incomplete (the run recorded diagnostics above), so the assessment did not see the whole comparison."
 	}
 	for _, d := range a.Diagnostics {
 		view.Diagnostics = append(view.Diagnostics, htmlAssessmentDiagnostic{
@@ -380,9 +380,9 @@ func assessmentStamp(a assess.Assessment) []string {
 // already defines for outcomes, rather than introducing a second
 // severity palette. Two reasons, and only one of them is aesthetic: a
 // page with one visual language for severity is read faster, and a
-// report rendered with no assessment must be byte-identical to v0.1.0's
-// — which a new rule in the stylesheet, emitted unconditionally, would
-// break.
+// report rendered with no assessment must be byte-identical to one
+// rendered before the assessment existed, which a new rule in the
+// stylesheet, emitted unconditionally, would break.
 func riskClass(r assess.Risk) string {
 	switch r {
 	case assess.RiskLow:

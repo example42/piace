@@ -110,8 +110,8 @@ func TestAcceptance_DebugDumpDirWritesRestrictedFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile(%s): %v", e.Name(), err)
 		}
-		// The dump is the verbatim response, envelope included — that is
-		// the whole point of having it.
+		// The dump is the verbatim response, envelope included, which is the
+		// whole point of having it.
 		if !strings.HasPrefix(strings.TrimSpace(string(body)), `{"catalog":`) {
 			t.Errorf("v4 response dump is not the raw enveloped body:\n%s", body)
 		}

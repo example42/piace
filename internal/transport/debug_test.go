@@ -163,7 +163,7 @@ func TestClient_Do_BodyCaptureCarriesRawBodies(t *testing.T) {
 }
 
 // TestClient_Do_EmitsObserverEventOnTransportFailure asserts a request
-// that never produced a response is still observed — the case an
+// that never produced a response is still observed, which is the case an
 // operator running --debug most needs to see.
 func TestClient_Do_EmitsObserverEventOnTransportFailure(t *testing.T) {
 	fixture := newTLSFixture(t, "127.0.0.1")

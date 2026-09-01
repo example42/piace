@@ -6,9 +6,9 @@ import (
 )
 
 // overridableTargetsYAML has three targets covering the three shapes an
-// override has to reach: no `candidate:` block at all (inherits the
-// defaults), a block that names a different environment, and a block that
-// names none — which, because a per-target block replaces the defaults
+// override has to reach: no `candidate:` block at all, which inherits
+// the defaults; a block naming a different environment; and a block
+// naming none, which, because a per-target block replaces the defaults
 // wholesale, would otherwise resolve to no environment at all.
 const overridableTargetsYAML = `
 version: 1

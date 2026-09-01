@@ -60,7 +60,7 @@ func sampleRequest() Request {
 	}
 }
 
-// Slice 5.1: the bearer token reaches the service.
+// the bearer token reaches the service.
 func TestClientSendsTheBearerToken(t *testing.T) {
 	s := newStubService(t)
 	if _, err := s.client(t, "s3cret").Complete(context.Background(), sampleRequest()); err != nil {
@@ -71,7 +71,7 @@ func TestClientSendsTheBearerToken(t *testing.T) {
 	}
 }
 
-// Slice 5.4: request options come from the caller and reach the wire.
+// request options come from the caller and reach the wire.
 func TestClientSendsTheConfiguredRequestOptions(t *testing.T) {
 	s := newStubService(t)
 	if _, err := s.client(t, "t").Complete(context.Background(), sampleRequest()); err != nil {
@@ -117,7 +117,7 @@ func TestClientSendsTemperatureAndMaxCompletionTokensWhenSet(t *testing.T) {
 	}
 }
 
-// Slice 5.2: https only, and no empty token.
+// https only, and no empty token.
 func TestNewRejectsAnUnsafeEndpoint(t *testing.T) {
 	for name, raw := range map[string]string{
 		"http":         "http://api.example.com/v1/chat/completions",
@@ -138,7 +138,7 @@ func TestNewRejectsAnUnsafeEndpoint(t *testing.T) {
 	}
 }
 
-// Slice 5.5: a rejected request names the status and echoes no body.
+// a rejected request names the status and echoes no body.
 func TestClientReportsAStatusWithoutEchoingTheBody(t *testing.T) {
 	s := newStubService(t)
 	s.status = http.StatusTooManyRequests
@@ -187,7 +187,7 @@ func TestClientRejectsAnEnvelopeWithNoContent(t *testing.T) {
 	}
 }
 
-// Slice 5.4: the deadline is the caller's, and exceeding it is an
+// the deadline is the caller's, and exceeding it is an
 // ordinary error rather than a hang.
 func TestClientHonoursItsTimeout(t *testing.T) {
 	// The handler waits, but not indefinitely: httptest.Server.Close
@@ -214,7 +214,7 @@ func TestClientHonoursItsTimeout(t *testing.T) {
 }
 
 // WithObserver sees one Event per Complete, carrying the status and the
-// response body's top-level member names but never its values — and the
+// response body's top-level member names but never its values, and the
 // raw bodies only when WithBodyCapture is also set.
 func TestClientObserverSeesStatusAndShapeButNotValues(t *testing.T) {
 	s := newStubService(t)

@@ -20,7 +20,7 @@ import (
 // material, request authorization headers, or unredacted sensitive
 // catalog parameter values:
 //
-//   - --debug prints safe metadata only — method, URL, status, timing,
+//   - --debug prints safe metadata only: method, URL, status, timing,
 //     body sizes, content type, and the response body's top-level JSON
 //     *member names*. That is enough to diagnose a wire-shape mismatch
 //     (a v4 response whose only top-level key is "catalog", say) and
@@ -63,10 +63,10 @@ func (d debugFlags) transportOptions(label string, stderr io.Writer) ([]transpor
 	}
 	sink := &debugSink{label: label, stderr: stderr, printMetadata: d.debug, dumpDir: d.dumpDir}
 	if d.dumpDir != "" {
-		// 0700: the dump directory holds unredacted request/response
-		// bodies, so it is created no more readable than the 0600 files
-		// inside it. An existing directory's mode is left alone — that is
-		// the operator's choice, not this command's to override.
+		// 0700: the dump directory holds unredacted request and response bodies,
+		// so it is created no more readable than the 0600 files inside it. An
+		// existing directory's mode is left alone, that being the operator's
+		// choice rather than this command's to override.
 		if err := os.MkdirAll(d.dumpDir, 0o700); err != nil {
 			return nil, fmt.Errorf("creating --debug-dump-dir: %w", err)
 		}
@@ -201,8 +201,9 @@ func describeInferenceEvent(ev inference.Event) string {
 }
 
 // describeEvent renders one Event as a single safe line. Every field it
-// prints is metadata; no body content reaches it (transport.Event's
-// TopLevelKeys carries member names only — see internal/transport/debug.go).
+// prints is metadata; no body content reaches it, since
+// transport.Event's TopLevelKeys carries member names only (see
+// internal/transport/debug.go).
 func describeEvent(ev transport.Event) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s", ev.Method, ev.URL)

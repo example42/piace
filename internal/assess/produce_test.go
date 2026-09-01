@@ -69,7 +69,7 @@ func TestProduceReturnsAnAssessmentAndCallsTheServiceOnce(t *testing.T) {
 	}
 }
 
-// Slice 8.3's core: an unreachable service still produces a complete
+// an unreachable service still produces a complete
 // artifact, with every group recorded as unknown rather than missing.
 func TestProduceStillProducesAnArtifactWhenTheServiceFails(t *testing.T) {
 	f := &fakeService{errs: []error{errors.New("api.example.com returned status 500")}}
@@ -97,7 +97,7 @@ func TestProduceStillProducesAnArtifactWhenTheServiceFails(t *testing.T) {
 	}
 }
 
-// Slice 4.5: exactly one retry, carrying the validation error.
+// exactly one retry, carrying the validation error.
 func TestProduceRetriesOnceOnAnUnusableResponse(t *testing.T) {
 	f := &fakeService{replies: []string{"I'm sorry, I can't help with that.", goodReply()}}
 	a, diags := Produce(context.Background(), f, assessableResult(), ChangeContext{}, testConfig(), testMeta())
@@ -123,7 +123,7 @@ func TestProduceGivesUpAfterOneRetry(t *testing.T) {
 	a, diags := Produce(context.Background(), f, assessableResult(), ChangeContext{}, testConfig(), testMeta())
 
 	if len(f.calls) != 2 {
-		t.Errorf("service calls = %d, want 2 — no backoff ladder", len(f.calls))
+		t.Errorf("service calls = %d, want 2, with no backoff ladder", len(f.calls))
 	}
 	if !hasError(diags) {
 		t.Error("giving up produced no error diagnostic")
@@ -133,7 +133,7 @@ func TestProduceGivesUpAfterOneRetry(t *testing.T) {
 	}
 }
 
-// Slice 8.5: a report built on failed retrievals is assessed, and says
+// a report built on failed retrievals is assessed, and says
 // its input was partial.
 func TestProduceRecordsThatItsInputWasPartial(t *testing.T) {
 	r := assessableResult()
@@ -150,7 +150,7 @@ func TestProduceRecordsThatItsInputWasPartial(t *testing.T) {
 	}
 }
 
-// Slice 3.2 end to end: truncation is carried into the artifact.
+// truncation is carried into the artifact.
 func TestProduceCarriesTruncationIntoTheArtifact(t *testing.T) {
 	cfg := testConfig()
 	cfg.MaxGroups = 1
@@ -163,11 +163,11 @@ func TestProduceCarriesTruncationIntoTheArtifact(t *testing.T) {
 	}
 }
 
-// A warning does not make the source document partial. model.Result emits
-// warnings on complete runs — a v3 compatibility notice, a directory
-// content source — and an assessment that called every such run's input
-// incomplete would tell the reader of a successful comparison the
-// opposite of the truth.
+// A warning does not make the source document partial. model.Result
+// emits warnings on complete runs, a v3 compatibility notice or a
+// directory content source among them, and an assessment that called
+// every such run's input incomplete would tell the reader of a
+// successful comparison the opposite of the truth.
 func TestOnlyAnErrorDiagnosticMakesTheInputPartial(t *testing.T) {
 	warn := model.Diagnostic{Severity: model.SeverityWarning, Operation: model.OperationRequestCandidate, Message: "v3 trusted-fact warning"}
 	fail := model.Diagnostic{Severity: model.SeverityError, Operation: model.OperationLoadBaseline, Message: "baseline not found"}
@@ -197,7 +197,7 @@ func TestOnlyAnErrorDiagnosticMakesTheInputPartial(t *testing.T) {
 	}
 }
 
-// Slice 2.5, the half the opt-out test could not state at the request
+// The half the opt-out test could not state at the request
 // seam: pseudonyms exist only in the request body, so the two runsdiffer in
 // what left the process and not in what they wrote.
 func TestPseudonymizationOptOutProducesAnIdenticalArtifact(t *testing.T) {

@@ -45,12 +45,12 @@
 //     and the primary sources):
 //
 //     A compiler's own response carries each vertex as a `Type[title]`
-//     *reference string* — Puppet::Relationship#to_data_hash serializes
+//     *reference string*. Puppet::Relationship#to_data_hash serializes
 //     `source.to_s`/`target.to_s`, and Puppet::Resource#to_s is its ref.
 //     PIACE splits it with a Go port of the PuppetDB terminus's own
 //     resource_ref_to_hash regex, which is the same function that
 //     produced the source_type/source_title of the PuppetDB baseline
-//     being compared against — so the two sides line up by construction.
+//     being compared against, so the two sides line up by construction.
 //
 //     PuppetDB's documented catalog wire format v8 defines the vertex as
 //     a `<resource-spec>` *object*, `{"type", "title"}`
@@ -108,13 +108,13 @@
 // `File['/etc/tp/run_info']` resolves to `File['info scripts']` during
 // compilation and relationship resolution; it is never enforced on a
 // node, and a change to it cannot alter anything an agent does to a
-// system. The drop is symmetric — applied to whichever wire shape is
-// being normalized, not conditionally to the PuppetDB one — because a
-// file baseline captured from PuppetDB carries `alias` too, and a
-// shape-conditional filter would let the same asymmetry back in through a
-// snapshot. See value.go's generatedMetadataParameters, which is that
-// list and is deliberately not generalized beyond the one parameter
-// actually measured to cause this.
+// system. The drop is symmetric, applied to whichever wire shape is
+// being normalized rather than conditionally to the PuppetDB one,
+// because a file baseline captured from PuppetDB carries `alias` too and
+// a shape-conditional filter would let the same asymmetry back in
+// through a snapshot. See value.go's generatedMetadataParameters, which
+// is that list and is deliberately not generalized beyond the one
+// parameter actually measured to cause this.
 //
 // # Canonical parameter values and Property 1
 //

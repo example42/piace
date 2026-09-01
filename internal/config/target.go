@@ -97,7 +97,7 @@ const (
 )
 
 // BaselineConfig configures the baseline catalog source and its expected
-// environment. Requirements 1.3 requires a PuppetDB baseline whose returned
+// environment. A PuppetDB baseline whose returned
 // environment differs from Environment to fail the target before diffing.
 type BaselineConfig struct {
 	Source      BaselineSourceKind `json:"source,omitempty" yaml:"source,omitempty"`

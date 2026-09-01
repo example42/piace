@@ -55,9 +55,9 @@ type ImpactEstimate struct {
 type ImpactRequest struct {
 	// Path is the PuppetDB query API path the PQL was sent to.
 	Path string `json:"path"`
-	// Limit is the value of the `limit` URL parameter actually sent —
-	// always ResultLimit+1, so receiving more than ResultLimit rows
-	// detects truncation without a second round trip.
+	// Limit is the value of the `limit` URL parameter actually sent, always
+	// ResultLimit+1, so receiving more than ResultLimit rows detects
+	// truncation without a second round trip.
 	Limit int `json:"limit"`
 	// OrderBy is the exact `order_by` URL parameter sent, or empty when
 	// server-side ordering was not requested. See internal/impact's

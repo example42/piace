@@ -77,7 +77,7 @@ func TestEstimate_SendsDesignSection8QueryToTheRootEndpoint(t *testing.T) {
 	if captured.query != wantPQL {
 		t.Errorf("query =\n  %s\nwant\n  %s", captured.query, wantPQL)
 	}
-	// Requirement 9.4: the reported PQL is exactly what was sent.
+	// the reported PQL is exactly what was sent.
 	if estimate.PQL != captured.query {
 		t.Errorf("reported PQL %q != sent PQL %q", estimate.PQL, captured.query)
 	}
@@ -136,7 +136,7 @@ func TestEstimate_SortsCertnamesLocally(t *testing.T) {
 	}
 }
 
-// Requirement 9.6: reaching the limit marks the estimate truncated and
+// reaching the limit marks the estimate truncated and
 // reports a deterministic sample of exactly ResultLimit certnames.
 func TestEstimate_TruncatesAtResultLimit(t *testing.T) {
 	var captured capturedRequest
@@ -229,7 +229,7 @@ func TestEstimate_NonSuccessStatusIsAFailedEstimateWithNoBodyEcho(t *testing.T) 
 	if diag.Source != pkgNginx {
 		t.Errorf("diagnostic source = %q, want %q", diag.Source, pkgNginx)
 	}
-	// The failed estimate still records what it tried, per requirement 9.7.
+	// The failed estimate still records what it tried.
 	if estimate.PQL == "" || estimate.Request.Path == "" {
 		t.Errorf("a failed estimate must still report its query scope: %+v", estimate)
 	}

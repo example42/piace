@@ -61,7 +61,7 @@
 //     master_core.clj), the v3 catalog endpoint dispatches into the
 //     compiler's embedded Ruby Puppet request handler, whose
 //     Puppet::Network::HTTP::Request#response_formatters_for raises
-//     "Missing required Accept header" when the header is absent — the
+//     "Missing required Accept header" when the header is absent, the
 //     request is rejected before any compilation happens. Verified
 //     against a deployed OpenVox server (2026-08-25): the same POST,
 //     with real PuppetDB-sourced facts, returns
@@ -78,17 +78,17 @@
 //     text/pson`, which raises a fair question for PIACE: a
 //     PuppetDB-sourced baseline was stored from a real agent's
 //     submission, so a candidate fetched with a *less* capable Accept
-//     could differ from it in encoding alone (rich types — Sensitive,
-//     Timestamp, Binary, Regexp, Deferred — degrading to plain strings)
+//     could differ from it in encoding alone, with rich types (Sensitive,
+//     Timestamp, Binary, Regexp, Deferred) degrading to plain strings
 //     and produce diffs that are pure artifacts. Measured on the same
 //     deployed OpenVox server, it does not: the two responses differ
 //     only in `Content-Type` (application/json vs
 //     application/vnd.puppet.rich+json) and in the per-compilation
 //     `catalog_uuid`/`version`; the catalog documents are structurally
 //     identical, and `__ptype`-tagged rich values (a Regexp parameter)
-//     appear in *both*. The isolating case was run too —
+//     appear in *both*. The isolating case was run too:
 //     `Accept: application/vnd.puppet.rich+json` alone, with no
-//     application/json fallback for the server to select instead —
+//     application/json fallback for the server to select instead,
 //     and returns the same structurally identical document, so the
 //     result is not an artifact of the agent list's json fallback
 //     matching first. Rich encoding is a server-side property
@@ -99,11 +99,11 @@
 //     not a per-type enumeration. Requesting bare `application/json`
 //     keeps this package's Accept header minimal and honest about what
 //     response.go actually decodes; if a future deployment is found
-//     where the header does select the encoding, this constant — not
-//     normalization — is the place to change it.
+//     where the header does select the encoding, this constant, not
+//     normalization, is the place to change it.
 //   - catalog document: `{"name": <node>, "environment": ..., "code_id":
 //     ..., "catalog_uuid": ..., "resources": [...], "edges": [...],
-//     ...}`. Critically, this uses `name`, not `certname` — unlike
+//     ...}`. Critically, this uses `name`, not `certname`, unlike
 //     internal/puppetdb's query-API responses. This package's
 //     wireCatalog type reflects that; RequestCandidate maps
 //     wireCatalog.Name into the returned puppetdb.Catalog's Certname
@@ -116,7 +116,7 @@
 //     returns the catalog document as the entire response body. Source:
 //     the example response in OpenVox's api/docs/http_catalog.md (and
 //     puppetlabs/puppet's identical copy of that file).
-//   - v4 response envelope: `{"catalog": <document>}` — the v4 endpoint
+//   - v4 response envelope: `{"catalog": <document>}`. The v4 endpoint
 //     wraps it, v3 does not. Source: puppetserver's own implementation,
 //     src/ruby/puppetserver-lib/puppet/server/compiler.rb, whose
 //     `compile` returns `{ catalog: catalog }` (or `{ catalog:, logs: }`
@@ -124,7 +124,7 @@
 //     src/clj/puppetlabs/services/master/master_core.clj, whose
 //     v4-catalog-fn JSON-encodes that hash verbatim as the 200 response
 //     body. catalogDocument (response.go) unwraps it, keyed on the API
-//     version of the request that produced the response — never sniffed
+//     version of the request that produced the response, never sniffed
 //     from the body. This difference is silent if unhandled: a v4 body
 //     decodes cleanly into wireCatalog with every field absent, so an
 //     unwrapped read reports "malformed response" for a compilation the
@@ -151,7 +151,7 @@
 //     sent as the v4 request's `trusted_facts.values`. A valid
 //     trusted-fact structure is judged as: the
 //     "trusted" fact value decodes to a JSON object with a non-empty
-//     string "certname" field and a present "authenticated" field — the
+//     string "certname" field and a present "authenticated" field, the
 //     two fields that distinguish Puppet's documented trusted-fact shape
 //     from an unrelated fact that happens to be named "trusted".
 //

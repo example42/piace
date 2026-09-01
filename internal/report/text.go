@@ -22,7 +22,7 @@ import (
 // choice: Options carries presentation policy, and an assessment is
 // content that either exists or does not.
 //
-// opts selects display policy only — what this format prints, never what
+// opts selects display policy only: what this format prints, never what
 // it says about the run. See Options.
 func Text(r model.Result, a *assess.Assessment, opts Options) ([]byte, error) {
 	var b bytes.Buffer
@@ -186,9 +186,10 @@ func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
 // header counts displayed groups rather than len(agg.Groups), which still
 // includes the edge groups this format filters out.
 //
-// Certnames are never capped here: they are the operator's own configured
-// targets, a set they wrote themselves and whose size they already know —
-// unlike an impact estimate's certnames, which come from the estate.
+// Certnames are never capped here: they are the operator's own
+// configured targets, a set they wrote themselves and whose size they
+// already know, unlike an impact estimate's certnames, which come from
+// the estate.
 func writeTextAggregate(b *bytes.Buffer, agg model.AggregateDiff) {
 	groups := displayedGroups(agg.Groups)
 	fmt.Fprintf(b, "\naggregate diff (%d):\n", len(groups))
@@ -198,7 +199,7 @@ func writeTextAggregate(b *bytes.Buffer, agg model.AggregateDiff) {
 }
 
 // writeTextImpact renders the impact section, one line per estimate. The
-// section header carries requirement 9.3's label and note, which is what
+// section header carries the mandatory label and note, which is what
 // keeps a bare "N nodes" line from reading as a prediction: the note
 // above it states, once for the whole section, that a listed certname
 // means only that the node's latest stored catalog contains the resource.

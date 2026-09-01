@@ -151,10 +151,10 @@ type fakeCompiler struct {
 	// envelope the answering endpoint uses.
 	catalogs map[string]any
 	// rawBodies is keyed by certname and, when set, is returned verbatim
-	// with status 200 in place of any catalog — no endpoint envelope
+	// with status 200 in place of any catalog, with no endpoint envelope
 	// applied. It exists so a test can exercise the adapter's
-	// semantic-rejection probe, which reads the outer response body
-	// before any envelope is unwrapped.
+	// semantic-rejection probe, which reads the outer response body before
+	// any envelope is unwrapped.
 	rawBodies map[string]any
 	// fileContent is keyed by the mount path segment the resolver builds
 	// from a `puppet://` source reference.

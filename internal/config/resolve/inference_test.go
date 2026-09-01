@@ -15,7 +15,7 @@ func writeServices(t *testing.T, content string) string {
 	return path
 }
 
-// Slice 6.1: `piace explain` needs no mTLS identity and constructs no
+// `piace explain` needs no mTLS identity and constructs no
 // compiler or PuppetDB client, so a services file naming no Puppet
 // infrastructure at all is valid for it.
 func TestAServicesFileWithOnlyAnInferenceSectionLoads(t *testing.T) {
@@ -88,7 +88,7 @@ inference:
 	}
 }
 
-// Slice 6.2: a token is referenced, never written. There is no field to
+// a token is referenced, never written. There is no field to
 // put one in, so an attempt is an unknown field and is refused.
 func TestInferenceCredentialsAreReferencedNeverInlined(t *testing.T) {
 	t.Setenv("PIACE_TEST_TOKEN", "s3cret")
@@ -143,7 +143,7 @@ inference:
 	}
 }
 
-// Slice 6.3: the inference section is optional for everything else. A
+// the inference section is optional for everything else. A
 // services file carrying one still resolves for `piace compare`, which
 // ignores it and contacts no inference service.
 func TestCompareIgnoresTheInferenceSection(t *testing.T) {

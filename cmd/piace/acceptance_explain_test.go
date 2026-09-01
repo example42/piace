@@ -14,12 +14,12 @@ import (
 	"github.com/example42/piace/internal/exitcode"
 )
 
-// This file is v0.2.0's acceptance suite for `piace explain`, in the
-// style of the v0.1.0 suite beside it: it drives run() rather than
-// assess.Produce, so it exercises everything between the CLI boundary and
-// the socket — services-file resolution, the stored result document read
-// back off disk, the bearer token, the HTTP round trip, artifact writing,
-// and the process exit code.
+// This file is the acceptance suite for `piace explain`, in the style of
+// the comparison suite beside it: it drives run() rather than
+// assess.Produce, so it exercises everything between the CLI boundary
+// and the socket, including services-file resolution, the stored result
+// document read back off disk, the bearer token, the HTTP round trip,
+// artifact writing, and the process exit code.
 //
 // Nothing here contacts a real inference service. inferenceStub stands in
 // for one, in the pattern of internal/capture's compiler stub.
@@ -36,7 +36,7 @@ type inferenceStub struct {
 	// test can make the first attempt unusable and the second good.
 	replies []string
 	// rawBody, when non-empty, is written verbatim as the response body
-	// instead of a chat-completions envelope — for exercising an error
+	// instead of a chat-completions envelope, for exercising an error
 	// payload shaped like a real provider's.
 	rawBody string
 
@@ -46,7 +46,7 @@ type inferenceStub struct {
 
 // groupIDPattern finds the ids a request assigned its groups. The stub
 // answers the ids it was actually sent rather than ids a test hard-coded,
-// so slice 8.1 exercises the real anchor round trip: what BuildRequest
+// so the success case exercises the real anchor round trip: what BuildRequest
 // wrote, what Interpret reads back.
 var groupIDPattern = regexp.MustCompile(`\\"id\\":\\"(g\d+)\\"`)
 
@@ -120,8 +120,7 @@ func chatEnvelope(content string) string {
 func (s *inferenceStub) count() int { return len(s.requests) }
 
 // inferenceServices writes a services file carrying only an `inference:`
-// section — the shape slice 6.1 established is valid for explain and for
-// nothing else.
+// section, which is valid for explain and for nothing else.
 func (h *harness) inferenceServices(t *testing.T, name string, s *inferenceStub, extra string) string {
 	t.Helper()
 	path := h.path(name)
@@ -180,10 +179,10 @@ func (h *harness) explain(t *testing.T, s *inferenceStub, jsonIn string, extra .
 	}
 }
 
-// Slice 8.1: explain over a stored result document writes both artifacts
-// and exits 0. A change assessment gates nothing, so a successful
-// assessment cannot make a clean run non-zero and cannot make a failed
-// one clean — this case is the first half of that.
+// explain over a stored result document writes both artifacts and exits
+// 0. A change assessment gates nothing, so a successful assessment
+// cannot make a clean run non-zero and cannot make a failed one clean;
+// this case is the first half of that.
 func TestAcceptance_ExplainWritesBothArtifactsAndExitsZero(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))
@@ -233,12 +232,12 @@ func TestAcceptance_ExplainWritesBothArtifactsAndExitsZero(t *testing.T) {
 	}
 }
 
-// Slice 8.3: an inference service returning 500 still writes the
-// artifact. Every group is recorded as unknown rather than omitted, the
-// reason is on the page and in the artifact, and the command exits 0 —
-// a change assessment gates nothing, and a CI job that fails because an
-// inference service was briefly unavailable is failing for a reason
-// that has nothing to do with the change under test.
+// An inference service returning 500 still writes the artifact. Every
+// group is recorded as unknown rather than omitted, the reason is on the
+// page and in the artifact, and the command exits 0. A change assessment
+// gates nothing, and a CI job that fails because an inference service
+// was briefly unavailable is failing for a reason that has nothing to do
+// with the change under test.
 func TestAcceptance_ExplainRecordsAFailedInferenceServiceAndStillExitsZero(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))
@@ -311,7 +310,7 @@ func TestAcceptance_ExplainRecordsAFailedInferenceServiceAndStillExitsZero(t *te
 	}
 }
 
-// Slice 8.4: --fail-on-inference-error turns 8.3 into exit 30. It is a
+// --fail-on-inference-error turns 8.3 into exit 30. It is a
 // deliberate loosening in the other direction, for an operator who would
 // rather a missing assessment stopped the pipeline.
 func TestAcceptance_ExplainFailOnInferenceErrorExitsThirty(t *testing.T) {
@@ -378,14 +377,14 @@ func TestAcceptance_ExplainSucceedsOnRetryUnderFailOnInferenceError(t *testing.T
 	}
 }
 
-// Slice 8.2: a result document this binary does not know how to read is
+// a result document this binary does not know how to read is
 // refused, exit 30. The message names both versions: a document written
 // by a newer PIACE is a version mismatch, not a corrupt file, and the
 // distinction is the operator's next action.
 //
 // The message is asserted, not only the code. A newer document also
 // carries fields this binary has never seen, which DecodeJSON rejects
-// first — so an exit-30 assertion on its own can pass for the wrong
+// first, so an exit-30 assertion on its own can pass for the wrong
 // reason and go on passing after the version guard is deleted.
 func TestAcceptance_ExplainRefusesAnUnsupportedResultSchemaVersion(t *testing.T) {
 	h := newHarness(t)
@@ -417,9 +416,9 @@ func TestAcceptance_ExplainRefusesAnUnsupportedResultSchemaVersion(t *testing.T)
 	}
 }
 
-// Slice 8.5: a run that failed operationally is still worth assessing —
-// what did compile is what a reviewer has — but the assessment has to say
-// its input was partial rather than reading as a complete review.
+// A run that failed operationally is still worth assessing, since what
+// did compile is what a reviewer has, but the assessment has to say its
+// input was partial rather than reading as a complete review.
 func TestAcceptance_ExplainAssessesAPartialResultDocumentAndSaysSo(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfigs(t, targetsYAML(defaultDefaults,
@@ -460,7 +459,7 @@ func TestAcceptance_ExplainAssessesAPartialResultDocumentAndSaysSo(t *testing.T)
 	}
 }
 
-// Slice 8.6: `--json-in -` reads the result document from stdin, so a CI
+// `--json-in -` reads the result document from stdin, so a CI
 // job can pipe a comparison straight into an assessment.
 //
 // The discriminating assertion is the checksum: the same document read
@@ -515,7 +514,7 @@ func checksumOf(t *testing.T, artifact string) string {
 	return a.SourceReportChecksum
 }
 
-// Slice 8.7: an explain run with no output flag would contact an
+// an explain run with no output flag would contact an
 // inference service, disclose a comparison to it, and throw the answer
 // away. It is a usage error.
 func TestAcceptance_ExplainWithNoOutputFlagIsAUsageError(t *testing.T) {
@@ -544,7 +543,7 @@ func TestAcceptance_ExplainWithNoOutputFlagIsAUsageError(t *testing.T) {
 	}
 }
 
-// Slice 6.2, asserted where the harness that can assert it lives:
+// The reach guarantee, asserted where the harness that can assert it lives:
 // `explain` constructs no compiler client and no PuppetDB client, even
 // when the services file it is given names both.
 //
@@ -553,7 +552,7 @@ func TestAcceptance_ExplainWithNoOutputFlagIsAUsageError(t *testing.T) {
 // This is the reach guarantee stated as a test rather than as a claim:
 // `explain` sends catalog-derived data outside the building, so the set
 // of hosts it can reach while doing so has to be short enough to state
-// in one sentence — and demonstrable.
+// in one sentence, and demonstrable.
 func TestAcceptance_ExplainContactsNoCompilerAndNoPuppetDB(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))
@@ -596,10 +595,10 @@ puppetdb:
 	}
 }
 
-// The --change flag end to end. Slices 3.3 and 3.4 pin the fencing at
-// the request seam; this asserts the file actually reaches it, and that
-// a change context written to say `ignore previous instructions` travels
-// as data — inside its fence, labelled untrusted — rather than as
+// The --change flag end to end. The request tests pin the fencing at the
+// request seam; this asserts the file actually reaches it, and that a
+// change context written to say `ignore previous instructions` travels
+// as data, inside its fence and labelled untrusted, rather than as
 // instruction.
 //
 // compare and explain never invoke git. The change context is a file
@@ -637,10 +636,10 @@ change:
 			t.Errorf("the outbound request does not carry %q from the change context", want)
 		}
 	}
-	// The injection attempt is transmitted, not stripped — stripping it
-	// would be a filter PIACE cannot make complete. It is transmitted
-	// inside a fence labelled as data, which is a claim about structure
-	// rather than about content.
+	// The injection attempt is transmitted, not stripped: stripping it would
+	// be a filter PIACE cannot make complete. It is transmitted inside a
+	// fence labelled as data, which is a claim about structure rather than
+	// about content.
 	if !strings.Contains(strings.ToLower(sent), "untrusted") {
 		t.Errorf("the outbound request does not label the change context as untrusted data:\n%s", sent)
 	}
@@ -663,14 +662,14 @@ change:
 	}
 }
 
-// Slice 6.3, the mirror of TestAcceptance_ExplainContactsNoCompilerAndNoPuppetDB:
+// The mirror of TestAcceptance_ExplainContactsNoCompilerAndNoPuppetDB:
 // `compare` ignores the inference: section entirely and contacts no
 // inference service.
 //
 // The section is appended to the very services file `compare` reads, and
 // its endpoint is a live stub that records every request it receives. A
-// `compare` that grew an inference call — or a services loader that
-// eagerly dialled every configured section — fails here rather than in
+// `compare` that grew an inference call, or a services loader that
+// eagerly dialled every configured section, fails here rather than in
 // somebody's pipeline, which is where a catalog reaching a third party
 // would otherwise first become visible.
 func TestAcceptance_CompareContactsNoInferenceService(t *testing.T) {

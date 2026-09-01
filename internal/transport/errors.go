@@ -41,10 +41,10 @@ const (
 // be built from raw response content (see Redact in redact.go for the one
 // place safe metadata is derived from a request/response).
 //
-// Every Error produced by this package is an operational error. Task 6's
-// compiler adapter consults Kind only to decide how to present a
-// low-level transport failure; it does not need to (and must not)
-// reclassify any Error from this package as a compilation failure — see
+// Every Error produced by this package is an operational error.
+// internal/compiler consults Kind only to decide how to present a
+// low-level transport failure; it does not need to, and must not,
+// reclassify any Error from this package as a compilation failure. See
 // doc.go decision 4.
 type Error struct {
 	Kind ErrorKind

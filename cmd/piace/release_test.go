@@ -11,12 +11,11 @@ import (
 // set contains only the Go standard library, this module's own packages,
 // and gopkg.in/yaml.v3.
 //
-// requirement 12.2's substance — "no Ruby, Puppet agent, Facter, package
-// manager, or runtime dependency resolution" — follows from that set
-// being closed: nothing in it shells out to a Puppet toolchain or
-// resolves a package at run time. A new third-party dependency would fail
-// this test and force that judgement to be made deliberately rather than
-// noticed after a release.
+// No Ruby, Puppet agent, Facter, package manager or runtime dependency
+// resolution follows from that set being closed: nothing in it shells
+// out to a Puppet toolchain or resolves a package at run time. A new
+// third-party dependency would fail this test and force that judgement
+// to be made deliberately rather than noticed after a release.
 func TestRelease_NoNonStandardDependenciesBeyondYAML(t *testing.T) {
 	out, err := exec.Command("go", "list", "-deps", ".").Output()
 	if err != nil {

@@ -98,7 +98,7 @@
 //   - 1.3's own conditional clause is "WHEN baseline.source is PuppetDB
 //     ...", i.e. it is explicitly scoped to (and only makes sense for) the
 //     puppetdb source. There is no reading of 1.3 under which it applies
-//     to baseline.source == file instead — a file snapshot's environment
+//     to baseline.source == file instead: a file snapshot's environment
 //     is a property recorded at capture time and checked when the
 //     snapshot is loaded, not "returned" by a live retrieval.
 //   - Section 8's sentence describes PuppetDB's *retrieval* semantics: you
@@ -110,7 +110,7 @@
 //     to skip validating the environment PuppetDB actually returns against
 //     the operator's configured expectation.
 //   - Reading section 8 as silently disabling 1.3 would make 1.3
-//     vacuous — 1.3 has no other subject than baseline.source == puppetdb
+//     vacuous, having no other subject than baseline.source == puppetdb
 //     to apply to. It would also remove the one safety net that catches
 //     exactly the failure mode section 8 itself warns about: an operator
 //     who deliberately points a development-branch comparison's baseline

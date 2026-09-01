@@ -48,11 +48,10 @@ func fingerprintResourceChange(change model.ResourceChange) (string, error) {
 			"after_digest":    fc.AfterDigest,
 		}
 	default:
-		// An absent parameter and one explicitly present with undef are
-		// the same Go nil in the model.Value domain (internal/normalize
-		// decodes JSON null to nil), so no encoding at this layer could
-		// distinguish them — and diffParameters never emits such a pair
-		// as a change in the first place.
+		// An absent parameter and one explicitly present with undef are the same
+		// Go nil in the model.Value domain, since internal/normalize decodes
+		// JSON null to nil, so no encoding at this layer could distinguish them.
+		// diffParameters never emits such a pair as a change in the first place.
 		evidence["before"] = fingerprintable(change.Before)
 		evidence["after"] = fingerprintable(change.After)
 	}

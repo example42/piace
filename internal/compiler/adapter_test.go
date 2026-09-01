@@ -70,8 +70,8 @@ func wireCatalogBody(name, environment string) []byte {
 
 // v4CatalogBody is a v4 response body: the same catalog document wrapped
 // in the endpoint's `{"catalog": ...}` envelope. The two helpers are
-// deliberately separate rather than one shape reused for both endpoints
-// — that conflation is what
+// deliberately separate rather than one shape reused for both endpoints,
+// that conflation being what
 // TestAdapter_RequestCandidate_V4RejectsUnwrappedCatalogBody guards
 // against reappearing.
 func v4CatalogBody(name, environment string) []byte {

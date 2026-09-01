@@ -21,13 +21,13 @@ import (
 // Accepted input shapes:
 //
 //   - nil, bool, string
-//   - json.Number (preserves exact decimal digits — see
+//   - json.Number (preserves exact decimal digits, see
 //     canonicalNumberString)
 //   - float64, int, int64 (accepted for caller convenience when a value
 //     was decoded/constructed without json.Number; float64 in particular
 //     can only be as precise as whatever produced it, so a caller that
 //     needs exact large-integer precision must supply json.Number or
-//     json.RawMessage instead — see the package doc for why Checksum
+//     json.RawMessage instead. See the package doc for why Checksum
 //     always decodes with json.Decoder.UseNumber() rather than plain
 //     json.Unmarshal)
 //   - []any (recursively canonicalized, order preserved)

@@ -68,12 +68,12 @@ func EstimateAll(
 		}
 	}
 
-	// selected maps each estimable identity to the winning target's
-	// order and limits together, so recovering the limits never has to
-	// hop back through the targets slice by index — a duplicate certname
-	// (which resolution rejects, but which this package should not
-	// silently mis-attribute if it ever appeared) cannot select one
-	// target's index and another's configuration.
+	// selected maps each estimable identity to the winning target's order
+	// and limits together, so recovering the limits never has to hop back
+	// through the targets slice by index. A duplicate certname, which
+	// resolution rejects but which this package should not silently
+	// mis-attribute if it ever appeared, cannot then select one target's
+	// index and another's configuration.
 	type winner struct {
 		order  int
 		limits Limits

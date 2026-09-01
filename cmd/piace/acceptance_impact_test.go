@@ -194,15 +194,15 @@ func TestAcceptance_ImpactQueryWireShape(t *testing.T) {
 // `--impact-nodes` option end to end.
 //
 // The default is capped because a bounded estimate may hold as many
-// certnames as its configured `result_limit` — a thousand in a realistic
-// deployment — and a section of several hundred estimates, each naming a
-// thousand nodes, is not a CI log anyone reads. What the cap must never
+// certnames as its configured `result_limit`, a thousand in a realistic
+// deployment, and a section of several hundred estimates each naming a
+// thousand nodes is not a CI log anyone reads. What the cap must never
 // do is understate the estimate, so the count stays exact in both forms
 // and only the names are elided.
 func TestAcceptance_ImpactNodesControlsTheCertnameSample(t *testing.T) {
 	// A result limit above the returned count keeps the estimate
-	// untruncated, so this exercises the display cap rather than the
-	// query bound — two different elisions that must not be confused.
+	// untruncated, so this exercises the display cap rather than the query
+	// bound. They are two different elisions and must not be confused.
 	defaults := strings.Replace(impactDefaults, "    result_limit: 2", "    result_limit: 50", 1)
 
 	nodes := []string{

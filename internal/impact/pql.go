@@ -47,10 +47,10 @@ func BuildPQL(identity model.ResourceIdentity) (string, error) {
 // must be escaped for the literal to terminate correctly; newline,
 // carriage return, and tab use their documented C-style escapes.
 //
-// Any other control character (U+0000-U+001F) has no documented escape
-// form — the reference establishes no \uXXXX syntax — so it is refused
-// rather than emitted raw, passed through, or silently dropped. Every
-// other rune, including non-ASCII text, is emitted literally: PQL
+// Any other control character (U+0000 to U+001F) has no documented
+// escape form, the reference establishing no \uXXXX syntax, so it is
+// refused rather than emitted raw, passed through, or silently dropped.
+// Every other rune, non-ASCII text included, is emitted literally: PQL
 // queries are sent UTF-8 encoded and URL-escaped by net/url, so a
 // multibyte rune needs no further treatment here.
 func quotePQLString(s string) (string, error) {

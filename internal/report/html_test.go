@@ -14,7 +14,7 @@ import (
 // server, CDN, network access, or sibling assets. Nothing in the
 // document may reference an external resource or execute script.
 //
-// Slice 7.6 runs it over both renderings. Self-containment asserted only
+// It runs over both renderings. Self-containment asserted only
 // against the assessment-free page would pass vacuously the moment the
 // change-assessment section exists, and that section is the one part of
 // the document built from text a remote service wrote.
@@ -123,10 +123,10 @@ func TestHTML_VisiblyMarksRequiredStates(t *testing.T) {
 // Identity nil, so a caller that dereferences Identity unconditionally
 // panics.
 //
-// The HTML and text renderers no longer reach this branch — they filter
-// edge groups out first — but the hazard is structural, not situational,
-// so it is tested directly at the helper rather than through a format
-// that happens to exercise it today.
+// The HTML and text renderers no longer reach this branch, since they
+// filter edge groups out first, but the hazard is structural rather than
+// situational, so it is tested directly at the helper rather than
+// through a format that happens to exercise it today.
 func TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity(t *testing.T) {
 	key := model.AggregateChangeKey{Kind: model.ChangeEdgeRemoved, Edge: &model.Edge{Source: "Class[a]", Target: "Class[b]"}}
 	if got := aggregateKeyLabel(key); got != "edge_removed Class[a] -> Class[b]" {
@@ -136,10 +136,10 @@ func TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity(t *testing.T) {
 
 // TestHTML_KeepsEverythingBehindDisclosure is this format's half of the
 // display contract. Text drops edge changes, an estimate's PQL and
-// request options, and the certnames past a cap; HTML keeps all of it and
-// uses <details> instead — so every string the text test asserts is
-// ABSENT must be present here, in the page itself rather than only in the
-// canonical JSON embedded at the bottom.
+// request options, and the certnames past a cap; HTML keeps all of it
+// and uses <details> instead, so every string the text test asserts is
+// ABSENT must be present here, in the page itself rather than only in
+// the canonical JSON embedded at the bottom.
 func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 	data, err := HTML(sampleResult(), nil)
 	if err != nil {
@@ -190,7 +190,7 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 // <details> is not visible. Everything else on a target may collapse;
 // these may not.
 //
-// TestHTML_VisiblyMarksRequiredStates cannot catch this — it substring
+// TestHTML_VisiblyMarksRequiredStates cannot catch this: it substring
 // searches, and collapsed content still matches.
 func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
 	data, err := HTML(sampleResult(), nil)

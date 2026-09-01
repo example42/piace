@@ -28,11 +28,11 @@
 // whose same parameter changed to *different* secrets never merge into
 // one group even though both projections read model.RedactedValue.
 //
-// An empty Fingerprint means "cannot group" (internal/diff sets it only
+// An empty Fingerprint means "cannot group": internal/diff sets it only
 // when canonical encoding failed, alongside an error-severity
-// diagnostic). Such a change is placed in a group of its own rather than
-// merged with every other unfingerprintable change sharing its
-// identity — honoring the contract internal/diff/diff.go states.
+// diagnostic. Such a change is placed in a group of its own rather than
+// merged with every other unfingerprintable change sharing its identity,
+// which is the contract internal/diff/diff.go states.
 //
 // An edge change carries no fingerprint and needs none: an edge's whole
 // semantic content is its kind plus its ordered (source, target) pair,
