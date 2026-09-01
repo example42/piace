@@ -7,25 +7,24 @@ import (
 	"github.com/example42/piace/internal/exitcode"
 )
 
-// TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs is
-// requirements.md 8.6 and design.md's Property 1 checked at the level the
-// requirement actually states: "deterministic for identical input
-// catalogs and configuration", not merely deterministic when re-rendering
-// one in-memory result.
+// TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs checks
+// determinism at the level that matters: identical input catalogs and
+// configuration produce identical bytes, not merely a deterministic
+// re-render of one in-memory result.
 //
 // The whole pipeline runs twice, and the second run serves the same
 // catalogs with a different resource, parameter, and edge *insertion
-// order* — the nondeterminism a real PuppetDB can exhibit and the one a
+// order*: the nondeterminism a real PuppetDB can exhibit, and the one a
 // re-render test cannot catch. Every artifact must come out
 // byte-identical.
 //
-// The second run also lists the same two targets in the opposite order in
-// its target file. That is deliberately a step beyond requirement 8.6's
-// "identical configuration": the resolved target *set* is identical, the
-// file order is not. It holds because design.md section 9 makes the
-// document target-sorted, and asserting it here is what keeps target-file
-// order from leaking into a report and making two equivalent CI configs
-// produce different artifacts.
+// The second run also lists the same two targets in the opposite order
+// in its target file. That is deliberately a step beyond identical
+// configuration: the resolved target *set* is identical, the file order
+// is not. It holds because the result document is target-sorted, and
+// asserting it here is what keeps target-file order from leaking into a
+// report and making two equivalent CI configs produce different
+// artifacts.
 func TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs(t *testing.T) {
 	forward := []resourceSpec{
 		{Type: "Service", Title: "nginx", Parameters: map[string]any{
@@ -58,11 +57,11 @@ func TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs(t *testing.T) {
 	}
 	edgesReversed := []edgeSpec{edgesForward[1], edgesForward[0]}
 
-	// Both runs go through ONE harness, so the two service endpoints —
-	// and therefore the run-level provenance the report records — are
-	// identical. Two harnesses would listen on different random ports,
-	// which is genuinely different configuration and would make the
-	// comparison test the wrong thing.
+	// Both runs go through ONE harness, so the two service endpoints, and
+	// therefore the run-level provenance the report records, are identical.
+	// Two harnesses would listen on different random ports, which is
+	// genuinely different configuration and would make the comparison test
+	// the wrong thing.
 	h := newHarness(t)
 	h.pdb.impactCertnames = []string{"db-02.example.test", "db-01.example.test"}
 

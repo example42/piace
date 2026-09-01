@@ -37,14 +37,12 @@ func randomIdentifier(rng *rand.Rand, prefix string) string {
 }
 
 // TestProperty_CandidateIdentityIntegrity is a property-based test over
-// randomly generated (requested certname/environment, returned
-// certname/environment) pairs: RequestCandidate must accept the candidate
-// catalog if and only if both the returned name and environment exactly
-// equal what was requested. This is design.md's Property 3 ("Candidate
-// identity integrity") applied at the adapter layer that produces the
+// randomly generated (requested certname and environment, returned
+// certname and environment) pairs: RequestCandidate must accept the
+// candidate catalog if and only if both the returned name and
+// environment exactly equal what was requested. That is candidate
+// identity integrity applied at the adapter layer that produces the only
 // candidate PIACE ever compares.
-//
-// **Validates: Requirements 1.5**
 func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 	rng := rand.New(rand.NewSource(1))
 
@@ -66,11 +64,11 @@ func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 
 		wantAccept := returnedCertname == requestedCertname && returnedEnv == requestedEnv
 
-		// Alternate the candidate API across iterations: identity
-		// integrity is a property of both endpoints, and the two do not
-		// share a response envelope (v4 wraps the catalog document, v3
-		// does not — see doc.go), so exercising only one would leave the
-		// other's identity check unproven.
+		// Alternate the candidate API across iterations: identity integrity is a
+		// property of both endpoints, and the two do not share a response
+		// envelope, since v4 wraps the catalog document and v3 does not (see
+		// doc.go), so exercising only one would leave the other's identity check
+		// unproven.
 		useV4 := i%2 == 0
 		body := wireCatalogBody(returnedCertname, returnedEnv)
 		target := v3Target(requestedCertname, requestedEnv)
@@ -116,17 +114,14 @@ func TestProperty_CandidateIdentityIntegrity(t *testing.T) {
 	}
 }
 
-// TestProperty_V3WarningAlwaysEmitted is a property-based test: for every
-// randomly generated target requesting catalog_api v3 directly, a
+// TestProperty_V3WarningAlwaysEmitted is a property-based test: for
+// every randomly generated target requesting catalog_api v3 directly, a
 // successful RequestCandidate call always attaches
 // model.V3TrustedFactWarning to the returned provenance, regardless of
-// certname, environment, or trusted-fact factset content. This locks
-// design.md section 5's "every permitted v4-to-v3 fallback [and v3
-// request] ... attaches a prominent, non-suppressible warning" for the
-// direct-v3 case across many inputs, since the warning must never depend
-// on incidental request content.
-//
-// **Validates: Requirements 2.5**
+// certname, environment, or trusted-fact factset content. This locks the
+// rule that every v3 request attaches a prominent, non-suppressible
+// warning, across many inputs, since the warning must never depend on
+// incidental request content.
 func TestProperty_V3WarningAlwaysEmitted(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 
@@ -164,13 +159,11 @@ func TestProperty_V3WarningAlwaysEmitted(t *testing.T) {
 // TestProperty_FallbackOnlyOnVerifiedUnsupportedV4 is a property-based
 // test over randomly generated v4 failure status codes: a v4-to-v3
 // fallback must occur if and only if AllowV3Fallback is true AND the v4
-// response status is a verified-unsupported signal (404 or 501), per
-// design.md section 3.1's exact list of forbidden fallback triggers
-// (authentication, authorization, timeout, malformed response, identity/
-// environment mismatch). This iterates every status code in a
+// response status is a verified-unsupported signal (404 or 501). Every
+// other status is a forbidden fallback trigger: authentication,
+// authorization, timeout, malformed response, and identity or
+// environment mismatch. This iterates every status code in a
 // representative set combined with both AllowV3Fallback settings.
-//
-// **Validates: Requirements 2.3, 2.4**
 func TestProperty_FallbackOnlyOnVerifiedUnsupportedV4(t *testing.T) {
 	statusCodes := []int{
 		http.StatusBadRequest,          // 400 - malformed request, never fallback

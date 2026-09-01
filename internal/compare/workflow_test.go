@@ -59,9 +59,9 @@ func TestRun_CleanComparison(t *testing.T) {
 	}
 }
 
-// TestRun_RecordsServiceProvenance verifies design.md section 9's
-// run-level "resolved safe provenance": the report names the two service
-// authorities it was allowed to reach, and no TLS file path.
+// TestRun_RecordsServiceProvenance verifies the run-level resolved safe
+// provenance: the report names the two service authorities it was
+// allowed to reach, and no TLS file path.
 func TestRun_RecordsServiceProvenance(t *testing.T) {
 	resources := []testResource{{Type: "Notify", Title: "hello"}}
 	w := newWorkflow(fakeFactSource{}, fakeCatalogSource{resources: resources}, fakeCompiler{resources: resources})
@@ -121,8 +121,7 @@ func TestRun_ParameterChangeAggregatesAcrossTargets(t *testing.T) {
 	if result.Outcome != exitcode.OutcomePolicyDisallowedDifference || result.ExitCode != 10 {
 		t.Fatalf("Outcome/ExitCode = %q/%d, want policy_disallowed_difference/10", result.Outcome, result.ExitCode)
 	}
-	// design.md section 9: the document is target-sorted regardless of
-	// target-file order.
+	// The document is target-sorted regardless of target-file order.
 	if result.Targets[0].Certname != "web-01.example.test" || result.Targets[1].Certname != "web-02.example.test" {
 		t.Errorf("target order = %q, %q", result.Targets[0].Certname, result.Targets[1].Certname)
 	}
@@ -138,10 +137,9 @@ func TestRun_ParameterChangeAggregatesAcrossTargets(t *testing.T) {
 	}
 }
 
-// TestRun_TargetFailureDoesNotStopOtherTargets covers design.md's
-// Architecture rule: one target's error is captured in its own result and
-// processing continues, and requirements.md 10.5 — the run is never clean
-// while a failure is reported.
+// TestRun_TargetFailureDoesNotStopOtherTargets: one target's error is
+// captured in its own result and processing continues, and the run is
+// never clean while a failure is reported.
 func TestRun_TargetFailureDoesNotStopOtherTargets(t *testing.T) {
 	resources := []testResource{{Type: "Notify", Title: "hello"}}
 	failing := &model.Diagnostic{
@@ -210,8 +208,8 @@ func TestRun_CompilationFailureIsNotOperational(t *testing.T) {
 }
 
 // TestRun_V3WarningSurvivesToTheResult verifies the non-suppressible v3
-// trusted-fact warning reaches the shared result and does not, by itself,
-// change the outcome (design.md section 10).
+// trusted-fact warning reaches the shared result and does not, by
+// itself, change the outcome.
 func TestRun_V3WarningSurvivesToTheResult(t *testing.T) {
 	resources := []testResource{{Type: "Notify", Title: "hello"}}
 	w := newWorkflow(
@@ -265,9 +263,9 @@ func TestRun_ImpactEstimatesAreRunLevelAndDeduplicated(t *testing.T) {
 	}
 }
 
-// TestRun_DisabledEstimateIssuesNoQuery covers requirements.md 9.1 and
-// design.md section 8's "disabled estimates produce no request and no
-// failure" — including with no querier configured at all.
+// TestRun_DisabledEstimateIssuesNoQuery covers the rule that a disabled
+// estimate produces no request and no failure, including with no querier
+// configured at all.
 func TestRun_DisabledEstimateIssuesNoQuery(t *testing.T) {
 	var asked []model.ResourceIdentity
 	w := newWorkflow(
@@ -287,10 +285,10 @@ func TestRun_DisabledEstimateIssuesNoQuery(t *testing.T) {
 	}
 }
 
-// TestRun_FailedEstimateIsOperational verifies design.md section 8: an
-// enabled estimate's failure is reported both as a non-completed estimate
-// and as a run-level diagnostic that reduces to an operational outcome
-// after every target has finished.
+// TestRun_FailedEstimateIsOperational: an enabled estimate's failure is
+// reported both as a non-completed estimate and as a run-level
+// diagnostic that reduces to an operational outcome after every target
+// has finished.
 func TestRun_FailedEstimateIsOperational(t *testing.T) {
 	w := newWorkflow(
 		fakeFactSource{},
@@ -353,10 +351,9 @@ func TestRun_NormalizationFailureIsOperational(t *testing.T) {
 	}
 }
 
-// TestRun_ExclusionsSuppressDifferencesAndAreReported covers
-// requirements.md 6.3-6.5 reaching the shared result: an excluded
-// resource change leaves the run clean while its suppression stays
-// visible.
+// TestRun_ExclusionsSuppressDifferencesAndAreReported covers exclusions
+// reaching the shared result: an excluded resource change leaves the run
+// clean while its suppression stays visible.
 func TestRun_ExclusionsSuppressDifferencesAndAreReported(t *testing.T) {
 	w := newWorkflow(
 		fakeFactSource{},

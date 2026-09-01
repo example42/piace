@@ -1,41 +1,116 @@
-# services.yaml — endpoints and mTLS identity for `piace compare` and
-# `piace capture`.
+# services.yaml: endpoints and credential references for every piace
+# subcommand.
 #
-# This is the file that does not belong in a review diff: it names hosts and
-# key material, not policy. Keep it out of the branch under test, or template
-# it from CI secrets.
+# One file drives the whole pipeline. The sections load independently, so
+# `compare` and `capture` read compiler: and puppetdb: and never look at
+# inference:, while `explain` reads inference: and never builds a compiler
+# or PuppetDB client. What keeps the two jobs apart in CI is which
+# credentials each one is granted, not which file it is handed.
 #
 #   piace compare --targets examples/targets-puppetdb-baseline.yaml \
-#                 --services examples/services.yaml
+#                 --services examples/services.yaml --json-out report.json
+#
+#   export PIACE_INFERENCE_TOKEN=...
+#   piace explain --json-in report.json --services examples/services.yaml \
+#                 --change change-context.yaml --ai-out assessment.json
+#
+# THE ONE PATH RULE: every relative path named in this file resolves
+# against this file's own directory. Same for facts.file and baseline.file
+# in a target file, which resolve against the target file. An absolute
+# path is taken as written.
 
 version: 1
 
-# The Puppet Server / OpenVox compiler that serves the deployed environments.
+# The Puppet Server or OpenVox compiler serving the deployed environments.
 # `compare` and `capture catalog` POST candidate catalog requests here.
 compiler:
   endpoint: https://puppet.ops.example.com:8140
 
-  # IMPORTANT: TLS paths resolve against the *process working directory*, not
-  # against this file. Always use absolute paths.
+  # Two ways to name the mTLS identity, and exactly one per credential.
+  # Naming both forms of the same credential is an error rather than a
+  # precedence rule nobody remembers.
+  #
+  # As a path, absolute or relative to this file:
   ca_bundle:   /etc/piace/tls/ca.pem
   client_cert: /etc/piace/tls/piace-catalog-reader.pem
   private_key: /etc/piace/tls/piace-catalog-reader.key
+
+  # Or by naming an environment variable that holds the path. This is the
+  # CI form: the committed file is read in place, unmodified, by a job
+  # whose credential directory does not exist until the job starts. The
+  # variable carries a path, never key material, and it must be absolute.
+  #
+  # ca_bundle_env:   PIACE_CA_BUNDLE
+  # client_cert_env: PIACE_CLIENT_CERT
+  # private_key_env: PIACE_PRIVATE_KEY
 
 # PuppetDB, read-only: baseline catalogs, factsets, and impact estimates.
 puppetdb:
   endpoint: https://puppetdb.ops.example.com:8081
 
-  # The two sections load independently. Reusing one identity for both is a
-  # deliberate choice, not a default — split them if PuppetDB's allowlist and
-  # the compiler's auth.conf should not name the same certificate.
+  # Each service names its own identity. Reusing one for both is a
+  # deliberate choice rather than a default: split them if PuppetDB's
+  # allowlist and the compiler's auth.conf should not name the same
+  # certificate.
   ca_bundle:   /etc/piace/tls/ca.pem
   client_cert: /etc/piace/tls/piace-catalog-reader.pem
   private_key: /etc/piace/tls/piace-catalog-reader.key
 
-# The client certificate above must be a dedicated catalog-reader identity
-# whose subject CN is named in the compiler's auth.conf rule for
+# The client certificate above has to be a dedicated catalog-reader
+# identity whose subject CN is named in the compiler's auth.conf rule for
 # /puppet/v4/catalog. A stock compiler answers 403 until it is. See the
-# README, "Authorizing the catalog-reader certificate".
+# README's "Authorizing the catalog-reader certificate".
 #
 # Only https is accepted. Inline keys, bearer tokens, and insecure TLS are
 # rejected at load time.
+
+# ---------------------------------------------------------------------------
+# Optional, advisory, and the only part of PIACE that talks to something
+# other than your compiler and PuppetDB. Read the README's "What leaves the
+# building" before enabling it. `compare` never contacts it.
+# ---------------------------------------------------------------------------
+inference:
+  # Any OpenAI-compatible chat-completions endpoint. https only.
+  endpoint: https://api.anthropic.com/v1/chat/completions
+  model: claude-sonnet-5
+
+  # The bearer token is always referenced, never inlined: there is no field
+  # to put one in. Set exactly one of token_env or token_file.
+  #
+  # For api.anthropic.com use a WORKSPACE-scoped key (Console, then a
+  # Workspace, then API keys). An identity-linked key is rejected with a
+  # 400, "anthropic-workspace-id is required", a header PIACE does not send.
+  token_env: PIACE_INFERENCE_TOKEN
+  # token_file: inference-token    # relative to this file, like every path
+
+  timeout: 60s                  # default 60s
+  max_tokens: 4000              # default 4000
+
+  # Which request field carries max_tokens' value: "max_tokens" (default;
+  # what Ollama, vLLM, llama.cpp and older OpenAI models expect) or
+  # "max_completion_tokens" (required by OpenAI's GPT-5 family, also
+  # accepted by Anthropic's OpenAI-compatible endpoint).
+  # token_limit_param: max_tokens
+
+  # Sampling temperature. Unset by default, and then NO temperature is
+  # sent: Claude 4+ and GPT-5 reject any non-default value with a 400, and
+  # pinning it never made a model-generated assessment reproducible. Set it
+  # only for a provider that both needs and accepts one.
+  # temperature: 0
+
+  max_groups: 200               # default 200; caps how many aggregate groups
+                                # leave the process
+
+  # true (the default) replaces every certname with a per-run pseudonym
+  # (node-001, node-002, and so on) in the request body only. The assessment
+  # artifact is identical either way, so this changes nothing but what the
+  # provider sees. Setting it false is a decision, not a tweak.
+  pseudonymize: true
+
+  # A latency optimisation, not a trust boundary: every reply is validated
+  # locally whether or not structured output was requested.
+  structured_output: true
+
+  # Site policy handed to the model alongside the change. Optional, and
+  # capped at 4000 bytes. Relative to this file, like every path here.
+  # policy_notes_file: policy-notes.md

@@ -9,12 +9,12 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// TestHTML_IsSelfContained is requirements.md 8.3 checked structurally:
-// the artifact must open over `file://` with no HTTP server, CDN, network
-// access, or sibling assets. Nothing in the document may reference an
-// external resource or execute script.
+// TestHTML_IsSelfContained checks the self-containment claim
+// structurally: the artifact must open over `file://` with no HTTP
+// server, CDN, network access, or sibling assets. Nothing in the
+// document may reference an external resource or execute script.
 //
-// Slice 7.6 runs it over both renderings. Self-containment asserted only
+// It runs over both renderings. Self-containment asserted only
 // against the assessment-free page would pass vacuously the moment the
 // change-assessment section exists, and that section is the one part of
 // the document built from text a remote service wrote.
@@ -87,10 +87,10 @@ func TestHTML_EscapesUntrustedValues(t *testing.T) {
 	}
 }
 
-// TestHTML_VisiblyMarksRequiredStates covers requirements.md 8.4-8.5 and
-// 10.2: per-target node diffs, the aggregate diff, catalog retrieval
-// failure, compilation failure, the v3 warning, excluded differences, and
-// the final outcome must all be visible without opening a data blob.
+// TestHTML_VisiblyMarksRequiredStates: per-target node diffs, the
+// aggregate diff, catalog retrieval failure, compilation failure, the v3
+// warning, excluded differences, and the final outcome must all be
+// visible without opening a data blob.
 func TestHTML_VisiblyMarksRequiredStates(t *testing.T) {
 	data, err := HTML(sampleResult(), nil)
 	if err != nil {
@@ -123,10 +123,10 @@ func TestHTML_VisiblyMarksRequiredStates(t *testing.T) {
 // Identity nil, so a caller that dereferences Identity unconditionally
 // panics.
 //
-// The HTML and text renderers no longer reach this branch — they filter
-// edge groups out first — but the hazard is structural, not situational,
-// so it is tested directly at the helper rather than through a format
-// that happens to exercise it today.
+// The HTML and text renderers no longer reach this branch, since they
+// filter edge groups out first, but the hazard is structural rather than
+// situational, so it is tested directly at the helper rather than
+// through a format that happens to exercise it today.
 func TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity(t *testing.T) {
 	key := model.AggregateChangeKey{Kind: model.ChangeEdgeRemoved, Edge: &model.Edge{Source: "Class[a]", Target: "Class[b]"}}
 	if got := aggregateKeyLabel(key); got != "edge_removed Class[a] -> Class[b]" {
@@ -136,10 +136,10 @@ func TestAggregateKeyLabel_HandlesAnEdgeKeysNilIdentity(t *testing.T) {
 
 // TestHTML_KeepsEverythingBehindDisclosure is this format's half of the
 // display contract. Text drops edge changes, an estimate's PQL and
-// request options, and the certnames past a cap; HTML keeps all of it and
-// uses <details> instead — so every string the text test asserts is
-// ABSENT must be present here, in the page itself rather than only in the
-// canonical JSON embedded at the bottom.
+// request options, and the certnames past a cap; HTML keeps all of it
+// and uses <details> instead, so every string the text test asserts is
+// ABSENT must be present here, in the page itself rather than only in
+// the canonical JSON embedded at the bottom.
 func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 	data, err := HTML(sampleResult(), nil)
 	if err != nil {
@@ -151,9 +151,9 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 	for _, want := range []string{
 		"Class[a]",             // a per-target edge change
 		"Class[b]",             //   ...and its other endpoint
-		"1 edge(s) suppressed", // requirements.md 6.5, in full
-		`resources[certname] { type = &#34;Service&#34;`, // requirements.md 9.4
-		"/pdb/query/v4",                          // requirements.md 9.7 request scope
+		"1 edge(s) suppressed", // the suppression count, in full
+		`resources[certname] { type = &#34;Service&#34;`, // the exact generated PQL
+		"/pdb/query/v4",                          // the request scope
 		"order_by",                               //   ...and its options
 		"db-01.example.test, db-02.example.test", // the uncapped certname sample
 	} {
@@ -170,7 +170,7 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 		"Grouped resource changes",     // aggregate resource groups
 		"Dependency-graph edge groups", // aggregate edge groups
 		"Queried resources",            // the estimate list
-		"Excluded differences",         // requirements.md 8.5
+		"Excluded differences",         // visibly marked, not disclosed
 	} {
 		if !strings.Contains(visible, summary) {
 			t.Errorf("HTML report has no disclosure headed %q", summary)
@@ -185,12 +185,12 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 }
 
 // TestHTML_KeepsFailuresOutOfDisclosure is the floor under the collapse.
-// requirements.md 8.5 requires catalog retrieval failure, compilation
-// failure and the v3 trusted-fact warning to be *visibly* marked, and a
-// mark inside a closed <details> is not visible. Everything else on a
-// target may collapse; these may not.
+// Catalog retrieval failure, compilation failure and the v3 trusted-fact
+// warning have to be *visibly* marked, and a mark inside a closed
+// <details> is not visible. Everything else on a target may collapse;
+// these may not.
 //
-// TestHTML_VisiblyMarksRequiredStates cannot catch this — it substring
+// TestHTML_VisiblyMarksRequiredStates cannot catch this: it substring
 // searches, and collapsed content still matches.
 func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
 	data, err := HTML(sampleResult(), nil)
@@ -217,7 +217,7 @@ func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
 			continue
 		}
 		if strings.Contains(out[card:at], "<details") {
-			t.Errorf("%q is inside a disclosure; requirements.md 8.5 needs it visibly marked", mark)
+			t.Errorf("%q is inside a disclosure; it has to be visibly marked", mark)
 		}
 	}
 }
@@ -300,9 +300,9 @@ func TestHTML_EdgeOnlyTargetShowsItsEdges(t *testing.T) {
 	}
 }
 
-// TestHTML_EmbedsTheCanonicalJSON verifies design.md section 9's "HTML
-// embeds the redacted canonical result as escaped data", and that the
-// embedded bytes are exactly the JSON artifact.
+// TestHTML_EmbedsTheCanonicalJSON verifies that the HTML embeds the
+// redacted canonical result as escaped data, and that the embedded bytes
+// are exactly the JSON artifact.
 func TestHTML_EmbedsTheCanonicalJSON(t *testing.T) {
 	result := sampleResult()
 	jsonData, err := JSON(result)
@@ -321,8 +321,8 @@ func TestHTML_EmbedsTheCanonicalJSON(t *testing.T) {
 	}
 }
 
-// TestHTML_IsByteIdenticalForIdenticalInput is design.md's Property 1
-// applied to the HTML artifact.
+// TestHTML_IsByteIdenticalForIdenticalInput applies the determinism
+// property to the HTML artifact.
 func TestHTML_IsByteIdenticalForIdenticalInput(t *testing.T) {
 	first, err := HTML(sampleResult(), nil)
 	if err != nil {

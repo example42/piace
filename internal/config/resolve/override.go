@@ -10,11 +10,11 @@ import "github.com/example42/piace/internal/config"
 // An override is applied to the decoded target file *before* resolution,
 // never to the resolved targets afterwards. That is what makes it
 // indistinguishable from a file that had said so in the first place:
-// every rule in design.md section 3.2 is validated against the effective
-// value, and the redacted provenance a report carries records the
-// effective value without inventing a second notion of where it came
-// from. It also means a target file may legitimately omit a field the
-// invocation supplies, which is the point: see CandidateEnvironment.
+// every resolution rule is validated against the effective value, and
+// the redacted provenance a report carries records the effective value
+// without inventing a second notion of where it came from. It also means
+// a target file may legitimately omit a field the invocation supplies,
+// which is the point: see CandidateEnvironment.
 type Overrides struct {
 	// CandidateEnvironment replaces `candidate.environment` for every
 	// target, both the defaults block and every per-target override.
@@ -42,10 +42,10 @@ func (ov Overrides) apply(tf config.TargetFile) config.TargetFile {
 
 	tf.Defaults.Candidate.Environment = ov.CandidateEnvironment
 
-	// A per-target `candidate:` block replaces the defaults block
-	// wholesale (see mergeScalars), so overriding the defaults alone
-	// would leave every target that declares one on its file value —
-	// or, worse, on no value at all.
+	// A per-target `candidate:` block replaces the defaults block wholesale
+	// (see mergeScalars), so overriding the defaults alone would leave every
+	// target that declares one on its file value, or worse, on no value at
+	// all.
 	targets := make([]config.Target, len(tf.Targets))
 	copy(targets, tf.Targets)
 	for i := range targets {

@@ -18,14 +18,12 @@ func (e *errUnencodableLiteral) Error() string {
 	return "impact: " + e.component + " contains a control character with no documented PQL string escape"
 }
 
-// BuildPQL renders design.md section 8's exact impact query for one
-// resource identity:
+// BuildPQL renders the exact impact query for one resource identity:
 //
 //	resources[certname] { type = <quoted-type> and title = <quoted-title> }
 //
-// It is the single PQL string-literal encoder design.md section 8
-// requires ("The adapter uses one PQL string-literal encoder"): no other
-// code in this package composes query text.
+// It is the single PQL string-literal encoder: no other code in this
+// package composes query text.
 //
 // It returns an error rather than a best-effort query when either
 // component cannot be safely encoded; see doc.go.
@@ -49,10 +47,10 @@ func BuildPQL(identity model.ResourceIdentity) (string, error) {
 // must be escaped for the literal to terminate correctly; newline,
 // carriage return, and tab use their documented C-style escapes.
 //
-// Any other control character (U+0000-U+001F) has no documented escape
-// form — the reference establishes no \uXXXX syntax — so it is refused
-// rather than emitted raw, passed through, or silently dropped. Every
-// other rune, including non-ASCII text, is emitted literally: PQL
+// Any other control character (U+0000 to U+001F) has no documented
+// escape form, the reference establishing no \uXXXX syntax, so it is
+// refused rather than emitted raw, passed through, or silently dropped.
+// Every other rune, non-ASCII text included, is emitted literally: PQL
 // queries are sent UTF-8 encoded and URL-escaped by net/url, so a
 // multibyte rune needs no further treatment here.
 func quotePQLString(s string) (string, error) {

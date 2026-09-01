@@ -7,10 +7,9 @@ import (
 )
 
 // TestChecksum_ValidChecksumAccepted verifies a checksum computed from a
-// payload matches a re-computed checksum from the same logical payload
-// spelled differently (key order, numeric spelling) — i.e. Checksum is
-// stable under exactly the cosmetic variation CanonicalJSON normalizes
-// away.
+// payload matches one re-computed from the same logical payload spelled
+// differently, in key order or numeric spelling, so Checksum is stable
+// under exactly the cosmetic variation CanonicalJSON normalizes away.
 func TestChecksum_ValidChecksumAccepted(t *testing.T) {
 	a := json.RawMessage(`{"certname": "web-01", "count": 1.50}`)
 	b := json.RawMessage(`{"count": 1.5, "certname": "web-01"}`)

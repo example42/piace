@@ -126,10 +126,10 @@ func isEdgeKind(kind model.ChangeKind) bool {
 }
 
 // kindOrder fixes the emission order of the five change kinds, so
-// "sorted by kind" (design.md section 9) is a defined total order rather
-// than an accident of how the constants happen to spell out. Resource
-// membership changes come first, then parameter changes, then edges,
-// matching the order design.md section 7.1 lists them in.
+// "sorted by kind" is a defined total order rather than an accident of
+// how the constants happen to spell out. Resource membership changes
+// come first, then parameter changes, then edges, matching the order the
+// normalized catalog model lists them in.
 var kindOrder = map[model.ChangeKind]int{
 	model.ChangeResourceAdded:    0,
 	model.ChangeResourceRemoved:  1,

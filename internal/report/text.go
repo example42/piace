@@ -9,14 +9,12 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// Text renders r as the concise CI log report required by
-// requirements.md 8.1, in the section order design.md section 9 fixes:
-// "Text renders final outcome first, then per-target status, node
-// changes, warnings/errors, aggregate summary, and impact summary."
+// Text renders r as the concise CI log report, in a fixed section order:
+// final outcome first, then per-target status, node changes, warnings
+// and errors, aggregate summary, and impact summary.
 //
 // The outcome and its reasons come first because a CI log is read from
-// the top and often truncated; requirements.md 10.2 requires both to be
-// present.
+// the top and often truncated, and both have to be present.
 //
 // a is the advisory change assessment, or nil. A nil assessment renders
 // nothing at all, so a `piace compare` log is what v0.1.0 printed. It is
@@ -24,7 +22,7 @@ import (
 // choice: Options carries presentation policy, and an assessment is
 // content that either exists or does not.
 //
-// opts selects display policy only — what this format prints, never what
+// opts selects display policy only: what this format prints, never what
 // it says about the run. See Options.
 func Text(r model.Result, a *assess.Assessment, opts Options) ([]byte, error) {
 	var b bytes.Buffer
@@ -74,7 +72,7 @@ func writeTextAssessment(b *bytes.Buffer, a *assess.Assessment) {
 		fmt.Fprintf(b, "  review focus: %s\n", f)
 	}
 	if a.GroupsTruncated {
-		fmt.Fprintf(b, "  assessed %d of %d aggregate groups\n", a.GroupsAssessed, a.GroupsTotal)
+		fmt.Fprintf(b, "  assessed %d of %d resource-change groups\n", a.GroupsAssessed, a.GroupsTotal)
 	}
 	if a.InputPartial {
 		fmt.Fprintf(b, "  input partial: the result document records diagnostics\n")
@@ -90,10 +88,9 @@ func writeTextTargets(b *bytes.Buffer, targets []model.TargetResult) {
 		fmt.Fprintf(b, "  %s: %s\n", t.Certname, t.Outcome)
 		writeTextProvenance(b, t)
 
-		// The v3 trusted-fact warning is emitted before the change list,
-		// not buried after it: requirements.md 2.5 calls for a
-		// "prominent" warning in every output format, and a reader who
-		// stops at the changes must still have seen it.
+		// The v3 trusted-fact warning is emitted before the change list, not
+		// buried after it: the warning is owed prominently in every output
+		// format, and a reader who stops at the changes must still have seen it.
 		if t.Candidate != nil && t.Candidate.V3Warning != "" {
 			fmt.Fprintf(b, "    WARNING: %s\n", t.Candidate.V3Warning)
 		}
@@ -108,9 +105,9 @@ func writeTextTargets(b *bytes.Buffer, targets []model.TargetResult) {
 }
 
 // writeTextProvenance prints the baseline, facts, and candidate
-// provenance requirements.md 1.2 and 2.2 require in the result. A section
-// is omitted entirely when the pipeline never got far enough to establish
-// it, which is itself informative about where a failed target stopped.
+// provenance the result owes. A section is omitted entirely when the
+// pipeline never got far enough to establish it, which is itself
+// informative about where a failed target stopped.
 func writeTextProvenance(b *bytes.Buffer, t model.TargetResult) {
 	if t.Baseline != nil {
 		fmt.Fprintf(b, "    baseline:  %s\n", sourceProvenanceLine(*t.Baseline))
@@ -189,9 +186,10 @@ func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
 // header counts displayed groups rather than len(agg.Groups), which still
 // includes the edge groups this format filters out.
 //
-// Certnames are never capped here: they are the operator's own configured
-// targets, a set they wrote themselves and whose size they already know —
-// unlike an impact estimate's certnames, which come from the estate.
+// Certnames are never capped here: they are the operator's own
+// configured targets, a set they wrote themselves and whose size they
+// already know, unlike an impact estimate's certnames, which come from
+// the estate.
 func writeTextAggregate(b *bytes.Buffer, agg model.AggregateDiff) {
 	groups := displayedGroups(agg.Groups)
 	fmt.Fprintf(b, "\naggregate diff (%d):\n", len(groups))
@@ -201,7 +199,7 @@ func writeTextAggregate(b *bytes.Buffer, agg model.AggregateDiff) {
 }
 
 // writeTextImpact renders the impact section, one line per estimate. The
-// section header carries requirement 9.3's label and note, which is what
+// section header carries the mandatory label and note, which is what
 // keeps a bare "N nodes" line from reading as a prediction: the note
 // above it states, once for the whole section, that a listed certname
 // means only that the node's latest stored catalog contains the resource.

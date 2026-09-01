@@ -11,34 +11,33 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// HTML renders r as the static review artifact required by
-// requirements.md 8.3-8.5: a single self-contained document that opens
-// over `file://` with no HTTP server, CDN, network access, or sibling
-// assets.
+// HTML renders r as the static review artifact: a single self-contained
+// document that opens over `file://` with no HTTP server, CDN, network
+// access, or sibling assets.
 //
-// Self-containment is structural, not a review promise: the template is a
-// package constant with one inlined <style> block, no <script>, no <img>,
-// no <link>, no `url(...)`, and no URL of any kind. There is nothing in
-// the document that could issue a request — which also means no webfont,
-// so the type system is built from system font stacks, and every
-// disclosure marker is drawn in CSS rather than set in a glyph a reader's
-// machine may not have.
+// Self-containment is structural, not a review promise: the template is
+// a package constant with one inlined <style> block, no <script>, no
+// <img>, no <link>, no `url(...)`, and no URL of any kind. There is
+// nothing in the document that could issue a request, which also means
+// no webfont, so the type system is built from system font stacks and
+// every disclosure marker is drawn in CSS rather than set in a glyph a
+// reader's machine may not have.
 //
 // Expand/collapse is <details>, so the page stays interactive with no
 // JavaScript and the document has no script context for an untrusted
 // value to escape into.
 //
 // Unlike the text report, HTML takes no display Options: it shows
-// everything the result document holds — edge changes, an estimate's PQL,
-// request options, and full certname list — and uses disclosure rather
-// than omission to keep the page readable. Every list of rows is closed
-// and its summary carries its count, so a reader scanning for the outcome
-// reads an index of the run rather than paging through it, and a reader
-// who wants a section opens it. What never goes behind a disclosure is a
-// failure: the per-target error banners, the v3 warning, the run
-// diagnostics and the outcome badges stay in the scanning path, because
-// requirements.md 8.5's "visibly mark" is not satisfied by a mark a
-// reader has to go looking for. See doc.go.
+// everything the result document holds, edge changes, an estimate's PQL,
+// request options, and the full certname list, and uses disclosure
+// rather than omission to keep the page readable. Every list of rows is
+// closed and its summary carries its count, so a reader scanning for the
+// outcome reads an index of the run rather than paging through it, and a
+// reader who wants a section opens it. What never goes behind a
+// disclosure is a failure: the per-target error banners, the v3 warning,
+// the run diagnostics and the outcome badges stay in the scanning path,
+// because a mark a reader has to go looking for is not a visible mark.
+// See doc.go.
 //
 // Everything variable is interpolated through html/template, whose
 // contextual escaping is what makes an attacker-shaped resource title or
@@ -74,11 +73,11 @@ type htmlView struct {
 	Targets  []htmlTarget
 	// Aggregate holds the resource-level groups; EdgeAggregate holds the
 	// edge groups, which the page discloses separately rather than
-	// interleaving. Both are shown: requirements.md 7.4 keeps edge
-	// changes a distinct aggregate kind, and this format keeps all of it.
+	// interleaving. Both are shown: edge changes are a distinct aggregate
+	// kind, and this format keeps all of it.
 	Aggregate     []htmlGroup
 	EdgeAggregate []htmlEdgeGroup
-	// EstimateLabel/EstimateNote carry requirement 9.3's wording into the
+	// EstimateLabel and EstimateNote carry the mandatory wording into the
 	// document; see doc.go.
 	EstimateLabel   string
 	EstimateNote    string
@@ -95,10 +94,10 @@ type htmlView struct {
 	// count keeps it in the scanning path without lifting the failed
 	// entries out of their place in the list.
 	TotalEstimateFailures int
-	// Assessment is the advisory change assessment, nil when the report
-	// was rendered without one. Nil renders nothing at all — not an empty
-	// section, not a stray newline — because a `piace compare` report has
-	// to stay byte-identical to what v0.1.0 produced.
+	// Assessment is the advisory change assessment, nil when the report was
+	// rendered without one. Nil renders nothing at all, not an empty section
+	// and not a stray newline, because a `piace compare` report has to stay
+	// byte-identical to one rendered before the assessment existed.
 	Assessment *htmlAssessment
 }
 
@@ -111,8 +110,7 @@ type htmlView struct {
 // Nothing in it is ever template.HTML. Summary, Rationale and
 // ReviewFocus are model-generated free text arriving from outside the
 // building, and are exactly as untrusted as a resource title from a
-// catalog — html/template's contextual escaping is what makes them
-// inert.
+// catalog. html/template's contextual escaping is what makes them inert.
 type htmlAssessment struct {
 	Label     string
 	Note      string
@@ -131,10 +129,10 @@ type htmlAssessment struct {
 	Truncation   string
 	InputPartial string
 	// Diagnostics are the assessment's own failures. They are banners
-	// outside every disclosure, like the run diagnostics above them,
-	// because the case they exist for is an assessment that says
-	// "unknown" for everything — which without a visible reason reads as
-	// a broken page rather than a failed request.
+	// outside every disclosure, like the run diagnostics above them, because
+	// the case they exist for is an assessment that says "unknown" for
+	// everything, which without a visible reason reads as a broken page
+	// rather than a failed request.
 	Diagnostics []htmlAssessmentDiagnostic
 	Summary     string
 	ReviewFocus []string
@@ -197,9 +195,10 @@ type htmlTarget struct {
 }
 
 // htmlChange is one resource-level difference, split into the parts the
-// page styles independently — a colored sign gutter, a monospace
-// identity, a parameter name, and a before/after pair. Splitting happens
-// here rather than in the template so the layout stays free of logic.
+// page styles independently: a colored sign gutter, a monospace
+// identity, a parameter name, and a before and after pair. Splitting
+// happens here rather than in the template so the layout stays free of
+// logic.
 type htmlChange struct {
 	// Sign is the gutter mark; Class is the CSS class keyed to it.
 	Sign      string
@@ -212,15 +211,13 @@ type htmlChange struct {
 	HasValues bool
 	// Note carries File-content evidence in place of a value pair: the
 	// comparison state, its evidence source, and the digest pair. Managed
-	// content bytes are never available here to render
-	// (requirements.md 5.8).
+	// content bytes are never available here to render.
 	Note string
 }
 
 // htmlEdge is one dependency-graph edge difference. Direction is
-// significant (design.md section 7.1), so Source and Target are separate
-// fields and the arrow between them is drawn by the page, never
-// normalized away.
+// significant, so Source and Target are separate fields and the arrow
+// between them is drawn by the page, never normalized away.
 type htmlEdge struct {
 	Sign   string
 	Class  string
@@ -229,7 +226,7 @@ type htmlEdge struct {
 }
 
 // htmlGroup and htmlEdgeGroup are aggregate groups: one difference plus
-// the targets exhibiting it (requirements.md 7.2).
+// the targets exhibiting it.
 type htmlGroup struct {
 	htmlChange
 	Targets string
@@ -242,7 +239,7 @@ type htmlEdgeGroup struct {
 
 // htmlEstimate is one impact estimate. Count is what the bounded query
 // returned; Certnames, PQL and Request are the detail behind the
-// disclosure — all of it present, none of it in the scanning path.
+// disclosure, all of it present and none of it in the scanning path.
 type htmlEstimate struct {
 	Identity  string
 	Status    string
@@ -341,11 +338,11 @@ func buildHTMLAssessment(a *assess.Assessment) *htmlAssessment {
 	}
 	if a.GroupsTruncated {
 		view.Truncation = fmt.Sprintf(
-			"Assessed %d of %d aggregate groups. The rest were ranked lower and never sent, so this section says nothing about them.",
+			"Assessed %d of %d resource-change groups. The rest were ranked lower and never sent, so this section says nothing about them.",
 			a.GroupsAssessed, a.GroupsTotal)
 	}
 	if a.InputPartial {
-		view.InputPartial = "The result document this was built from is itself incomplete — the run recorded diagnostics above — so the assessment did not see the whole comparison."
+		view.InputPartial = "The result document this was built from is itself incomplete (the run recorded diagnostics above), so the assessment did not see the whole comparison."
 	}
 	for _, d := range a.Diagnostics {
 		view.Diagnostics = append(view.Diagnostics, htmlAssessmentDiagnostic{
@@ -383,9 +380,9 @@ func assessmentStamp(a assess.Assessment) []string {
 // already defines for outcomes, rather than introducing a second
 // severity palette. Two reasons, and only one of them is aesthetic: a
 // page with one visual language for severity is read faster, and a
-// report rendered with no assessment must be byte-identical to v0.1.0's
-// — which a new rule in the stylesheet, emitted unconditionally, would
-// break.
+// report rendered with no assessment must be byte-identical to one
+// rendered before the assessment existed, which a new rule in the
+// stylesheet, emitted unconditionally, would break.
 func riskClass(r assess.Risk) string {
 	switch r {
 	case assess.RiskLow:
@@ -445,10 +442,9 @@ func buildHTMLTarget(t model.TargetResult) htmlTarget {
 		}
 	}
 
-	// requirements.md 8.5 requires catalog retrieval failure and
-	// compilation failure to be visibly marked, so error diagnostics are
-	// split out of the general list into their own banner rather than
-	// being one row among many.
+	// Catalog retrieval failure and compilation failure have to be visibly
+	// marked, so error diagnostics are split out of the general list into
+	// their own banner rather than being one row among many.
 	for _, d := range t.Diagnostics {
 		entry := htmlDiagnostic{Severity: string(d.Severity), Operation: string(d.Operation), Message: d.Message}
 		if d.Severity == model.SeverityError {

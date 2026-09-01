@@ -25,8 +25,7 @@ const maxResponseBodyBytes int64 = 8 << 20
 // and a stolen services file must yield nothing usable. This client is
 // the scoped exception to that rule, and it is a separate package so the
 // exception is visible in the import graph rather than buried in a
-// conditional. See
-// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+// conditional. See CONTEXT.md.
 type Client struct {
 	// HTTPClient is exported so a test can substitute a stub server's
 	// client. Production callers use the one New builds.
@@ -35,12 +34,21 @@ type Client struct {
 	url     *url.URL
 	token   string
 	timeout time.Duration
+
+	// observer and captureBodies back the --debug seam. Both are off by
+	// default; see debug.go. observer is invoked synchronously from
+	// Complete and must not change what Complete returns.
+	observer      Observer
+	captureBodies bool
 }
 
 // New builds a client for u. Only https is accepted, and a token is
 // required: PIACE never mints or discovers a credential on its own, so a
 // missing one is a configuration error rather than an anonymous request.
-func New(u *url.URL, token string, timeout time.Duration) (*Client, error) {
+//
+// Options are applied after the validated fields; see WithObserver and
+// WithBodyCapture in debug.go.
+func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Client, error) {
 	if u == nil {
 		return nil, fmt.Errorf("inference: no endpoint configured")
 	}
@@ -56,12 +64,16 @@ func New(u *url.URL, token string, timeout time.Duration) (*Client, error) {
 	if timeout <= 0 {
 		return nil, fmt.Errorf("inference: timeout must be positive")
 	}
-	return &Client{
+	c := &Client{
 		HTTPClient: &http.Client{Timeout: timeout},
 		url:        u,
 		token:      token,
 		timeout:    timeout,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c, nil
 }
 
 // Authority is the endpoint's host, safe to record in an artifact so a
@@ -69,8 +81,8 @@ func New(u *url.URL, token string, timeout time.Duration) (*Client, error) {
 func (c *Client) Authority() string { return c.url.Host }
 
 // chatResponse is the part of a chat-completions envelope PIACE reads.
-// Everything else — usage, fingerprints, tool calls — is the service's
-// business.
+// Everything else, usage, fingerprints and tool calls among it, is the
+// service's business.
 type chatResponse struct {
 	Choices []struct {
 		Message struct {
@@ -103,19 +115,45 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+c.token)
 
+	start := time.Now()
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
 		// url.Error stringifies to include the request URL but never a
 		// header, so the token cannot appear here.
+		c.emit(Event{
+			Method: http.MethodPost, URL: c.url.String(), Host: c.url.Host,
+			Duration: time.Since(start), RequestBodyBytes: len(body),
+			Err: err, RequestBody: body,
+		})
 		return nil, fmt.Errorf("inference: requesting %s: %w", c.url.Host, err)
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
-	if err != nil {
-		return nil, fmt.Errorf("inference: reading response from %s: %w", c.url.Host, err)
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+
+	shape, keys, keysTruncated := describeBody(raw)
+	c.emit(Event{
+		Method: http.MethodPost, URL: c.url.String(), Host: c.url.Host,
+		StatusCode: resp.StatusCode, Duration: time.Since(start),
+		RequestBodyBytes: len(body), ResponseBodyBytes: len(raw),
+		ContentType:   resp.Header.Get("Content-Type"),
+		Shape:         shape,
+		TopLevelKeys:  keys,
+		KeysTruncated: keysTruncated,
+		Err:           readErr,
+		RequestBody:   body,
+		ResponseBody:  raw,
+	})
+
+	if readErr != nil {
+		return nil, fmt.Errorf("inference: reading response from %s: %w", c.url.Host, readErr)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		// Status only: a failed inference response body routinely carries
+		// account, project, and quota details belonging to whoever
+		// configured the service, and this error becomes a diagnostic that
+		// reaches reports and CI logs. Operators who need the body ask for
+		// it explicitly with `piace explain --debug-dump-dir`.
 		return nil, fmt.Errorf("inference: %s returned status %d", c.url.Host, resp.StatusCode)
 	}
 

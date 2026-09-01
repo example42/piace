@@ -136,9 +136,9 @@ func TestWorkflow_CaptureFacts_SkipsPuppetDBSourcedTargets(t *testing.T) {
 	}
 }
 
-// TestWorkflow_CaptureFacts_PerTargetErrorIsolation verifies one target's
-// PuppetDB retrieval failure does not stop the remaining targets from
-// being captured, per design.md's Architecture note.
+// TestWorkflow_CaptureFacts_PerTargetErrorIsolation verifies one
+// target's PuppetDB retrieval failure does not stop the remaining
+// targets from being captured.
 func TestWorkflow_CaptureFacts_PerTargetErrorIsolation(t *testing.T) {
 	dir := t.TempDir()
 	pathA := filepath.Join(dir, "a.json")

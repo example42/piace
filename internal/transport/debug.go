@@ -5,13 +5,13 @@
 // both services and all three subcommands without any adapter needing a
 // debug field of its own.
 //
-// Redaction boundary (requirements.md 3.5, and this package's Sanitize
-// contract in redact.go): an Event carries only safe metadata by
-// default — method, URL, host, status, duration, body sizes, content
-// type, and the response body's *top-level JSON member names*. Member
-// names, not member values: `{"catalog": {...}}` yields ["catalog"],
-// which is enough to diagnose a wire-shape mismatch without putting one
-// byte of catalog content into a CI log.
+// Redaction boundary (see this package's Sanitize contract in
+// redact.go): an Event carries only safe metadata by default, being
+// method, URL, host, status, duration, body sizes, content type, and the
+// response body's *top-level JSON member names*. Member names, not
+// member values: `{"catalog": {...}}` yields ["catalog"], which is
+// enough to diagnose a wire-shape mismatch without putting one byte of
+// catalog content into a CI log.
 //
 // Raw bodies are carried only when a caller explicitly opts in with
 // WithBodyCapture. That is a deliberate, operator-requested bypass of
@@ -45,9 +45,9 @@ const (
 	// ShapeScalar is a bare JSON string/number/bool/null.
 	ShapeScalar BodyShape = "scalar"
 	// ShapeNonJSON is a body that does not parse as JSON. That is an
-	// ordinary, expected outcome for an endpoint that does not serve
-	// JSON — the compiler's file_content endpoint returns
-	// application/octet-stream — so the name states the fact rather than
+	// ordinary, expected outcome for an endpoint that does not serve JSON,
+	// the compiler's file_content endpoint returning
+	// application/octet-stream, so the name states the fact rather than
 	// implying a fault.
 	ShapeNonJSON BodyShape = "non-json"
 )
@@ -70,8 +70,8 @@ type Event struct {
 	ResponseBodyBytes int
 	ContentType       string
 	Shape             BodyShape
-	// TopLevelKeys holds the response body's top-level JSON member names
-	// in wire order (member *names* only — never values), truncated at
+	// TopLevelKeys holds the response body's top-level JSON member names in
+	// wire order, member *names* only and never values, truncated at
 	// maxTopLevelKeys. Empty unless Shape is ShapeObject.
 	TopLevelKeys []string
 	// KeysTruncated reports that TopLevelKeys was cut at maxTopLevelKeys.

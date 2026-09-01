@@ -4,9 +4,44 @@ All notable changes to PIACE are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-01
 
 ### Added
+
+- **One path rule.** Every relative path named in a config file now resolves
+  against the directory of the file that names it. `facts.file` and
+  `baseline.file` already did; the TLS paths, `token_file` and
+  `policy_notes_file` now do too. Nothing resolves against the process working
+  directory, so moving a config file takes its paths with it.
+- **`ca_bundle_env`, `client_cert_env`, `private_key_env`**: each service
+  section may name an environment variable holding a credential's absolute
+  path, mirroring the `inference:` section's existing `token_env`. Naming both
+  forms of one credential is an error rather than a precedence rule nobody
+  remembers. Together with the path rule this removes the services *template*
+  entirely: a committed services file is now read in place, unmodified, by a CI
+  job whose credential directory did not exist when the file was written. No
+  `sed`, no per-job render, and no tracked file a job rewrites.
+- **`piace change-context`**: writes the change context file
+  `explain --change` reads, by exec'ing git. Every untrusted input is taken by
+  variable name (`--title-env`, `--base-ref-env`) or file path
+  (`--title-file`), never on the command line, because every CI system
+  substitutes into script text before a shell runs: GitHub's `${{ }}`, Azure's
+  `$( ... )`. There is deliberately no `--title` or `--description` flag. It
+  is optional, and `explain --change` still reads a file produced by any means,
+  so a repository under a different VCS is unaffected.
+- **Keyless signing and provenance**: the release job signs `SHA256SUMS` with
+  cosign, using the workflow's own OIDC identity, and attaches
+  `SHA256SUMS.sigstore.json`. The binaries carry a GitHub build provenance
+  attestation, and both image manifests are signed by digest and attested.
+  Verification is now actionable from the moment a release is published; the
+  release notes carry the exact `cosign verify-blob` command. The OpenPGP
+  signature remains available for sites that require one, as an extra rather
+  than the verification path.
+- **`ghcr.io/example42/piace`**: the image is mirrored to GHCR alongside Docker
+  Hub, from the same build. An anonymous Docker Hub pull from a shared CI
+  runner IP is exactly what Docker Hub rate-limits, and a pipeline failing for
+  that reason fails for a reason unrelated to this project.
+
 
 - **`piace compare --candidate-environment ENVIRONMENT`**: compiles every
   target's candidate catalog from ENVIRONMENT, overriding
@@ -21,8 +56,83 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unchanged and unrelated: it names the environment to snapshot, not the
   candidate environment under test.
 
+- **`piace explain --debug` / `--debug-dump-dir DIR`**: the two observation
+  options `compare` and `capture` already accept now work on `explain` too, so
+  a rejected inference request can be diagnosed without guessing. `--debug`
+  prints one stderr line for the inference round trip: method, URL, HTTP
+  status, duration, request and response body sizes, and the response body's
+  top-level JSON member names. `--debug-dump-dir` additionally writes the raw
+  request and response bodies to `0600` files in DIR: the request-body dump is
+  the exact catalog-derived payload PIACE sent, and the response-body dump of a
+  4xx is where a provider names the field it rejected. Neither the returned
+  error nor any log line ever carries a response-body value, and the bearer
+  token is a header so it reaches no dump file.
+
+- **`services.inference.token_limit_param`**: selects the request field that
+  carries the output-token bound, `max_tokens` (the default) or
+  `max_completion_tokens`. OpenAI's GPT-5 family rejects `max_tokens` outright
+  and requires `max_completion_tokens`; OpenAI-compatible servers other than
+  current OpenAI (Ollama, vLLM, llama.cpp) only understand `max_tokens`. The
+  value in `max_tokens` is unchanged; only the wire field name differs.
+
+- **`services.inference.temperature`**: optional sampling temperature, sent
+  only when set.
+
+### Changed
+
+- **One services file.** The `compiler:`, `puppetdb:` and `inference:` sections
+  already loaded independently, so the two-file split was policy rather than
+  necessity. The examples and the CI documentation now show one committed
+  `services.yaml` for the whole pipeline. What separates a comparison job from
+  an assessment job is which credentials each is granted, not which file it
+  reads.
+- **Documentation rewritten to describe the current tool only.** The README is
+  a third shorter, with the `explain` reference moved to
+  [docs/change-assessment.md](docs/change-assessment.md); `docs/ci.md` loses
+  the section explaining why the services file had to be a template, because it
+  no longer does.
+- **Code comments say what the code does** instead of citing a build-time
+  specification. 578 references to `.kiro/specs/piace/` across 109 files are
+  gone, along with the specification itself and the ADR directory whose
+  rationale now lives in [CONTEXT.md](CONTEXT.md#design).
+
+
+- **`piace explain`**: no sampling parameter is sent unless
+  `services.inference.temperature` is configured. PIACE previously hard-coded
+  `temperature: 0` and `seed: 0` into every request; Claude 4+ and OpenAI's
+  GPT-5 family reject any non-default `temperature` with a 400, and `seed`
+  never left a mark (Anthropic's compat endpoint ignores it, OpenAI deprecated
+  it, reasoning models reject it), so the `seed` field is gone. Pinning them
+  never made a model-generated assessment reproducible in the first place: a
+  provider-side model revision still moves the bytes.
+
+- **`piace explain`**: dependency-graph edge groups are no longer sent to the
+  inference service. An edge change is a consequence of the resource changes
+  around it, carries no before/after pair to reason about, and a run's edges
+  routinely outnumber its resource changes, so sending them spent the group
+  budget and returned a wall of `unknown` risk indications. The deterministic
+  report still lists every edge group in its own section; only the change
+  assessment skips them, and `groups_total` now counts what was eligible for
+  assessment.
+
+### Removed
+
+- **`scripts/change-context.sh`**, replaced by `piace change-context`. Its job
+  was to emit YAML with `printf` and leave the caller to append a title and
+  description by hand, which is the step that has to be got right on three CI
+  platforms and is arbitrary code execution on the runner when it is not.
+- **`examples/ci/services.yaml.tmpl`**, replaced by
+  [`examples/ci/services.yaml`](examples/ci/services.yaml). Nothing renders it.
+- **The three `-docker` CI examples.** They demonstrated socket-mount
+  gymnastics for a path the same document recommends against; `docs/ci.md` now
+  covers `docker run` in one section, for a Kubernetes Job or a workstation.
+
 ### Fixed
 
+- **HTML report**: risk-indication rows in the change assessment's "Group risk
+  indications" list put a full risk badge in a grid track sized for a
+  one-character change sign, so the badge overlapped the group identity and was
+  stretched to the row height. The row now has its own track width.
 - **[docs/ci.md](docs/ci.md) and [examples/ci/](examples/ci/)**: the shipped
   pipelines never bound `candidate.environment` to the environment CI had just
   deployed, and never added the merge request title and description to the
@@ -55,33 +165,33 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **`piace explain`** — an optional, advisory **change assessment** of a stored
+- **`piace explain`**: an optional, advisory **change assessment** of a stored
   result document. It is a second, independent step: it reads a JSON report
   `compare` already wrote, asks a configured **inference service** to judge the
   aggregate groups in it, and writes a separately versioned assessment artifact
   (`ai_schema_version: 1`) plus a re-rendered HTML report whose assessment
   section sits *below* the deterministic outcome.
-- **`services.yaml` gains an `inference:` section** — endpoint (https only),
+- **`services.yaml` gains an `inference:` section**: endpoint (https only),
   model, `token_env` or `token_file` (never an inline token), `timeout`,
   `max_tokens`, `max_groups`, `pseudonymize`, `structured_output`, and
   `policy_notes_file`. It loads independently: a services file containing
   nothing but this section is valid for `explain`, so an assessment needs no
   Puppet infrastructure named at all.
-- **`--change CHANGE.yaml`** — a caller-supplied **change context** describing
+- **`--change CHANGE.yaml`**: a caller-supplied **change context** describing
   the repository change under test: refs, commit subjects, changed paths, and a
   capped title and description. PIACE reads the file and never invokes git;
   `scripts/change-context.sh` generates one for the common CI case. Its free
   text is transmitted inside an explicit fence labelled as untrusted data.
-- **Pseudonymized identities** — certnames in an outbound inference request are
+- **Pseudonymized identities**: certnames in an outbound inference request are
   replaced by stable per-run substitutes, and the compiler and PuppetDB
   authorities are absent from it entirely. Resource identities pass through
   untouched: `File[/etc/sudoers]` is the signal. A pseudonym never appears in an
   assessment or any report. `pseudonymize: false` sends real certnames and is
   documented as the deliberate loosening it is.
-- **`--fail-on-inference-error`** — exit 30 when the assessment could not be
+- **`--fail-on-inference-error`**: exit 30 when the assessment could not be
   produced. Without it a failed assessment is recorded in the artifact with
   every risk indication `unknown`, and the command still exits 0.
-- **`report.DecodeJSON`** — a result document can now be read back into the
+- **`report.DecodeJSON`**: a result document can now be read back into the
   model it was rendered from, strictly: unknown fields and trailing content are
   refused, and numbers keep their exact decimal digits.
 
@@ -109,7 +219,7 @@ than what changed.
 - Deterministic semantic normalization: exact `Type[title]` identities with no
   case folding, a canonical value domain with exact-decimal numbers, and
   resources and edges sorted before comparison and serialization.
-- Generated catalog noise is excluded before comparison — tags, source
+- Generated catalog noise is excluded before comparison: tags, source
   file/line, `exported`, `aliases`, and the `alias` parameter the PuppetDB
   terminus injects into a stored catalog.
 - Four change kinds: resource added, resource removed, parameter changed, and
@@ -139,10 +249,10 @@ than what changed.
 
 ### Snapshots
 
-- `piace capture facts` and `piace capture catalog` write PIACE envelopes —
+- `piace capture facts` and `piace capture catalog` write PIACE envelopes:
   format version, target identity, source, capture timestamp, SHA-256 payload
   checksum, and a catalog's requested environment, compiler API version and
-  input factset identity — atomically, at `0600`, never overwriting without
+  input factset identity, written atomically at `0600` and never overwritten without
   `--replace`. Every field is validated on reuse.
 
 ### Reports
@@ -179,7 +289,7 @@ than what changed.
 - CI runs `gofmt`, `go vet`, `go build` and `go test -race` on Linux and
   macOS, cross-compiles the full platform matrix on every pull request, and
   publishes a GitHub Release with `SHA256SUMS` from a `v*` tag. The detached
-  signature over the manifest is attached by hand afterwards — CI holds no
+  signature over the manifest is attached by hand afterwards, since CI holds no
   signing key, and the release notes say so.
 
 ### Known limitations
@@ -203,7 +313,7 @@ than what changed.
 The last two are recorded as skipped tests carrying their confirmation
 procedures in `cmd/piace/acceptance_assumptions_test.go`.
 
-[Unreleased]: https://github.com/example42/piace/compare/v0.2.1...HEAD
+[0.3.0]: https://github.com/example42/piace/releases/tag/v0.3.0
 [0.2.1]: https://github.com/example42/piace/releases/tag/v0.2.1
 [0.2.0]: https://github.com/example42/piace/releases/tag/v0.2.0
 [0.1.0]: https://github.com/example42/piace/releases/tag/v0.1.0

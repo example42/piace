@@ -18,11 +18,9 @@ const fileResourceType = "File"
 // contentBearingParameter is the stable parameter label a synthesized
 // File-content ResourceChange reports, regardless of which of the four
 // raw parameters below actually differed. It intentionally reuses
-// filecontent's own "content" parameter name (see
-// filecontent.doc.go's "Identifying a recognized compatible checksum"
-// section) so a configured redaction selector of {Type: "File",
-// Parameter: "content"} — the only shape any existing test fixture in
-// this codebase uses — matches it directly.
+// filecontent's own "content" parameter name (see filecontent's doc.go)
+// so a configured redaction selector of {Type: "File", Parameter:
+// "content"} matches it directly.
 const contentBearingParameter = "content"
 
 // fileContentBearingParameters is the exact set of File parameter names
@@ -84,9 +82,9 @@ func diffResources(
 // parameter names are collapsed into at most one synthesized
 // FileContent-carrying entry (see doc.go); every other parameter is
 // reported independently using reflect.DeepEqual over the model.Value
-// domain, which is exactly comparable per design.md section 7.1 since
-// task 7's normalizer already produces canonical values (exact decimal
-// model.Number strings, recursively canonical maps/slices).
+// domain, which is exactly comparable since the normalizer
+// already produces canonical values (exact decimal model.Number strings,
+// recursively canonical maps/slices).
 func diffParameters(
 	ctx context.Context,
 	certname, candidateEnvironment string,
@@ -110,18 +108,16 @@ func diffParameters(
 		}
 		bv := before[name]
 		av := after[name]
-		// An absent parameter and one explicitly present with an undef
-		// value are the same semantic state, and comparing the two
-		// zero-value model.Values directly says so. PuppetDB's
-		// documented catalog wire format v8 is explicit that
-		// "attributes with undef values are not added to the catalog"
-		// (the same primary source internal/normalize/value.go cites
-		// for its own absent-parameters handling), so absence *is* how
-		// a catalog spells undef: reporting the pair as a difference
-		// would be exactly the generated noise requirements.md
-		// section 5 exists to suppress, and would emit an entry whose
-		// Before and After are both nil — a change row with nothing in
-		// it for task 11 to render.
+		// An absent parameter and one explicitly present with an undef value are
+		// the same semantic state, and comparing the two zero-value model.Values
+		// directly says so. PuppetDB's documented catalog wire format v8 is
+		// explicit that "attributes with undef values are not added to the
+		// catalog" (the same primary source internal/normalize/value.go cites
+		// for its own absent-parameters handling), so absence *is* how a catalog
+		// spells undef. Reporting the pair as a difference would be exactly the
+		// generated noise the differ exists to suppress, and would emit an entry
+		// whose Before and After are both nil: a change row with nothing in it
+		// to render.
 		if reflect.DeepEqual(bv, av) {
 			continue
 		}
@@ -154,9 +150,9 @@ func diffParameters(
 	return changes, diagnostics
 }
 
-// unionIdentities returns every resource identity present in either
-// map, sorted by (Type, Title) with no case folding, matching design.md
-// section 7.1's identity ordering.
+// unionIdentities returns every resource identity present in either map,
+// sorted by (Type, Title) with no case folding, matching the normalized
+// catalog model's identity ordering.
 func unionIdentities(a, b map[model.ResourceIdentity]model.Resource) []model.ResourceIdentity {
 	seen := make(map[model.ResourceIdentity]bool, len(a)+len(b))
 	out := make([]model.ResourceIdentity, 0, len(a)+len(b))
@@ -183,7 +179,7 @@ func unionIdentities(a, b map[model.ResourceIdentity]model.Resource) []model.Res
 
 // unionParameterNames returns every parameter name present in either
 // map, sorted lexicographically so a deterministic ResourceChange order
-// results (design.md's Property 1).
+// results.
 func unionParameterNames(a, b map[string]model.Value) []string {
 	seen := make(map[string]bool, len(a)+len(b))
 	out := make([]string, 0, len(a)+len(b))
@@ -204,9 +200,9 @@ func unionParameterNames(a, b map[string]model.Value) []string {
 }
 
 // indexResources builds a lookup map from a NormalizedCatalog's
-// resource list. Resources is already deduplicated by identity (task
-// 7's normalizer rejects a duplicate identity as a normalization
-// error), so a plain map assignment is safe.
+// resource list. Resources is already deduplicated by identity, since
+// the normalizer rejects a duplicate identity as a normalization error,
+// so a plain map assignment is safe.
 func indexResources(resources []model.Resource) map[model.ResourceIdentity]model.Resource {
 	out := make(map[model.ResourceIdentity]model.Resource, len(resources))
 	for _, r := range resources {

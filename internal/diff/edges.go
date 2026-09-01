@@ -8,7 +8,7 @@ import (
 
 // diffEdges computes the edge-added/removed portion of pass 1 (see
 // doc.go). Edges are compared as plain model.Edge values (Source/Target
-// identity strings); task 7's normalizer already sorts and deduplicates
+// identity strings); internal/normalize's normalizer already sorts and deduplicates
 // them by the ordered (Source, Target) pair, so a simple set-membership
 // comparison over that pair is sufficient here.
 func diffEdges(before, after []model.Edge) []model.EdgeChange {

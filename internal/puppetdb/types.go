@@ -8,10 +8,9 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// FactSource retrieves a target's fact data, per design.md's Components
-// and Interfaces section (`FactSource.Load(target) -> Factset,
-// Provenance`). The PuppetDB-backed implementation in this package
-// (*Adapter) and a future file-backed implementation (task 5) are
+// FactSource retrieves a target's fact data: `FactSource.Load(target) ->
+// Factset, Provenance`. The PuppetDB-backed implementation in this
+// package (*Adapter) and the file-backed one in filesource.go are
 // interchangeable behind this interface; a caller selects between them
 // using target.Facts.Source.
 type FactSource interface {
@@ -22,12 +21,11 @@ type FactSource interface {
 	Load(ctx context.Context, target resolve.Target) (Factset, model.SourceProvenance, *model.Diagnostic)
 }
 
-// CatalogSource retrieves a target's baseline catalog, per design.md's
-// Components and Interfaces section (`CatalogSource.LoadBaseline(target)
-// -> Catalog, Provenance`). The PuppetDB-backed implementation in this
-// package (*Adapter) and a future file-backed implementation (task 5) are
-// interchangeable behind this interface; a caller selects between them
-// using target.Baseline.Source.
+// CatalogSource retrieves a target's baseline catalog:
+// `CatalogSource.LoadBaseline(target) -> Catalog, Provenance`. The
+// PuppetDB-backed implementation in this package (*Adapter) and the
+// file-backed one in filesource.go are interchangeable behind this
+// interface; a caller selects between them using target.Baseline.Source.
 type CatalogSource interface {
 	// LoadBaseline retrieves target's latest baseline catalog. It returns
 	// a non-nil diagnostic (and a zero Catalog/Provenance) on any
@@ -38,10 +36,10 @@ type CatalogSource interface {
 }
 
 // Factset is the raw carrier for a PuppetDB factset response, promoting
-// only the fields this task's contract needs as named fields. See doc.go
+// only the fields this package commits to as named fields. See doc.go
 // for the documented PuppetDB v4 response-shape assumption. Facts retains
 // the full "facts" payload (the {href, data} expansion) as raw JSON for a
-// later stage (candidate compilation, task 6) to parse; this package does
+// later stage (candidate compilation, internal/compiler) to parse; this package does
 // not interpret individual fact values.
 type Factset struct {
 	Certname          string          `json:"certname"`
@@ -54,10 +52,10 @@ type Factset struct {
 }
 
 // Catalog is the raw carrier for a PuppetDB catalog response, promoting
-// only the fields this task's contract needs as named fields. See doc.go
+// only the fields this package commits to as named fields. See doc.go
 // for the documented PuppetDB v4 response-shape assumption. Resources and
 // Edges retain the full {href, data} expansions as raw JSON; normalizing
-// them into model.NormalizedCatalog is task 7's job, performed on this
+// them into model.NormalizedCatalog is internal/normalize's job, performed on this
 // carrier's Resources/Edges fields.
 type Catalog struct {
 	Certname          string          `json:"certname"`

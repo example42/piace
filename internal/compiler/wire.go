@@ -55,15 +55,15 @@ type v4CatalogEnvelope struct {
 // "resources", "edges", ...}`. It is the whole v3 response body, and the
 // value of a v4 response's "catalog" member (see v4CatalogEnvelope).
 // Unlike internal/puppetdb's query-API Catalog carrier, the identity
-// field here is `name`, not `certname`, and resources/edges are
-// plain JSON arrays, not a `{href, data}` expansion. Fields this package
-// does not consume (tags, classes, catalog_format, metadata,
+// field here is `name`, not `certname`, and resources and edges are
+// plain JSON arrays rather than a `{href, data}` expansion. Fields this
+// package does not consume (tags, classes, catalog_format, metadata,
 // recursive_metadata) are intentionally not declared and are dropped by
-// encoding/json on unmarshal — the same lossy-typed-struct-roundtrip
-// approach internal/puppetdb's Factset/Catalog carriers already use for
+// encoding/json on unmarshal, the same lossy typed-struct round trip
+// internal/puppetdb's Factset and Catalog carriers already use for
 // snapshot payload construction (see internal/capture/workflow.go's
-// buildCatalogEnvelope, which marshals the typed puppetdb.Catalog, not
-// raw response bytes).
+// buildCatalogEnvelope, which marshals the typed puppetdb.Catalog rather
+// than raw response bytes).
 type wireCatalog struct {
 	Name            string          `json:"name"`
 	Version         wireVersion     `json:"version"`
@@ -85,11 +85,11 @@ func derefOrEmpty(s *string) string {
 // wireErrorProbe detects a compiler response that decodes as valid JSON
 // but reports a semantic rejection via an "error" field, mirroring
 // internal/puppetdb/adapter.go's probeBody pattern for PuppetDB's
-// documented not-found shape. It is checked ahead of wireCatalog decoding
-// so a semantic-rejection response is classified as design.md section
-// 5's "semantic request rejection" rather than "malformed response" (the
-// two map to the same compilation-failure diagnostic today, but are
-// worth distinguishing in the message for an operator reading logs).
+// documented not-found shape. It is checked ahead of wireCatalog
+// decoding so a semantic-rejection response is classified as a semantic
+// request rejection rather than a malformed response. The two map to the
+// same compilation-failure diagnostic today, but are worth
+// distinguishing in the message for an operator reading logs.
 type wireErrorProbe struct {
 	Error string `json:"error"`
 }
@@ -114,9 +114,8 @@ type expandedFacts struct {
 }
 
 // flattenFacts converts a factset's expanded `facts` field into the flat
-// `{"<fact name>": <fact value>, ...}` hash the v3/v4 catalog request
-// wire formats require (design.md section 5; requirements.md section 9
-// of the v3/v4 catalog APIs documented in doc.go).
+// `{"<fact name>": <fact value>, ...}` hash the v3 and v4 catalog
+// request wire formats require, as documented in doc.go.
 func flattenFacts(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	var ef expandedFacts
 	if err := json.Unmarshal(raw, &ef); err != nil {
@@ -139,13 +138,12 @@ type trustedFactsProbe struct {
 	Authenticated json.RawMessage `json:"authenticated"`
 }
 
-// extractTrustedFacts looks up the "trusted" entry in flat and returns its
-// raw value plus true only when it decodes to Puppet's documented
+// extractTrustedFacts looks up the "trusted" entry in flat and returns
+// its raw value plus true only when it decodes to Puppet's documented
 // trusted-fact shape. It never fabricates a trusted-fact structure: a
-// missing "trusted" fact, or one that fails validation, returns
-// (nil, false), the case that forces the caller to decide between the
-// compiler-lookup path and failing the request outright (design.md
-// section 5).
+// missing "trusted" fact, or one that fails validation, returns (nil,
+// false), the case that forces the caller to decide between the
+// compiler-lookup path and failing the request outright.
 func extractTrustedFacts(flat map[string]json.RawMessage) (json.RawMessage, bool) {
 	raw, ok := flat["trusted"]
 	if !ok {
@@ -162,8 +160,8 @@ func extractTrustedFacts(flat map[string]json.RawMessage) (json.RawMessage, bool
 }
 
 // v4Persistence is always {false, false} in every request this package
-// builds; requirements.md 1.6 ("SHALL not persist candidate facts or
-// candidate catalogs to PuppetDB") makes this non-negotiable, never a
+// builds. PIACE never persists candidate facts or candidate catalogs to
+// PuppetDB, which makes this non-negotiable rather than a
 // caller-configurable option.
 type v4Persistence struct {
 	Facts   bool `json:"facts"`
@@ -198,12 +196,12 @@ type v3Facts struct {
 }
 
 // newTransactionUUID generates a random RFC 4122 version-4 UUID for the
-// v3/v4 catalog request's `transaction_uuid` field. PIACE has no
-// transaction to correlate against a Puppet report (it never triggers a
-// run or persists anything, per v4Persistence above), so this value only
-// needs to be a syntactically valid, unique identifier for the single
-// request it accompanies — not sourced from, or matched against, any
-// other PIACE-generated identifier.
+// v3 and v4 catalog request's `transaction_uuid` field. PIACE has no
+// transaction to correlate against a Puppet report, since it never
+// triggers a run or persists anything (see v4Persistence above), so this
+// value only needs to be a syntactically valid, unique identifier for
+// the single request it accompanies. It is neither sourced from nor
+// matched against any other PIACE-generated identifier.
 func newTransactionUUID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {

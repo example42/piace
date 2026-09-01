@@ -50,9 +50,9 @@ func (p Pseudonyms) certname(pseudonym string) string {
 }
 
 // newPseudonyms assigns one pseudonym per certname the result document
-// names anywhere — targets, aggregate groups, and impact estimates — in
-// sorted certname order, so the assignment depends only on the document
-// and not on map iteration or pipeline ordering.
+// names anywhere, across targets, aggregate groups and impact estimates,
+// in sorted certname order, so the assignment depends only on the
+// document and not on map iteration or pipeline ordering.
 func newPseudonyms(r model.Result, enabled bool) Pseudonyms {
 	p := Pseudonyms{enabled: enabled}
 	if !enabled {
@@ -91,9 +91,10 @@ func newPseudonyms(r model.Result, enabled bool) Pseudonyms {
 }
 
 // Reveal replaces every pseudonym appearing in s with the certname it
-// stands for. A change assessment carries real names — it never leaves the
-// machine that produced it — so any pseudonym a model wrote into its prose
-// has to be put back before the assessment is written or rendered.
+// stands for. A change assessment carries real names, since it never
+// leaves the machine that produced it, so any pseudonym a model wrote
+// into its prose has to be put back before the assessment is written or
+// rendered.
 //
 // Longer aliases are substituted first: "node-100" is a prefix of
 // "node-1000", and replacing the shorter one first would corrupt the

@@ -11,9 +11,9 @@ import (
 	"testing"
 )
 
-// recorder collects every request path a fake service received, so a test
-// can assert on the exact set of endpoints PIACE contacted rather than on
-// the absence of a symptom (requirements.md 12.4).
+// recorder collects every request path a fake service received, so a
+// test can assert on the exact set of endpoints PIACE contacted rather
+// than on the absence of a symptom.
 type recorder struct {
 	mu    sync.Mutex
 	paths []string
@@ -151,17 +151,17 @@ type fakeCompiler struct {
 	// envelope the answering endpoint uses.
 	catalogs map[string]any
 	// rawBodies is keyed by certname and, when set, is returned verbatim
-	// with status 200 in place of any catalog — no endpoint envelope
+	// with status 200 in place of any catalog, with no endpoint envelope
 	// applied. It exists so a test can exercise the adapter's
-	// semantic-rejection probe, which reads the outer response body
-	// before any envelope is unwrapped.
+	// semantic-rejection probe, which reads the outer response body before
+	// any envelope is unwrapped.
 	rawBodies map[string]any
 	// fileContent is keyed by the mount path segment the resolver builds
 	// from a `puppet://` source reference.
 	fileContent map[string]string
-	// v4Bodies records each decoded v4 request body, so a test can assert
-	// on trusted_facts handling and on the persistence flags
-	// requirements.md 1.6 forbids setting.
+	// v4Bodies records each decoded v4 request body, so a test can assert on
+	// trusted_facts handling and on the persistence flags a candidate
+	// request must never set.
 	v4Bodies []map[string]any
 }
 
@@ -253,11 +253,11 @@ func startTLS(t *testing.T, fixture *tlsFixture, handler http.Handler) *httptest
 	return server
 }
 
-// startForbiddenTLS starts a third mTLS service that fails the test if it
-// is ever contacted. It exists to make requirements.md 12.4 ("network
-// access only to the configured compiler and PuppetDB endpoints")
-// provable rather than merely asserted: an absence claim needs a witness
-// that would have observed the violation.
+// startForbiddenTLS starts a third mTLS service that fails the test if
+// it is ever contacted. It exists to make the claim that PIACE opens
+// network connections only to the configured compiler and PuppetDB
+// endpoints provable rather than merely asserted: an absence claim needs
+// a witness that would have observed the violation.
 func startForbiddenTLS(t *testing.T, fixture *tlsFixture) *httptest.Server {
 	t.Helper()
 	return startTLS(t, fixture, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

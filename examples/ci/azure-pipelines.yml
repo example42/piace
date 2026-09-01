@@ -3,16 +3,19 @@
 # Copy to azure-pipelines.yml in your control repository, with the layout
 # docs/ci.md describes:
 #
-#   ci/piace/targets.yaml            committed, reviewable policy
-#   ci/piace/services.yaml.tmpl      committed, rendered per job
-#   ci/piace/services-explain.yaml   committed, inference only
-#   ci/piace/policy-notes.md         committed, site policy for the model
-#   ci/piace/change-context.sh       committed, copied from PIACE's scripts/
+#   ci/piace/targets.yaml     committed, reviewable policy
+#   ci/piace/services.yaml    committed, endpoints and credential references
+#   ci/piace/policy-notes.md  committed, optional site policy for the model
+#
+# Three files, and none of them is rendered, copied or rewritten by a job.
+# The services file names its TLS material through `*_env`, so the committed
+# file is read in place: see examples/ci/services.yaml.
 #
 # Two jobs, not one, because they need different credentials: compare holds
 # the catalog-reader identity and never sees the inference token, explain
 # holds the inference token and never sees a private key. A runner compromise
-# in either job yields one of the two.
+# in either job yields one of the two. That separation lives in which secure
+# files and variables each job is granted, not in which file it reads.
 #
 # Before this runs, provision in the DevOps UI:
 #   * three Secure Files holding the catalog-reader PEMs. Azure has no
@@ -33,7 +36,7 @@ pr:
 
 variables:
 - name: PIACE_VERSION
-  value: '0.2.1'
+  value: '0.3.0'
 
 jobs:
 - job: compare
@@ -90,11 +93,12 @@ jobs:
       install -m 0600 "$CA_BUNDLE"   "$RUN_DIR/ca.pem"
       install -m 0600 "$CLIENT_CERT" "$RUN_DIR/client.pem"
       install -m 0600 "$CLIENT_KEY"  "$RUN_DIR/client.key"
-      # PIACE expands nothing in a services file, and its TLS paths resolve
-      # against the process working directory, so the run directory has to
-      # be substituted in before the run rather than referenced from it.
-      sed "s|@PIACE_RUN@|$RUN_DIR|g" ci/piace/services.yaml.tmpl \
-        > "$RUN_DIR/services.yaml"
+      # ci/piace/services.yaml names these three variables with
+      # ca_bundle_env, client_cert_env and private_key_env, so the committed
+      # file is read in place: nothing renders or copies it.
+      echo "##vso[task.setvariable variable=PIACE_CA_BUNDLE]$RUN_DIR/ca.pem"
+      echo "##vso[task.setvariable variable=PIACE_CLIENT_CERT]$RUN_DIR/client.pem"
+      echo "##vso[task.setvariable variable=PIACE_PRIVATE_KEY]$RUN_DIR/client.key"
       mkdir -p report
     env:
       RUN_DIR: $(Agent.TempDirectory)/piace-run
@@ -130,7 +134,7 @@ jobs:
       candidate_environment="${source_branch//-/_}"
       piace compare \
         --targets ci/piace/targets.yaml \
-        --services "$RUN_DIR/services.yaml" \
+        --services ci/piace/services.yaml \
         --candidate-environment "$candidate_environment" \
         --json-out report/report.json \
         --html-out report/report.html
@@ -169,8 +173,8 @@ jobs:
   steps:
   - download: none
   - checkout: self
-    # change-context.sh takes a merge base, which a shallow clone does not
-    # have, and the PR checkout is a temporary merge commit whose target ref
+    # `piace change-context` takes a merge base, which a shallow clone does
+    # not have, and the PR checkout is a temporary merge commit whose target ref
     # is fetched explicitly below. The credentials must survive for that
     # later fetch.
     fetchDepth: 0
@@ -198,9 +202,9 @@ jobs:
       artifactName: piace-report
       targetPath: $(Agent.SourcesDirectory)/report
 
-  # PIACE never invokes git. This script does, in the checkout, on the
-  # runner: commit subjects and changed paths only, never bodies. Read
-  # examples/change-context.yaml before enabling it. Everything in the
+  # `change-context` is the one subcommand that runs git, and it is optional.
+  # Commit subjects and changed paths only, never bodies. Read
+  # examples/change-context.yaml before enabling it: everything in the
   # generated file is forwarded to the inference service as data, and the
   # change context is not pseudonymized.
   #
@@ -208,25 +212,34 @@ jobs:
   # GitLab and GitHub), so they come from the pull request REST API, using
   # the OAuth token mapped from System.AccessToken. If that token is not
   # granted to the job, this step fails and the assessment is skipped, which
-  # is an advisory outcome. `$(...)` never appears in the script; curl -o
-  # and jq hold the command substitution the agent would try to expand.
+  # is an advisory outcome.
+  #
+  # Nothing untrusted is passed by value. The agent macro-expands `$( ... )`
+  # in script text before a shell runs, so a pull request title reaching a
+  # command line is a command; --title-file and --base-ref-env take a
+  # location instead, and there is deliberately no --title flag.
   - bash: |
       set -euo pipefail
       test -f report/report.json || exit 0
-      base_ref="${TARGET_BRANCH#refs/heads/}"
-      git fetch origin "+refs/heads/$base_ref:refs/remotes/origin/$base_ref"
-      ci/piace/change-context.sh "origin/$base_ref" HEAD > change-context.yaml
+      export PATH="$BIN_DIR:$PATH"
+      export BASE_REF="origin/${TARGET_BRANCH#refs/heads/}"
+      git fetch origin "+refs/heads/${TARGET_BRANCH#refs/heads/}:refs/remotes/${BASE_REF}"
       curl -fsS -o pull-request.json \
         -H "Authorization: Bearer $SYSTEM_ACCESSTOKEN" \
         "${COLLECTION_URI}${PROJECT}/_apis/git/repositories/${REPOSITORY_ID}/pullrequests/${PR_ID}?api-version=6.0"
-      {
-        printf '  title: |\n'
-        jq -r '.title' pull-request.json | sed 's/^/    /'
-        printf '  description: |\n'
-        jq -r '.description // ""' pull-request.json | sed 's/^/    /'
-      } >> change-context.yaml
+      jq -r '.title' pull-request.json > pr-title.txt
+      jq -r '.description // ""' pull-request.json > pr-body.txt
+      export HEAD_REF="${SOURCE_BRANCH#refs/heads/}"
+      piace change-context \
+        --base-ref-env BASE_REF \
+        --head-ref-env HEAD_REF \
+        --title-file pr-title.txt \
+        --description-file pr-body.txt \
+        > change-context.yaml
     env:
+      BIN_DIR: $(Agent.TempDirectory)/piace-bin
       TARGET_BRANCH: $(System.PullRequest.TargetBranch)
+      SOURCE_BRANCH: $(System.PullRequest.SourceBranch)
       SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       COLLECTION_URI: $(System.TeamFoundationCollectionUri)
       PROJECT: $(System.TeamProject)
@@ -244,7 +257,7 @@ jobs:
       mkdir -p assessment
       piace explain \
         --json-in report/report.json \
-        --services ci/piace/services-explain.yaml \
+        --services ci/piace/services.yaml \
         --change change-context.yaml \
         --ai-out assessment/assessment.json \
         --html-out assessment/report.html

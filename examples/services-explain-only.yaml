@@ -1,4 +1,4 @@
-# services-explain-only.yaml — assessment without Puppet infrastructure.
+# services-explain-only.yaml: a services file carries only what a command needs.
 #
 # `explain` reads a stored result document and contacts one inference
 # service. It never touches a compiler or PuppetDB, so it needs neither
@@ -6,10 +6,10 @@
 # `inference:` is valid for it.
 #
 # This is the shape to use when the assessment runs somewhere the Puppet mTLS
-# material is deliberately absent — a review job, a separate runner, or a
+# material is deliberately absent: a review job, a separate runner, or a
 # workstation reading a report someone else produced.
 #
-#   export PIACE_INFERENCE_TOKEN=...
+#   export OPENAI_API_KEY=...
 #   piace explain --json-in report.json \
 #                 --services examples/services-explain-only.yaml \
 #                 --ai-out assessment.json
@@ -21,13 +21,101 @@
 
 version: 1
 
+# Keep exactly one inference block uncommented. The OpenAI example is active.
+
+# OpenAI
+#
+# GPT-5-family models reject `max_tokens` ("Use 'max_completion_tokens'
+# instead") and reject any non-default `temperature`. token_limit_param
+# switches the field name; leave `temperature` unset so none is sent.
 inference:
-  endpoint: https://api.anthropic.com/v1/chat/completions
-  model: claude-sonnet-5
-  token_env: PIACE_INFERENCE_TOKEN
+  endpoint: https://api.openai.com/v1/chat/completions
+  model: gpt-5.6-terra
+  token_env: OPENAI_API_KEY
   timeout: 60s
   max_tokens: 4000
+  token_limit_param: max_completion_tokens
   max_groups: 200
   pseudonymize: true
   structured_output: true
   policy_notes_file: policy-notes.md
+
+# Anthropic
+#
+# Anthropic's OpenAI compatibility layer ignores response_format, hence
+# structured_output is false here. PIACE still validates the response locally.
+#
+# Use a WORKSPACE-scoped API key (Anthropic Console -> a Workspace ->
+# API keys). An identity-linked key is rejected with "anthropic-workspace-id
+# is required", a header PIACE does not send. `max_tokens` works as-is on
+# this endpoint; `token_limit_param: max_completion_tokens` is also accepted
+# if you prefer it.
+#
+#   export ANTHROPIC_API_KEY=...
+#
+# inference:
+#   endpoint: https://api.anthropic.com/v1/chat/completions
+#   model: claude-sonnet-5
+#   token_env: ANTHROPIC_API_KEY
+#   timeout: 60s
+#   max_tokens: 4000
+#   max_groups: 200
+#   pseudonymize: true
+#   structured_output: false
+#   policy_notes_file: policy-notes.md
+
+# Local Ollama, using a local model
+#
+# Ollama listens on http://localhost:11434 by default, but PIACE accepts only
+# HTTPS inference endpoints. This example assumes a trusted local TLS proxy on
+# port 11443 forwarding to Ollama on port 11434. PIACE requires a non-empty
+# bearer token; Ollama accepts the header and ignores its value.
+#
+#   ollama pull qwen3.6
+#   export OLLAMA_API_KEY=ollama
+#
+# inference:
+#   endpoint: https://localhost:11443/v1/chat/completions
+#   model: qwen3.6
+#   token_env: OLLAMA_API_KEY
+#   timeout: 60s
+#   max_tokens: 4000
+#   max_groups: 200
+#   pseudonymize: true
+#   structured_output: true
+#   policy_notes_file: policy-notes.md
+
+# Local Ollama, using an Ollama Cloud model
+#
+# Sign in first. The local Ollama daemon authenticates the cloud request, so
+# PIACE still talks only to the local TLS proxy. Ollama Cloud currently does
+# not support structured outputs, hence structured_output is false here.
+#
+#   ollama signin
+#   export OLLAMA_API_KEY=ollama
+#
+# inference:
+#   endpoint: https://localhost:11443/v1/chat/completions
+#   model: glm-5.3:cloud
+#   token_env: OLLAMA_API_KEY
+#   timeout: 60s
+#   max_tokens: 4000
+#   max_groups: 200
+#   pseudonymize: true
+#   structured_output: false
+#   policy_notes_file: policy-notes.md
+
+# OpenRouter
+#
+#   export OPENROUTER_API_KEY=...
+#
+# inference:
+#   endpoint: https://openrouter.ai/api/v1/chat/completions
+#   model: ~openai/gpt-latest
+#   token_env: OPENROUTER_API_KEY
+#   timeout: 60s
+#   max_tokens: 4000
+#   max_groups: 200
+#   pseudonymize: true
+#   structured_output: true
+#   policy_notes_file: policy-notes.md

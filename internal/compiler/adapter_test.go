@@ -70,8 +70,8 @@ func wireCatalogBody(name, environment string) []byte {
 
 // v4CatalogBody is a v4 response body: the same catalog document wrapped
 // in the endpoint's `{"catalog": ...}` envelope. The two helpers are
-// deliberately separate rather than one shape reused for both endpoints
-// — that conflation is what
+// deliberately separate rather than one shape reused for both endpoints,
+// that conflation being what
 // TestAdapter_RequestCandidate_V4RejectsUnwrappedCatalogBody guards
 // against reappearing.
 func v4CatalogBody(name, environment string) []byte {
@@ -414,13 +414,12 @@ func TestAdapter_RequestCandidate_V3ErrorBodyFails(t *testing.T) {
 }
 
 // TestAdapter_RequestCandidate_ProvenanceNeverCarriesTrustedFactValues
-// asserts design.md section 5's "the response provenance records
-// `provided` or `compiler_lookup` but never trusted-fact values": for a
-// successful v4 request with a provided trusted-fact structure,
-// CandidateProvenance carries only the enum classification
-// (TrustedFactsSource), never the certname/extensions/authenticated
-// content of the trusted fact itself, in any of its string-valued
-// fields.
+// asserts that response provenance records `provided` or
+// `compiler_lookup` but never trusted-fact values: for a successful v4
+// request with a provided trusted-fact structure, CandidateProvenance
+// carries only the enum classification (TrustedFactsSource), never the
+// certname, extensions, or authenticated content of the trusted fact
+// itself, in any of its string-valued fields.
 func TestAdapter_RequestCandidate_ProvenanceNeverCarriesTrustedFactValues(t *testing.T) {
 	fixture := newTLSFixture(t, "127.0.0.1")
 	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {

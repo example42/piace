@@ -8,11 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// decodeTargetFile decodes a `--targets` YAML document with unknown-field
-// rejection. gopkg.in/yaml.v3's default decoder is permissive (it silently
-// ignores keys with no matching struct field); Decoder.KnownFields(true)
-// switches it to strict mode, matching design.md section 3's requirement
-// to "decode ... YAML with unknown-field rejection".
+// decodeTargetFile decodes a `--targets` YAML document with
+// unknown-field rejection. gopkg.in/yaml.v3's default decoder is
+// permissive, silently ignoring keys with no matching struct field;
+// Decoder.KnownFields(true) switches it to strict mode, which is what a
+// target file requires.
 func decodeTargetFile(r io.Reader) (config.TargetFile, error) {
 	var tf config.TargetFile
 	dec := yaml.NewDecoder(r)

@@ -10,8 +10,8 @@ import (
 // TestAcceptance_DebugPrintsSafeRequestMetadata covers the --debug
 // option's contract: one stderr line per service request, carrying
 // enough to diagnose a wire-shape mismatch (status, timing, sizes, and
-// the response body's top-level JSON keys) and nothing that
-// requirements.md 3.5 forbids in a log.
+// the response body's top-level JSON keys) and nothing the redaction
+// rules forbid in a log.
 func TestAcceptance_DebugPrintsSafeRequestMetadata(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
@@ -110,8 +110,8 @@ func TestAcceptance_DebugDumpDirWritesRestrictedFiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile(%s): %v", e.Name(), err)
 		}
-		// The dump is the verbatim response, envelope included — that is
-		// the whole point of having it.
+		// The dump is the verbatim response, envelope included, which is the
+		// whole point of having it.
 		if !strings.HasPrefix(strings.TrimSpace(string(body)), `{"catalog":`) {
 			t.Errorf("v4 response dump is not the raw enveloped body:\n%s", body)
 		}

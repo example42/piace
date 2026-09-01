@@ -19,7 +19,7 @@ import (
 // an alias for `any`, so every parameter value in a node diff or an
 // aggregate group decodes into an interface. Plain decoding puts a
 // float64 there and silently destroys the exact decimal digits the
-// canonical encoder went to some trouble to preserve — 2^53+1 comes back
+// canonical encoder went to some trouble to preserve: 2^53+1 comes back
 // as 2^53, and two decimals that differ beyond float64's precision come
 // back *equal*, turning a real parameter change into a non-change. With
 // UseNumber each numeric token arrives as a json.Number holding its
@@ -29,14 +29,14 @@ import (
 // Reading is strict in two further ways, both matching precedent
 // elsewhere in the tree rather than taking encoding/json's defaults.
 //
-// Unknown fields are rejected, as internal/config rejects them in a target
-// or services file. The consequence is a rule worth stating plainly: any
-// field added to the result document increments
+// Unknown fields are rejected, as internal/config rejects them in a
+// target or services file. The consequence is a rule worth stating
+// plainly: any field added to the result document increments
 // model.ResultSchemaVersion. Lenient decoding would otherwise leave a
-// silent middle ground — a report from a newer PIACE carrying the *same*
-// schema_version but additional fields would decode into a partial Result
-// that this binary would then reason over as if it were complete, which is
-// exactly the failure the version check cannot catch.
+// silent middle ground, where a report from a newer PIACE carrying the
+// *same* schema_version but additional fields would decode into a
+// partial Result this binary then reasoned over as if it were complete,
+// which is exactly the failure the version check cannot catch.
 //
 // Content after the first JSON value is rejected, as
 // internal/snapshot's decodeAny rejects it, so a truncated file with a

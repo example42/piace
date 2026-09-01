@@ -14,12 +14,11 @@ import (
 )
 
 // CompilerContentResolver is the compiler-backed ContentRetriever
-// implementation: design.md's named "ContentResolver.Digest(reference,
-// context) -> DigestEvidence" interface, built against *transport.Client
-// (task 3) exactly as internal/puppetdb's and internal/compiler's
-// adapters are. See doc.go's "ContentResolver and its documented,
-// unverified endpoint assumption" section for the exact request shape
-// this type issues and why it is flagged unverified.
+// implementation, built against *transport.Client exactly as
+// internal/puppetdb's and internal/compiler's adapters are. See doc.go's
+// "ContentResolver and its documented, unverified endpoint assumption"
+// section for the exact request shape this type issues and why it is
+// flagged unverified.
 type CompilerContentResolver struct {
 	client  *transport.Client
 	baseURL *url.URL
@@ -85,13 +84,12 @@ func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, 
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		// resp.Body is deliberately never included in the returned error:
-		// design.md's Error Handling section applies here exactly as it
-		// does to every other adapter in this codebase ("They do not
-		// preserve raw body text by default, because service errors can
-		// echo values"), and this package's stricter rule -- retrieved
-		// content bytes never cross into any returned/logged string --
-		// makes that doubly true for a file-content endpoint response.
+		// resp.Body is deliberately never included in the returned error. The
+		// rule that adapters do not preserve raw body text, because a service
+		// error can echo values back, applies here exactly as it does everywhere
+		// else in this codebase, and this package's stricter rule that retrieved
+		// content bytes never cross into any returned or logged string makes it
+		// doubly true for a file-content endpoint response.
 		return DigestEvidence{}, fmt.Errorf("filecontent: compiler returned a non-2xx status (%d) retrieving referenced content", resp.StatusCode)
 	}
 

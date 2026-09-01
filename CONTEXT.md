@@ -1,7 +1,15 @@
 # Puppet Impact Assessment & Change Explorer (PIACE)
 
-This context defines a CI command that compares node catalogs retained in
-PuppetDB with catalogs compiled for an already deployed candidate environment.
+PIACE is a CI command that compares node catalogs retained in PuppetDB with
+catalogs compiled for an already deployed candidate environment.
+
+This file holds the two things the code cannot state for itself: the words
+this project uses for its own concepts, and the handful of decisions that
+explain why it is shaped the way it is. Everything else lives with what it
+describes: [README.md](README.md) for the tool, [docs/ci.md](docs/ci.md) for
+pipelines, [docs/release.md](docs/release.md) for publishing and verifying a
+release, [docs/development.md](docs/development.md) for working on it, and
+[examples/](examples/) for configuration that loads.
 
 ## Language
 
@@ -117,3 +125,99 @@ _Avoid_: git diff, commit info, PR metadata
 A stable per-run substitute for a certname or service authority used only in an
 inference request body. It never appears in a change assessment or any report.
 _Avoid_: anonymized, masked, redacted
+
+## Design
+
+### One path rule
+
+Every relative path named in a config file resolves against the directory of
+the file that names it. `facts.file` and `baseline.file` resolve against the
+target file; the TLS paths, `token_file` and `policy_notes_file` resolve
+against the services file. An absolute path is taken as written, and nothing
+resolves against the process working directory, so moving a file takes its
+paths with it.
+
+A credential may instead be named rather than located: `ca_bundle_env`,
+`client_cert_env`, `private_key_env` and `token_env` each name an environment
+variable holding a path, which must be absolute. Naming both forms of one
+credential is an error rather than a precedence rule nobody remembers. This is
+what lets a services file be committed and read in place by a CI job whose
+credential directory did not exist when the file was written.
+
+### Candidate catalogs come from an existing compiler
+
+PIACE is an HTTPS client, not a Puppet compiler. CI deploys the candidate
+environment to an existing Puppet Server or OpenVox compiler, and PIACE
+requests each candidate catalog through that compiler's v3 or v4 catalog API
+using a dedicated catalog-reader certificate. That keeps the CLI
+dependency-free and air-gap-installable while compiling with the deployed
+environment's actual Puppet runtime and code.
+
+Borrowing the deployed compiler means accepting its persistence behaviour. The
+v4 API lets a request disable fact and catalog persistence, and PIACE sets
+those fields on every v4 request, so a v4 candidate compilation leaves
+PuppetDB untouched. The v3 API has no such control: the compiler saves the
+submitted facts and stores the compiled catalog under the candidate
+environment. v3 is therefore a degraded path constrained to a file-backed
+baseline, not an equivalent one.
+
+Local fact and catalog snapshots are PIACE envelopes rather than bare Puppet
+payloads: they record source, target, environment where applicable, capture
+metadata, input identity, and an integrity checksum. A PuppetDB baseline whose
+environment differs from the configured baseline environment is rejected.
+
+### The change assessment stays out of the result document
+
+The result document is canonically encoded and `schema_version`-tagged so that
+identical input catalogs and configuration produce byte-identical artifacts,
+and the acceptance suite asserts exactly that. A model-generated change
+assessment cannot hold that property: even with sampling pinned, a
+provider-side model revision changes the bytes.
+
+Rather than weaken the invariant to accommodate an advisory feature, the
+assessment is a separate artifact with its own `ai_schema_version`, carrying a
+SHA-256 checksum of the canonical result document it was derived from.
+Embedding it and bumping `schema_version` was rejected because it would turn a
+guarantee a reader can state in one sentence into one with an exception list.
+
+Because the assessment is a pure function of a stored result document, it is
+produced by a second command, `piace explain`, rather than inside `compare`.
+That leaves `compare`'s configuration surface, dependency surface, failure
+modes and service reach unchanged, and it makes the feature runnable and
+testable offline against a report some earlier run produced. The cost is one
+extra step in a pipeline.
+
+### The inference service is the one bearer-token exception
+
+PIACE authenticates to the compiler and PuppetDB exclusively via mTLS, and
+`internal/transport` enforces it beyond configuration: `Client` deletes any
+`Authorization` header from every request it sends, so a stolen services file
+yields nothing usable. Every practical OpenAI-compatible inference service
+authenticates with a bearer token, so there is one scoped exception.
+
+The scope is structural rather than a matter of discipline: the inference
+client is its own package, `internal/inference`, and is the only code in PIACE
+that sets an `Authorization` header. The token is never written in the
+services file; `token_env` and `token_file` reference it, and `https` is the
+only accepted scheme.
+
+The `inference:` section lives in the same services file as the compiler and
+puppetdb sections, and the three load independently: a file carrying only
+`inference:` is valid for `explain`, which needs no mTLS identity and builds no
+compiler or PuppetDB client. What separates a comparison job from an
+assessment job is which credentials each is granted, not which file it reads.
+
+### `change-context` is the only subcommand that invokes git
+
+`compare` and `explain` contact nothing but the compiler, PuppetDB and the
+inference service, and neither runs git. `explain --change` reads a file the
+caller produced by any means, so a repository under a different VCS, or a CI
+system with no checkout, describes its change by hand.
+
+`piace change-context` produces that file by exec'ing git, and it is optional.
+It exists because the alternative is every adopter hand-writing the same YAML
+in shell, and the free-text part of that is the dangerous part: a pull request
+title is attacker-supplied, and a CI system that substitutes one into script
+text before a shell runs turns it into a command. Every untrusted input is
+taken by variable name or file path, never by value, and there is deliberately
+no `--title` or `--description` flag.

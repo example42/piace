@@ -9,25 +9,25 @@ import (
 	"strconv"
 )
 
-// CanonicalJSON encodes payload as compact canonical JSON, per design.md
-// section 6: map keys sort lexicographically by UTF-8 bytes, arrays retain
-// order, strings use standard JSON escaping, and numeric tokens normalize
-// to their exact base-10 numeric value rather than a machine floating
-// point approximation. This is Property 1 ("Deterministic results") in
-// design.md's Correctness Properties: the same logical payload always
-// produces byte-identical output regardless of map key insertion order or
-// how a number was originally spelled ("1.50" vs "1.5", "1e2" vs "100").
+// CanonicalJSON encodes payload as compact canonical JSON: map keys sort
+// lexicographically by UTF-8 bytes, arrays retain order, strings use
+// standard JSON escaping, and numeric tokens normalize to their exact
+// base-10 numeric value rather than a machine floating point
+// approximation. That is what makes results deterministic: the same
+// logical payload always produces byte-identical output regardless of
+// map key insertion order or how a number was originally spelled ("1.50"
+// vs "1.5", "1e2" vs "100").
 //
 // Accepted input shapes:
 //
 //   - nil, bool, string
-//   - json.Number (preserves exact decimal digits — see
+//   - json.Number (preserves exact decimal digits, see
 //     canonicalNumberString)
 //   - float64, int, int64 (accepted for caller convenience when a value
 //     was decoded/constructed without json.Number; float64 in particular
 //     can only be as precise as whatever produced it, so a caller that
 //     needs exact large-integer precision must supply json.Number or
-//     json.RawMessage instead — see the package doc for why Checksum
+//     json.RawMessage instead. See the package doc for why Checksum
 //     always decodes with json.Decoder.UseNumber() rather than plain
 //     json.Unmarshal)
 //   - []any (recursively canonicalized, order preserved)
@@ -115,9 +115,9 @@ func encodeCanonical(buf *bytes.Buffer, v any) error {
 		for k := range val {
 			keys = append(keys, k)
 		}
-		// sort.Strings compares Go strings byte-by-byte, which is exactly
-		// UTF-8 byte order for valid UTF-8 strings (design.md section 6:
-		// "map keys sort lexicographically by UTF-8 bytes").
+		// sort.Strings compares Go strings byte-by-byte, which is exactly UTF-8
+		// byte order for valid UTF-8 strings, and UTF-8 byte order is what
+		// canonical map key ordering means here.
 		sort.Strings(keys)
 		buf.WriteByte('{')
 		for i, k := range keys {
@@ -148,8 +148,7 @@ func encodeCanonical(buf *bytes.Buffer, v any) error {
 // encodeCanonicalString writes s as a standard-escaped JSON string.
 // encoding/json's Marshal for a string already produces spec-compliant
 // JSON string escaping deterministically for a given input, which is all
-// "canonical" requires here (design.md section 6: "strings use JSON
-// escaping").
+// canonical requires here.
 func encodeCanonicalString(buf *bytes.Buffer, s string) error {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -259,13 +258,12 @@ func canonicalNumberString(s string) (string, error) {
 }
 
 // CanonicalNumberString exposes canonicalNumberString for reuse outside
-// this package. The catalog normalizer (task 7, internal/normalize) needs
-// the exact same base-10 canonical decimal normalization this package
+// this package. The catalog normalizer (internal/normalize) needs the
+// exact same base-10 canonical decimal normalization this package
 // already uses for snapshot payload checksums, so that there is exactly
-// one canonicalization behavior for numeric values across the codebase —
-// design.md's Property 1 (Deterministic results) requires this, and
-// task 7's brief is explicit that it must "reuse this for canonical
-// parameter value representation rather than writing a second one."
+// one canonicalization behavior for numeric values across the codebase.
+// Determinism requires it, and a second implementation would sooner or
+// later be a second answer.
 func CanonicalNumberString(raw string) (string, error) {
 	return canonicalNumberString(raw)
 }

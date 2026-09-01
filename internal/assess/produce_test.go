@@ -33,8 +33,7 @@ func (f *fakeService) Complete(_ context.Context, req inference.Request) ([]byte
 func goodReply() string {
 	return `{"run":{"risk":"medium","summary":"ok","review_focus":[]},
 	         "groups":[{"id":"g001","risk":"low","rationale":"fine","review_focus":[]},
-	                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]},
-	                   {"id":"g003","risk":"low","rationale":"fine","review_focus":[]}]}`
+	                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]}]}`
 }
 
 func testMeta() Meta {
@@ -56,7 +55,7 @@ func TestProduceReturnsAnAssessmentAndCallsTheServiceOnce(t *testing.T) {
 	if hasError(diags) {
 		t.Errorf("diagnostics = %+v", diags)
 	}
-	if a.Run.Risk != RiskMedium || len(a.Groups) != 3 {
+	if a.Run.Risk != RiskMedium || len(a.Groups) != 2 {
 		t.Errorf("assessment = %+v", a)
 	}
 	if a.ModelID != "test-model" || a.EndpointAuthority != "api.example.com" || a.SourceReportChecksum != "sha256:abc" {
@@ -65,12 +64,12 @@ func TestProduceReturnsAnAssessmentAndCallsTheServiceOnce(t *testing.T) {
 	if a.AISchemaVersion != AISchemaVersion {
 		t.Errorf("AISchemaVersion = %d", a.AISchemaVersion)
 	}
-	if a.GroupsTotal != 3 || a.GroupsAssessed != 3 || a.GroupsTruncated {
+	if a.GroupsTotal != 2 || a.GroupsAssessed != 2 || a.GroupsTruncated {
 		t.Errorf("group accounting = %d/%d truncated=%v", a.GroupsAssessed, a.GroupsTotal, a.GroupsTruncated)
 	}
 }
 
-// Slice 8.3's core: an unreachable service still produces a complete
+// an unreachable service still produces a complete
 // artifact, with every group recorded as unknown rather than missing.
 func TestProduceStillProducesAnArtifactWhenTheServiceFails(t *testing.T) {
 	f := &fakeService{errs: []error{errors.New("api.example.com returned status 500")}}
@@ -82,7 +81,7 @@ func TestProduceStillProducesAnArtifactWhenTheServiceFails(t *testing.T) {
 	if a.Run.Risk != RiskUnknown {
 		t.Errorf("Run.Risk = %q, want unknown", a.Run.Risk)
 	}
-	if len(a.Groups) != 3 {
+	if len(a.Groups) != 2 {
 		t.Fatalf("Groups = %d, want every planned group accounted for", len(a.Groups))
 	}
 	for _, g := range a.Groups {
@@ -98,7 +97,7 @@ func TestProduceStillProducesAnArtifactWhenTheServiceFails(t *testing.T) {
 	}
 }
 
-// Slice 4.5: exactly one retry, carrying the validation error.
+// exactly one retry, carrying the validation error.
 func TestProduceRetriesOnceOnAnUnusableResponse(t *testing.T) {
 	f := &fakeService{replies: []string{"I'm sorry, I can't help with that.", goodReply()}}
 	a, diags := Produce(context.Background(), f, assessableResult(), ChangeContext{}, testConfig(), testMeta())
@@ -124,17 +123,17 @@ func TestProduceGivesUpAfterOneRetry(t *testing.T) {
 	a, diags := Produce(context.Background(), f, assessableResult(), ChangeContext{}, testConfig(), testMeta())
 
 	if len(f.calls) != 2 {
-		t.Errorf("service calls = %d, want 2 — no backoff ladder", len(f.calls))
+		t.Errorf("service calls = %d, want 2, with no backoff ladder", len(f.calls))
 	}
 	if !hasError(diags) {
 		t.Error("giving up produced no error diagnostic")
 	}
-	if a.Run.Risk != RiskUnknown || len(a.Groups) != 3 {
+	if a.Run.Risk != RiskUnknown || len(a.Groups) != 2 {
 		t.Errorf("assessment = %+v", a)
 	}
 }
 
-// Slice 8.5: a report built on failed retrievals is assessed, and says
+// a report built on failed retrievals is assessed, and says
 // its input was partial.
 func TestProduceRecordsThatItsInputWasPartial(t *testing.T) {
 	r := assessableResult()
@@ -151,7 +150,7 @@ func TestProduceRecordsThatItsInputWasPartial(t *testing.T) {
 	}
 }
 
-// Slice 3.2 end to end: truncation is carried into the artifact.
+// truncation is carried into the artifact.
 func TestProduceCarriesTruncationIntoTheArtifact(t *testing.T) {
 	cfg := testConfig()
 	cfg.MaxGroups = 1
@@ -159,16 +158,16 @@ func TestProduceCarriesTruncationIntoTheArtifact(t *testing.T) {
 	    "groups":[{"id":"g001","risk":"low","rationale":"","review_focus":[]}]}`}}
 
 	a, _ := Produce(context.Background(), f, assessableResult(), ChangeContext{}, cfg, testMeta())
-	if !a.GroupsTruncated || a.GroupsTotal != 3 || a.GroupsAssessed != 1 {
+	if !a.GroupsTruncated || a.GroupsTotal != 2 || a.GroupsAssessed != 1 {
 		t.Errorf("group accounting = %d/%d truncated=%v", a.GroupsAssessed, a.GroupsTotal, a.GroupsTruncated)
 	}
 }
 
-// A warning does not make the source document partial. model.Result emits
-// warnings on complete runs — a v3 compatibility notice, a directory
-// content source — and an assessment that called every such run's input
-// incomplete would tell the reader of a successful comparison the
-// opposite of the truth.
+// A warning does not make the source document partial. model.Result
+// emits warnings on complete runs, a v3 compatibility notice or a
+// directory content source among them, and an assessment that called
+// every such run's input incomplete would tell the reader of a
+// successful comparison the opposite of the truth.
 func TestOnlyAnErrorDiagnosticMakesTheInputPartial(t *testing.T) {
 	warn := model.Diagnostic{Severity: model.SeverityWarning, Operation: model.OperationRequestCandidate, Message: "v3 trusted-fact warning"}
 	fail := model.Diagnostic{Severity: model.SeverityError, Operation: model.OperationLoadBaseline, Message: "baseline not found"}
@@ -198,7 +197,7 @@ func TestOnlyAnErrorDiagnosticMakesTheInputPartial(t *testing.T) {
 	}
 }
 
-// Slice 2.5, the half the opt-out test could not state at the request
+// The half the opt-out test could not state at the request
 // seam: pseudonyms exist only in the request body, so the two runsdiffer in
 // what left the process and not in what they wrote.
 func TestPseudonymizationOptOutProducesAnIdenticalArtifact(t *testing.T) {
@@ -206,8 +205,7 @@ func TestPseudonymizationOptOutProducesAnIdenticalArtifact(t *testing.T) {
 	replyNaming := func(node string) string {
 		return `{"run":{"risk":"medium","summary":"` + node + ` changes first","review_focus":["` + node + `"]},
 		         "groups":[{"id":"g001","risk":"low","rationale":"` + node + ` only","review_focus":[]},
-		                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]},
-		                   {"id":"g003","risk":"low","rationale":"fine","review_focus":[]}]}`
+		                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]}]}`
 	}
 
 	cfg := testConfig()

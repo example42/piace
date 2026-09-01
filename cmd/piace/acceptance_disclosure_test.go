@@ -9,18 +9,18 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// TestAcceptance_NoReportDisclosesSecretsOrManagedBytes is task 12's
-// final acceptance condition and design.md's Property 5 checked end to
-// end: "no report contains credentials, private material, managed content
-// bytes, or unredacted sensitive values."
+// TestAcceptance_NoReportDisclosesSecretsOrManagedBytes checks the
+// disclosure property end to end: no report contains credentials,
+// private material, managed content bytes, or unredacted sensitive
+// values.
 //
 // internal/diff tests redaction at the change level. Only this level can
-// show that the values do not reappear through a different door —
+// show that the values do not reappear through a different door:
 // provenance, a diagnostic message, an aggregate group, or the canonical
-// JSON the HTML artifact embeds. The run is therefore built so that every
-// disclosure channel is actually populated: a Sensitive parameter that
-// changed, a selector-redacted parameter, inline File content, and File
-// content retrieved from the compiler.
+// JSON the HTML artifact embeds. The run is therefore built so that
+// every disclosure channel is actually populated, with a Sensitive
+// parameter that changed, a selector-redacted parameter, inline File
+// content, and File content retrieved from the compiler.
 func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	h := newHarness(t)
 
@@ -55,8 +55,7 @@ func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	h.compiler.fileContent["modules/app/app.conf"] = managedFileBytes
 	h.compiler.fileContent["modules/app/app.conf.new"] = managedFileBytes + "-changed"
 
-	// A configured selector redacts File content evidence as well, per
-	// requirements.md 8.8 and design.md section 7.2.
+	// A configured selector redacts File content evidence as well.
 	defaults := defaultDefaults + `  redact:
     - type: File
       parameter: content
@@ -105,10 +104,9 @@ func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	}
 }
 
-// TestAcceptance_FileContentEvidenceStates covers requirements.md
-// 5.5-5.8 and design.md section 7.2's priority order: each evidence
-// source produces its documented state, and no state renders content
-// bytes.
+// TestAcceptance_FileContentEvidenceStates covers the file-content
+// evidence priority order: each evidence source produces its documented
+// state, and no state renders content bytes.
 func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	h := newHarness(t)
 
@@ -145,8 +143,7 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))
 	got := h.compare(t)
 
-	// An indeterminate content comparison can never be reported clean
-	// (requirements.md 5.7/10.5, design.md section 7.2).
+	// An indeterminate content comparison can never be reported clean.
 	if got.code != exitcode.OperationalError {
 		t.Fatalf("exit = %d, want 30: an indeterminate File content comparison must not be clean\nstdout:\n%s", got.code, got.stdout)
 	}
@@ -161,7 +158,7 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 			t.Errorf("the report is missing the evidence line %q\n%s", want, got.stdout)
 		}
 	}
-	// requirements.md 5.8: no format renders managed content bytes.
+	// No format renders managed content bytes.
 	for artifactName, artifact := range got.all() {
 		for _, bytes := range []string{"one-bytes", "two-bytes", "before", "after"} {
 			if strings.Contains(artifact, `"`+bytes+`"`) {
@@ -171,23 +168,19 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	}
 }
 
-// TestAcceptance_TLSPathsResolveAgainstWorkingDirectory documents an
-// operator trap found while validating task 11, asserted here as the
-// behavior actually shipped rather than silently accepted.
+// TestAcceptance_TLSPathsResolveAgainstTheServicesFile asserts the one
+// path rule every config file follows: a relative path resolves against
+// the directory of the file that names it. Snapshot paths resolve against
+// the target file, policy_notes_file and the TLS paths resolve against the
+// services file.
 //
-// design.md section 3.2 rule 5 resolves a relative *snapshot* path
-// against the target-file directory. Nothing in the design says the same
-// about the TLS paths in the services file, and internal/transport
-// resolves them against the process working directory — so a CI job that
-// runs `piace` from a directory other than the one holding services.yaml
-// must use absolute TLS paths. This asymmetry is reported as a finding
-// for a future task; task 12 does not change task 2/3 behavior.
-func TestAcceptance_TLSPathsResolveAgainstWorkingDirectory(t *testing.T) {
+// The case that matters is an operator who drops the CA, certificate and
+// key beside services.yaml and names them by bare filename, then runs
+// piace from somewhere else entirely.
+func TestAcceptance_TLSPathsResolveAgainstTheServicesFile(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
 
-	// Copy the CA/cert/key beside the services file and reference them by
-	// bare filename, the way an operator reasonably would.
 	for _, name := range []string{"ca.pem", "reader.pem", "reader.key"} {
 		data, err := os.ReadFile(h.fixture.dir + "/" + name)
 		if err != nil {
@@ -203,10 +196,59 @@ func TestAcceptance_TLSPathsResolveAgainstWorkingDirectory(t *testing.T) {
 	writeFixtureFile(t, h.path("targets.yaml"), []byte(targetsYAML(defaultDefaults, target("web-01.example.test"))))
 
 	got := h.compare(t)
-	if got.code != exitcode.OperationalError {
-		t.Fatalf("exit = %d, want 30: relative TLS paths resolve against the working directory, not the services file", got.code)
+	if got.code != exitcode.Success {
+		t.Fatalf("exit = %d, want 0: relative TLS paths resolve against the services file\n%s", got.code, got.stderr)
 	}
-	if !strings.Contains(got.stderr, "no such file or directory") {
-		t.Errorf("stderr does not explain the unresolved TLS path:\n%s", got.stderr)
+}
+
+// TestAcceptance_TLSPathsFromTheEnvironment asserts the form a CI job
+// uses: the services file is committed and read in place, and the
+// per-job credential directory arrives through the environment. Nothing
+// renders a template and nothing writes into the checkout.
+func TestAcceptance_TLSPathsFromTheEnvironment(t *testing.T) {
+	h := newHarness(t)
+	h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
+
+	t.Setenv("PIACE_CA_BUNDLE", h.fixture.dir+"/ca.pem")
+	t.Setenv("PIACE_CLIENT_CERT", h.fixture.dir+"/reader.pem")
+	t.Setenv("PIACE_PRIVATE_KEY", h.fixture.dir+"/reader.key")
+
+	const refs = "  ca_bundle_env: PIACE_CA_BUNDLE\n" +
+		"  client_cert_env: PIACE_CLIENT_CERT\n" +
+		"  private_key_env: PIACE_PRIVATE_KEY\n"
+	services := "version: 1\ncompiler:\n  endpoint: " + h.compilerServer.URL + "\n" + refs +
+		"puppetdb:\n  endpoint: " + h.pdbServer.URL + "\n" + refs
+	writeFixtureFile(t, h.path("services.yaml"), []byte(services))
+	writeFixtureFile(t, h.path("targets.yaml"), []byte(targetsYAML(defaultDefaults, target("web-01.example.test"))))
+
+	got := h.compare(t)
+	if got.code != exitcode.Success {
+		t.Fatalf("exit = %d, want 0: TLS material named by environment variable\n%s", got.code, got.stderr)
+	}
+}
+
+// TestAcceptance_TLSPathAndEnvTogetherRejected asserts the rule the
+// inference token already follows: naming a credential twice is a
+// configuration error, not a precedence rule nobody remembers.
+func TestAcceptance_TLSPathAndEnvTogetherRejected(t *testing.T) {
+	h := newHarness(t)
+	h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
+
+	t.Setenv("PIACE_CA_BUNDLE", h.fixture.dir+"/ca.pem")
+	services := "version: 1\ncompiler:\n  endpoint: " + h.compilerServer.URL +
+		"\n  ca_bundle: " + h.fixture.dir + "/ca.pem\n  ca_bundle_env: PIACE_CA_BUNDLE\n" +
+		"  client_cert: " + h.fixture.dir + "/reader.pem\n  private_key: " + h.fixture.dir + "/reader.key\n" +
+		"puppetdb:\n  endpoint: " + h.pdbServer.URL +
+		"\n  ca_bundle: " + h.fixture.dir + "/ca.pem\n  client_cert: " + h.fixture.dir +
+		"/reader.pem\n  private_key: " + h.fixture.dir + "/reader.key\n"
+	writeFixtureFile(t, h.path("services.yaml"), []byte(services))
+	writeFixtureFile(t, h.path("targets.yaml"), []byte(targetsYAML(defaultDefaults, target("web-01.example.test"))))
+
+	got := h.compare(t)
+	if got.code != exitcode.OperationalError {
+		t.Fatalf("exit = %d, want 30: ca_bundle and ca_bundle_env set together", got.code)
+	}
+	if !strings.Contains(got.stderr, "not both") {
+		t.Errorf("stderr does not name the conflict:\n%s", got.stderr)
 	}
 }

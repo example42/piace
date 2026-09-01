@@ -11,13 +11,13 @@ import (
 	"github.com/example42/piace/internal/transport"
 )
 
-// trustedFactsDecision is the outcome of design.md section 5's v4
-// trusted-fact policy for one request: either a validated trusted-fact
-// value to send explicitly, or an instruction to omit the field and rely
-// on the compiler's own PuppetDB lookup, or neither — which is a
-// compilation failure the caller must report without ever issuing an HTTP
-// request (design.md: "If neither source is available, PIACE fails
-// compilation rather than inventing trusted facts").
+// trustedFactsDecision is the outcome of the v4 trusted-fact policy for
+// one request: either a validated trusted-fact value to send explicitly,
+// or an instruction to omit the field and rely on the compiler's own
+// PuppetDB lookup, or neither. Neither is a compilation failure the
+// caller must report without ever issuing an HTTP request: if no source
+// is available, PIACE fails compilation rather than inventing trusted
+// facts.
 type trustedFactsDecision struct {
 	// available is false only when neither source applies; callers must
 	// check this before issuing a v4 request.
@@ -44,11 +44,11 @@ const (
 	trustedFactsSourceCompilerLookup
 )
 
-// decideTrustedFacts implements design.md section 5's exact v4
-// trusted-fact policy: prefer a validated trusted-fact structure already
-// present in the factset; otherwise fall back to the compiler's PuppetDB
-// lookup only when the target is explicitly configured for it; otherwise
-// report unavailability so the caller fails compilation.
+// decideTrustedFacts implements the exact v4 trusted-fact policy: prefer
+// a validated trusted-fact structure already present in the factset;
+// otherwise fall back to the compiler's PuppetDB lookup only when the
+// target is explicitly configured for it; otherwise report
+// unavailability so the caller fails compilation.
 func decideTrustedFacts(flatFacts map[string]json.RawMessage, compilerLookupConfigured bool) trustedFactsDecision {
 	if raw, ok := extractTrustedFacts(flatFacts); ok {
 		return trustedFactsDecision{available: true, source: trustedFactsSourceProvided, value: raw}

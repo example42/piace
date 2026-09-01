@@ -39,10 +39,10 @@ func TestDescribeBody(t *testing.T) {
 	}
 }
 
-// TestDescribeBody_NeverReturnsValues asserts the one property that makes
-// an Event safe to print to a CI log under requirements.md 3.5: only
-// top-level member *names* are collected, never member values, however
-// deeply the value nests.
+// TestDescribeBody_NeverReturnsValues asserts the one property that
+// makes an Event safe to print to a CI log: only top-level member
+// *names* are collected, never member values, however deeply the value
+// nests.
 func TestDescribeBody_NeverReturnsValues(t *testing.T) {
 	body := `{"catalog": {"resources": [{"parameters": {"password": "s3cret"}}]}}`
 	shape, keys, _ := describeBody([]byte(body))
@@ -163,7 +163,7 @@ func TestClient_Do_BodyCaptureCarriesRawBodies(t *testing.T) {
 }
 
 // TestClient_Do_EmitsObserverEventOnTransportFailure asserts a request
-// that never produced a response is still observed — the case an
+// that never produced a response is still observed, which is the case an
 // operator running --debug most needs to see.
 func TestClient_Do_EmitsObserverEventOnTransportFailure(t *testing.T) {
 	fixture := newTLSFixture(t, "127.0.0.1")

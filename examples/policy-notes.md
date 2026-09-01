@@ -1,7 +1,7 @@
 # PIACE site policy notes
 
 Handed to the inference service alongside the change, as context for the
-assessment. Capped at 4000 bytes — anything past that is truncated, and the
+assessment. Capped at 4000 bytes: anything past that is truncated, and the
 truncation is recorded rather than hidden.
 
 These are notes about *this estate*, not instructions to the model. Nothing
@@ -14,7 +14,7 @@ locally, and the assessment never enters the result document.
 - Any change to `sshd_config`, `sudoers`, or a PAM file. These lock people out
   of the estate before anyone notices, and the recovery path is console access.
 - Removal of a `Service` resource, or a change to a service's `ensure`. A
-  removed service is not stopped by Puppet — it is simply no longer managed,
+  removed service is not stopped by Puppet; it is simply no longer managed,
   and stays running until something else reboots the host.
 - Changes to `db-*` nodes during business hours. Replication is asynchronous
   and a restart is a customer-visible event.

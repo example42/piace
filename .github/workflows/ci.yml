@@ -2,12 +2,13 @@ name: CI
 
 # Pull requests run the test job. A merge to main runs the same test job
 # and then, only if it passed, builds the release artifacts and uploads
-# them. A `v*` tag runs both, publishes a GitHub Release from the
-# artifacts the build job already verified, and then pushes the container
-# image built from those same artifacts to Docker Hub.
+# them. A `v*` tag runs both, publishes a signed and attested GitHub
+# Release from the artifacts the build job already verified, and then
+# pushes the container image built from those same artifacts to Docker
+# Hub and GHCR.
 #
 # All four live in one workflow so `needs:` can gate each stage on the
-# one before it — a cross-workflow dependency would need `workflow_run`,
+# one before it. A cross-workflow dependency would need `workflow_run`,
 # which reports its status against the wrong commit and is easy to
 # misread. That gating is the point on a tag: a release is published only
 # from a commit whose tests passed on every matrix leg.
@@ -159,7 +160,7 @@ jobs:
       # Ties the artifact back to the tag. -X main.toolVersion is what
       # `piace version` prints and what every result document records as
       # its invocation metadata, so a mis-stamped binary would misreport
-      # itself in every report it ever produced — and the checksum
+      # itself in every report it ever produced, and the checksum
       # manifest would happily certify it.
       - name: Confirm the binary reports the version it was stamped with
         env:
@@ -199,8 +200,16 @@ jobs:
     # only one holding the permission to. Granting it at the workflow
     # level would hand it to the test job as well, which runs the code
     # under review.
+    #
+    # id-token and attestations are what let this job sign and attest
+    # without a key. Both are scoped to this job for the same reason
+    # contents: write is: the test job runs the code under review, and it
+    # must not be able to mint a signature that carries this repository's
+    # identity.
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       # The published bytes are the ones the build job already checked:
       # manifest verified, static linking confirmed, version stamp
@@ -220,6 +229,31 @@ jobs:
         working-directory: dist
         run: sha256sum --check SHA256SUMS
 
+      # Provenance for the binaries themselves: which workflow, at which
+      # commit, produced these exact bytes. It answers a different
+      # question from the signature below, which is about the manifest,
+      # and GitHub stores it rather than this repository.
+      - name: Attest the release binaries
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/piace-*
+
+      - uses: sigstore/cosign-installer@v3
+
+      # Keyless: the certificate is issued against this workflow's own
+      # OIDC identity and is valid for minutes, so there is no signing key
+      # to store, rotate, or lose. That is the whole reason the signature
+      # can be produced here, at publication time, rather than by a human
+      # with a laptop some hours later.
+      #
+      # A checksum manifest published beside its own artifacts attests to
+      # integrity and never to origin: anyone who could replace the
+      # binaries could replace SHA256SUMS with them. This is what closes
+      # that gap.
+      - name: Sign the checksum manifest
+        working-directory: dist
+        run: cosign sign-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json --yes
+
       # The notes state plainly what this release does and does not prove.
       # A checksum manifest published beside its own artifacts attests to
       # integrity, never to origin: anyone who could replace the binaries
@@ -230,6 +264,8 @@ jobs:
       - name: Compose the release notes
         env:
           VERSION: ${{ needs.build.outputs.version }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         run: |
           {
             echo "Statically linked, CGO-free binaries for linux/amd64, linux/arm64,"
@@ -237,16 +273,30 @@ jobs:
             echo
             echo "## Verifying this download"
             echo
+            echo "Verify the signature first. The checksum manifest shows only that a"
+            echo "download is intact; the signature over it is what says where it came"
+            echo "from, and it is produced by the publishing workflow itself, so it is"
+            echo "attached from the moment this release exists."
+            echo
             echo '```sh'
+            echo "cosign verify-blob SHA256SUMS \\"
+            echo "  --bundle SHA256SUMS.sigstore.json \\"
+            echo "  --certificate-identity 'https://github.com/${REPO}/.github/workflows/ci.yml@refs/tags/${TAG}' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
             echo "sha256sum --check --ignore-missing SHA256SUMS   # shasum -a 256 on macOS"
             echo "./piace-${VERSION}-<os>-<arch> version"
             echo '```'
             echo
-            echo "\`SHA256SUMS.asc\` — the detached OpenPGP signature over the manifest — is"
-            echo "signed and attached separately after publication; this workflow holds no"
-            echo "signing key. Until it appears, the checksums above show only that a download"
-            echo "is intact, not where it came from. See \`docs/release.md\` for the full"
-            echo "procedure and the signing key fingerprint."
+            echo "The binaries also carry a GitHub build provenance attestation naming the"
+            echo "workflow and commit that produced them:"
+            echo
+            echo '```sh'
+            echo "gh attestation verify piace-${VERSION}-linux-amd64 --repo ${REPO}"
+            echo '```'
+            echo
+            echo "\`SHA256SUMS.asc\`, a detached OpenPGP signature over the same manifest,"
+            echo "is attached separately for sites that require one. It is an extra, not the"
+            echo "verification path: see \`docs/release.md\`."
             echo
             echo "## SHA256SUMS"
             echo
@@ -258,13 +308,13 @@ jobs:
 
       # gh resolves the repository from GH_REPO, so this job needs no
       # checkout: the only inputs are the downloaded artifacts and the
-      # notes composed above. The tag already exists — pushing it is what
-      # triggered the run — so gh attaches the release to it rather than
+      # notes composed above. The tag already exists, since pushing it is what
+      # triggered the run, so gh attaches the release to it rather than
       # creating one.
       #
       # Re-running this job after a release already exists fails, and is
-      # meant to. The alternative — falling back to `gh release upload
-      # --clobber` — would quietly overwrite the assets of a release
+      # meant to. The alternative, falling back to `gh release upload
+      # --clobber`, would quietly overwrite the assets of a release
       # people may already have downloaded, to rescue a case (a partial
       # publish) that is rarer than the case it endangers. Delete the
       # incomplete release and re-run if that happens.
@@ -283,7 +333,7 @@ jobs:
             --title "piace $VERSION" \
             --notes-file release-notes.md \
             "${flags[@]}" \
-            dist/piace-* dist/SHA256SUMS
+            dist/piace-* dist/SHA256SUMS dist/SHA256SUMS.sigstore.json
 
   image:
     name: publish container image
@@ -295,6 +345,14 @@ jobs:
     needs: [build, release]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
+    # packages: write pushes to GHCR with the workflow's own token, so
+    # that registry needs no stored credential at all. id-token and
+    # attestations are the same keyless pair the release job uses.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
     steps:
       # Only the Dockerfile and .dockerignore are needed here; the
       # binaries come from the build job, downloaded next.
@@ -315,6 +373,8 @@ jobs:
       # buildx alone covers linux/arm64 and no QEMU setup is needed.
       - uses: docker/setup-buildx-action@v3
 
+      - uses: sigstore/cosign-installer@v3
+
       # DOCKERHUB_TOKEN is a Docker Hub access token scoped to
       # read/write, not the account password. See docs/release.md.
       #
@@ -328,6 +388,20 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The image is published to both registries from one build. Docker
+      # Hub stays the name the documentation uses, but an anonymous pull
+      # from a shared CI runner IP is exactly what Docker Hub rate-limits,
+      # and a pipeline that fails for that reason fails for a reason that
+      # has nothing to do with this project. GHCR gives those runners a
+      # mirror that costs this workflow one login with a token it already
+      # holds.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # Built and loaded locally first, so the assertion below runs
       # against the image that is about to be pushed rather than after the
@@ -372,17 +446,23 @@ jobs:
           {
             echo 'tags<<TAGS'
             echo "example42/piace:${VERSION}"
+            echo "ghcr.io/example42/piace:${VERSION}"
             if [ "$PRERELEASE" = "false" ]; then
               echo "example42/piace:latest"
+              echo "ghcr.io/example42/piace:latest"
             fi
             echo 'TAGS'
           } >> "$GITHUB_OUTPUT"
 
       # provenance: false keeps the pushed manifest list to the two
-      # platforms it actually carries. The default attaches a provenance
-      # attestation as a third manifest entry, which Docker Hub renders as
-      # an `unknown/unknown` architecture beside the real ones.
+      # platforms it actually carries. BuildKit's own provenance would
+      # ride along as a third manifest entry, which Docker Hub renders as
+      # an `unknown/unknown` architecture beside the real ones. Nothing is
+      # given up by turning it off: the attestation step below produces a
+      # real one, stored beside the image rather than inside its manifest
+      # list.
       - name: Build and push the multi-platform image
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -392,3 +472,23 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
           provenance: false
+
+      # By digest, never by tag: a tag is a moving name and signing one
+      # would say nothing about which bytes were signed. Both registries
+      # carry the same manifest, so this is one digest signed twice, once
+      # where each set of pullers will look for it.
+      - name: Sign the pushed image
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          for repo in example42/piace ghcr.io/example42/piace; do
+            cosign sign --yes "${repo}@${DIGEST}"
+          done
+
+      - name: Attest the pushed image
+        uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/example42/piace
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

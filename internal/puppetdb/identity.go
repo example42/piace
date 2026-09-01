@@ -9,13 +9,12 @@ import (
 
 // FactsetIdentity computes a stable identity for fs: the snapshot
 // package's SHA-256 canonical-JSON checksum over fs's own encoding. This
-// is used as a catalog envelope's `input_factset_identity` (design.md
-// section 6) and as a candidate request's
-// model.CandidateProvenance.FactsetIdentity (design.md section 5),
-// regardless of whether fs came from PuppetDB or a file-backed snapshot —
-// unlike fs.Hash (which PuppetDB computes server-side and which a
-// file-backed Factset may not populate at all), this value is always
-// computable from the Factset carrier alone.
+// is used as a catalog envelope's `input_factset_identity` and as a
+// candidate request's model.CandidateProvenance.FactsetIdentity, whether
+// fs came from PuppetDB or from a file-backed snapshot. Unlike fs.Hash,
+// which PuppetDB computes server-side and which a file-backed Factset
+// may not populate at all, this value is always computable from the
+// Factset carrier alone.
 //
 // Exported from this package (rather than internal/capture, where it
 // first appeared) so both the capture workflow and the compiler adapter

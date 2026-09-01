@@ -2,17 +2,17 @@ package report
 
 // htmlSource is the complete HTML document template. It is a package
 // constant, never read from disk and never composed from user input, so
-// design.md section 11's exclusion of "user-controlled template
-// execution" holds by construction.
+// the exclusion of user-controlled template execution holds by
+// construction.
 //
 // It contains one inlined <style> block and no <script>, <link>, <img>,
-// <a>, `url(...)`, or URL of any kind: requirements.md 8.3's "no HTTP
-// server, CDN, network access, or sibling assets" is a property of the
-// document itself rather than of how it is served. That rules out
-// webfonts and image assets too, so the type system is system font stacks
-// with declared fallbacks, and the one piece of iconography — the
-// disclosure triangle — is drawn with CSS borders rather than set in a
-// glyph that may be missing on a reader's machine.
+// <a>, `url(...)`, or URL of any kind: no HTTP server, CDN, network
+// access, or sibling assets is a property of the document itself rather
+// than of how it is served. That rules out webfonts and image assets
+// too, so the type system is system font stacks with declared fallbacks,
+// and the one piece of iconography, the disclosure triangle, is drawn
+// with CSS borders rather than set in a glyph that may be missing on a
+// reader's machine.
 //
 // # The scanning path is one screen; everything else is one click
 //
@@ -29,10 +29,10 @@ package report
 // The one thing that never goes behind a disclosure is a failure. The
 // per-target error banners, the v3 trusted-fact warning, the run
 // diagnostics and every outcome badge sit outside <details> at the level
-// they belong to, because requirements.md 8.5 requires catalog retrieval
-// failure and compilation failure to be visibly marked and a mark a
-// reader has to go looking for is not one. Same for requirement 9.3's
-// label and note above the estimates.
+// they belong to, because catalog retrieval failure and compilation
+// failure have to be visibly marked and a mark a reader has to go
+// looking for is not one. Same for the impact-estimate label and note
+// above the estimates.
 //
 // A target's disclosures are laid out as a wrapping row of chips that
 // expand to full width when opened (.disclosures), which is what keeps a
@@ -45,17 +45,17 @@ package report
 // the one on screen. Engines hide <details> content two ways, so both
 // are overridden.
 //
-// The template is layout only. Every decision about what a section shows
-// — how a change splits into sign, identity and values; which aggregate
-// groups are edges; which figures the masthead tallies — is made in
-// html.go, where it is testable in Go rather than in template
+// The template is layout only. Every decision about what a section
+// shows, how a change splits into sign, identity and values, which
+// aggregate groups are edges, which figures the masthead tallies, is
+// made in html.go, where it is testable in Go rather than in template
 // conditionals.
 const htmlSource = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PIACE report — {{.Outcome}}</title>
+<title>PIACE report: {{.Outcome}}</title>
 <style>
 :root {
   color-scheme: light;
@@ -334,6 +334,18 @@ summary .count {
 .sign.remove { color: var(--remove); }
 .sign.change { color: var(--change); }
 
+/* Assessment rows lead with a risk badge instead of a one-character
+   sign, so they need a wider first track. It stays a fixed width rather
+   than max-content so every row's identity lines up down the list: the
+   risk enum is closed and "unknown" is its widest value. align-items
+   keeps the pill its natural height instead of stretching it to a
+   two-line row. */
+.rows > li.risk {
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: start;
+}
+.rows > li.risk > .badge { justify-self: start; }
+
 .body { min-width: 0; }
 .ident { font-family: var(--mono); overflow-wrap: anywhere; }
 .param { font-family: var(--mono); color: var(--muted); }
@@ -446,7 +458,7 @@ pre {
   /* Everything the screen keeps one click away still prints: a closed
      disclosure must not silently drop rows from a shared or filed copy.
      Engines hide the content two ways, so both are overridden. The
-     canonical JSON is the exception — it is the same document a second
+     canonical JSON is the exception: it is the same document a second
      time, machine-readable, and half a megabyte of it on paper serves
      nobody; a reader who opens it before printing still gets it. */
   details:not(.record) > *:not(summary) { display: block !important; }
@@ -646,7 +658,7 @@ pre {
       <div class="disclosed">
         <ul class="rows">
           {{range .Groups}}
-          <li>
+          <li class="risk">
             <span class="badge {{.RiskClass}}">{{.Risk}}</span>
             <span class="body"><span class="ident">{{.Identity}}</span>{{if .Parameter}}<span class="param">{{.Parameter}}</span>{{end}}<span class="on">{{.Targets}}</span>{{if .Rationale}}<span class="note">{{.Rationale}}</span>{{end}}{{range .ReviewFocus}}<span class="note">{{.}}</span>{{end}}</span>
           </li>

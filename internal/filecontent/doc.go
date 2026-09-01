@@ -1,39 +1,37 @@
 // Package filecontent implements PIACE's managed File-content evidence
-// resolver: task 8 ("Implement managed File content evidence without
-// content disclosure"), design.md section 7.2 ("File-content evidence"),
-// and requirements.md 5.5-5.8, 8.7, 10.5.
+// resolver: it establishes whether a File resource's effective content
+// changed, without ever putting the content itself into a result.
 //
 // # Scope
 //
 // ResolveFileContentEvidence is a pure decision function over two
 // normalized Puppet `File` resources' parameter maps (see
-// internal/normalize, task 7): it does not diff resources, does not
-// decide *whether* a File resource's content-bearing parameter changed,
-// and does not walk a NormalizedCatalog. Task 9's future node differ is
-// this package's primary caller: when task 9 detects that a File
+// internal/normalize): it does not diff resources, does not decide
+// *whether* a File resource's content-bearing parameter changed, and does
+// not walk a NormalizedCatalog. internal/diff is its only caller: when it
+// detects that a File
 // resource's content-bearing parameter (content, source, checksum, or
 // checksum_value) differs between a target's baseline and candidate
 // catalogs, it calls ResolveFileContentEvidence once for that resource
 // and attaches the returned model.FileContentEvidence to the
 // corresponding model.ResourceChange.FileContent field. This package is
-// deliberately independent of task 9's not-yet-built differ so it can be
-// implemented, tested, and reviewed on its own, per this task's brief:
-// "produce a standalone, reusable File-content-evidence resolver
-// component."
+// deliberately independent of internal/diff so it can be tested and
+// reviewed on its own: it is a standalone, reusable File-content-evidence
+// resolver.
 //
-// # The exact priority order (design.md section 7.2)
+// # The exact priority order
 //
-// ResolveFileContentEvidence implements design.md section 7.2's four
-// resolution steps in order, falling through to the next step only when
-// the current one cannot produce comparable evidence:
+// ResolveFileContentEvidence works through four resolution steps in
+// order, falling through to the next only when the current one cannot
+// produce comparable evidence:
 //
 //  1. Inline content: if both sides expose Puppet's `content` parameter
 //     as a literal string value, hash both with SHA-256 and compare the
 //     digests directly. No network call. EvidenceSource:
 //     FileContentEvidenceInline.
 //  2. Compiled checksum: if inline content is unavailable/incomparable
-//     but both sides expose a "recognized compatible checksum" — see
-//     below for exactly what that means and why — compare the checksum
+//     but both sides expose a "recognized compatible checksum" (see
+//     below for exactly what that means and why), compare the checksum
 //     values directly. EvidenceSource: FileContentEvidenceCompiledChecksum.
 //  3. Compiler retrieval: if neither of the above applies (typically
 //     because one or both sides only carry a `source` reference, e.g. a
@@ -42,13 +40,13 @@
 //     whichever side needs it, hash the retrieved bytes locally, and
 //     compare digests. A side that already has literal `content`, even
 //     when the other side does not, is hashed locally rather than
-//     retrieved — retrieval only happens for a side that has a `source`
+//     retrieved. Retrieval only happens for a side that has a `source`
 //     reference and no literal content. EvidenceSource:
 //     FileContentEvidenceCompilerRetrieval.
-//  4. If step 3 cannot establish comparable bytes for both sides — no
+//  4. If step 3 cannot establish comparable bytes for both sides, with no
 //     ContentResolver was supplied at all, a side has neither literal
 //     content nor a resolvable reference, or retrieval itself failed
-//     (network/timeout/not-found/unsupported source scheme) — this
+//     (network, timeout, not-found, unsupported source scheme), this
 //     package reports FileContentReferenceChanged or
 //     FileContentIndeterminate rather than State: changed/unchanged, and
 //     always returns a non-nil *model.Diagnostic
@@ -63,30 +61,28 @@
 // that are not byte-comparable" below.
 //
 // Every returned model.FileContentEvidence carries only an algorithm
-// name, digest hex strings, the evidence-source enum, and the
-// comparison state — never managed file bytes. Hashing always happens
-// locally over already-retrieved bytes (evidence.go's sideDigest and
-// resolver.go's CompilerContentResolver.Digest); only the resulting
-// digest crosses back into ResolveFileContentEvidence's return value or
-// into any diagnostic message this package builds. See evidence_test.go
-// for the explicit assertion that no test's sample content bytes ever
-// appear in any value or diagnostic message this package produces.
+// name, digest hex strings, the evidence-source enum, and the comparison
+// state, never managed file bytes. Hashing always happens locally over
+// already-retrieved bytes (evidence.go's sideDigest and resolver.go's
+// CompilerContentResolver.Digest); only the resulting digest crosses
+// back into ResolveFileContentEvidence's return value or into any
+// diagnostic message this package builds. See evidence_test.go for the
+// explicit assertion that no test's sample content bytes ever appear in
+// any value or diagnostic message this package produces.
 //
 // # Step 4: reference_changed vs. content_indeterminate
 //
-// design.md section 7.2 distinguishes two failure states without fully
-// spelling out the boundary between them beyond: "if retrieval cannot
-// establish comparable bytes, report `reference_changed` or
-// `content_indeterminate` rather than claiming a verified content
-// change" and "Source/reference changes are always reported without
-// rendering their bytes. A retrieval failure carries a target diagnostic
-// and makes any unresolved content comparison non-clean." This package
-// resolves that boundary as follows, matching this task's brief's
-// explicit step 4a/4b split:
+// Two failure states are distinguished. If retrieval cannot establish
+// comparable bytes, the result is `reference_changed` or
+// `content_indeterminate` rather than a claimed verified content change.
+// A source or reference change is always reported without rendering its
+// bytes, and a retrieval failure carries a target diagnostic and makes
+// any unresolved content comparison non-clean. This package draws the
+// boundary between the two states as follows:
 //
 //   - FileContentReferenceChanged (step 4a): no ContentResolver was
 //     supplied at all (retrieval capability itself is unavailable to this
-//     comparison — e.g. no compiler adapter is wired up for this call
+//     comparison, for example no compiler adapter being wired up for this call
 //     site) AND the two sides' `source` reference strings differ (or one
 //     side has a reference and the other does not). This is the
 //     "we can see the reference changed, but nothing attempted or could
@@ -95,23 +91,20 @@
 //     verified content change.
 //   - FileContentIndeterminate (step 4b, and the residual case of 4a):
 //     either an actual retrieval attempt failed (the ContentResolver
-//     returned an error — network/timeout/not-found/unsupported source
+//     returned an error: network, timeout, not-found or unsupported source
 //     scheme), or no resolver was supplied and the references do not
 //     visibly differ (so there is not even a reference-level fact to
 //     report) or a side has neither literal content nor a resolvable
 //     reference at all. This is the "we cannot tell what happened" case.
 //
 // Both states always carry a non-nil diagnostic
-// (model.OperationVerifyContent); see design.md's Error Handling section,
-// which lists verify_content as one of the named operations under
-// design.md section 10's "operational error" class. Task 9/11's future
-// clean-outcome/outcome-reducer logic is expected to treat any
-// FileContentReferenceChanged or FileContentIndeterminate state as
-// non-clean per design.md's Property 6 ("Clean-outcome completeness") —
-// this package does not implement that reducer, but its State value is
-// exactly what makes the distinction determinable, and the accompanying
-// diagnostic guarantees the retrieval failure is never silently dropped
-// even if a caller ignored the State value.
+// (model.OperationVerifyContent): verify_content is one of the named
+// operations in the operational-error class. The outcome reducer treats
+// any FileContentReferenceChanged or FileContentIndeterminate state as
+// non-clean; this package does not implement that reducer, but its State
+// value is exactly what makes the distinction determinable, and the
+// accompanying diagnostic guarantees the retrieval failure is never
+// silently dropped even if a caller ignored the State value.
 //
 // # Sources that are not byte-comparable
 //
@@ -135,10 +128,10 @@
 //
 //   - The `source` references differ (or one side has one and the other
 //     does not): FileContentReferenceChanged, with a *warning*-severity
-//     verify_content diagnostic. This is design.md section 7.2's
-//     "Source/reference changes are always reported without rendering
-//     their bytes" applied to the one case where rendering them is not
-//     merely undesirable but impossible. The severity is what
+//     verify_content diagnostic. Source and reference changes are always
+//     reported without rendering their bytes, and this is that rule
+//     applied to the one case where rendering them is not merely
+//     undesirable but impossible. The severity is what
 //     distinguishes it from step 4: nothing failed, so
 //     model.OutcomeForDiagnostic must not turn the comparison into an
 //     operational error, while the diagnostic still records why no
@@ -173,36 +166,34 @@
 //     this parameter. If this parameter is set, source_permissions will
 //     be assumed to be false..."
 //
-// A normalized File resource's parameter map (internal/normalize, task 7)
+// A normalized File resource's parameter map (internal/normalize)
 // carries these as ordinary string-valued entries under the keys
 // "checksum" and "checksum_value" when a manifest sets them explicitly,
-// or — per Puppet's documented static-catalog inlining behavior
-// (PUP-5117 "Inline file checksums": "the compiler should inline the
-// desired file `checksum` and `checksum_value` for `file` resources...
-// provided the file resource has a `source` parameter with URI scheme
-// `puppet`") — when the compiler inlines them into a static catalog for
-// a `source`-based File resource. Either origin produces the same two
-// parameter keys in the normalized model, so this package does not need
-// to distinguish "explicitly declared" from "compiler-inlined."
+// or when the compiler inlines them into a static catalog for a
+// `source`-based File resource. That inlining is documented behaviour:
+// PUP-5117 "Inline file checksums" says the compiler should inline the
+// desired file `checksum` and `checksum_value` for `file` resources
+// provided the resource has a `source` parameter with URI scheme
+// `puppet`. Either origin produces the same two parameter keys in the
+// normalized model, so this package does not need to distinguish an
+// explicit declaration from a compiler-inlined one.
 //
-// "A recognized compatible checksum" (design.md section 7.2 step 2) is
-// therefore judged as: both sides carry a non-empty `checksum_value`,
-// both sides carry the same `checksum` algorithm name, and that
-// algorithm name is one of the five checksum_value-compatible types
-// `checksum_value`'s own documentation names explicitly: md5, sha256,
-// sha224, sha384, sha512 (see recognizedChecksumAlgorithms in
-// evidence.go). `mtime`/`ctime`/`none` are excluded even if both sides
-// happen to agree on the algorithm name, because they are not
-// cryptographic content digests at all — `mtime`/`ctime` reflect
-// filesystem timestamps, not file bytes, and `none` disables content
-// comparison entirely; treating either as "compatible checksum" evidence
-// would misrepresent a timestamp or an intentionally-skipped comparison
-// as a verified content comparison. A checksum-*lite* variant (evaluated
-// over only a file's first/last blocks rather than its full contents,
-// per Puppet's `checksum_value` restriction to exactly the five
-// full-content types above) is likewise excluded by the same
-// documented restriction: checksum_value.md explicitly says the lite
-// variants are not among the "Only ... are supported" set.
+// "A recognized compatible checksum" is therefore judged as: both sides
+// carry a non-empty `checksum_value`, both sides carry the same
+// `checksum` algorithm name, and that algorithm name is one of the five
+// checksum_value-compatible types `checksum_value`'s own documentation
+// names explicitly: md5, sha256, sha224, sha384, sha512 (see
+// recognizedChecksumAlgorithms in evidence.go). `mtime`, `ctime` and
+// `none` are excluded even if both sides happen to agree on the
+// algorithm name, because they are not cryptographic content digests at
+// all: `mtime` and `ctime` reflect filesystem timestamps rather than
+// file bytes, and `none` disables content comparison entirely, so
+// treating either as compatible-checksum evidence would misrepresent a
+// timestamp or an intentionally skipped comparison as a verified content
+// comparison. A checksum-*lite* variant, evaluated over only a file's
+// first and last blocks rather than its full contents, is excluded by
+// the same documented restriction: checksum_value.md explicitly says the
+// lite variants are not among the supported set.
 //
 // A mismatched `checksum` algorithm name between before/after (e.g. one
 // side sha256, the other md5) is deliberately never treated as step 2
@@ -214,23 +205,22 @@
 //
 // # ContentResolver and its documented, unverified endpoint assumption
 //
-// design.md's Components and Interfaces section names the interface
-// this package must implement: "ContentResolver.Digest(reference,
-// context) -> DigestEvidence". resolver.go's CompilerContentResolver is
-// the compiler-backed implementation, built against *transport.Client
-// (task 3) exactly as tasks 4's PuppetDB adapter and task 6's compiler
-// adapter are — no separate unauthenticated HTTP path is introduced.
+// The interface this package must implement is
+// "ContentResolver.Digest(reference, context) -> DigestEvidence".
+// resolver.go's CompilerContentResolver is the compiler-backed
+// implementation, built against *transport.Client exactly as the
+// PuppetDB and compiler adapters are: no separate unauthenticated HTTP
+// path is introduced.
 //
-// Per tasks.md's Notes section ("Protocol adapters remain the
-// compatibility boundary. Their exact requests and responses must be
-// demonstrated with fixtures from the deployed service versions before
-// declaring a compiler/PuppetDB combination supported"), what follows
-// separates the two. Verified against a deployed OpenVox compiler on
-// 2026-08-25: the request path and query shape, the 200 response with
-// Content-Type application/octet-stream and raw bytes, and the whole
-// Accept contract (400 without the header, 200 with
+// Protocol adapters are the compatibility boundary, and their exact
+// requests and responses have to be demonstrated with fixtures from the
+// deployed service versions before a combination is declared supported,
+// so what follows separates the two. Verified against a deployed OpenVox
+// compiler on 2026-08-25: the request path and query shape, the 200
+// response with Content-Type application/octet-stream and raw bytes, and
+// the whole Accept contract (400 without the header, 200 with
 // application/octet-stream, 406 with application/json), exercised over
-// one `puppet:///modules/<MODULE>/<file>` reference. Still documented-
+// one `puppet:///modules/<MODULE>/<file>` reference. Still documented
 // only, and marked as such below: the 404 response body for a missing
 // file, and the treatment of non-`puppet:` source schemes.
 //
@@ -254,7 +244,7 @@
 //     compiler's embedded Ruby Puppet request handler, whose
 //     Puppet::Network::HTTP::Request#response_formatters_for raises
 //     "Missing required Accept header" when no Accept header is present
-//     — the request is rejected before any file is served. Verified
+//     the request is rejected before any file is served. Verified
 //     against a deployed OpenVox server (2026-08-25) on this exact
 //     endpoint: no Accept header returns HTTP 400
 //     "Bad Request: Missing required Accept header", and
@@ -272,11 +262,11 @@
 //     Puppet's File type `source` attribute documentation) maps directly
 //     onto the file_content endpoint's path: the URI's path component,
 //     with its leading slash trimmed, is exactly the endpoint's
-//     `<mount-point>/<name>` path segment — see parsePuppetSourceURI in
+//     `<mount-point>/<name>` path segment; see parsePuppetSourceURI in
 //     resolver.go.
 //   - Documented-only, not exercised: a `source` value using any other
 //     URI scheme (a bare local filesystem path, a `file:` URI, or an
-//     `http(s):` URI) is not retrievable through this endpoint at all —
+//     `http(s):` URI) is not retrievable through this endpoint at all,
 //     Puppet's own File type
 //     documentation describes those as resolved directly by the agent,
 //     not proxied through the compiler's file-serving API. This package
@@ -284,35 +274,31 @@
 //     content_indeterminate), not step 4a, since there is no
 //     compiler-mediated way to establish whether such a reference
 //     changed either. Retrieving content for those source schemes,
-//     including via any other request path, is out of scope for this
-//     task and is not implemented.
+//     including via any other request path, is out of scope here and is
+//     not implemented.
 //
-// # Redaction boundary: deferred to task 9
+// # Redaction boundary: deferred to internal/diff
 //
-// model.FileContentEvidence.Redacted already exists on the struct (task
-// 1) as a plain bool field. This package's ResolveFileContentEvidence
-// never sets it: whether a given File resource's content-bearing
-// parameter is subject to a configured config.RedactionSelector{Type:
-// "File", Parameter: "content"} (or "source"/"checksum_value") is a
-// property of a target's *resolved configuration*, not of the two
-// catalogs being compared — this package has no configuration
-// dependency at all and must not gain one just to answer that question.
+// model.FileContentEvidence.Redacted already exists on the struct as a
+// plain bool field. This package's ResolveFileContentEvidence never sets
+// it: whether a given File resource's content-bearing parameter is
+// subject to a configured config.RedactionSelector is a property of a
+// target's *resolved configuration*, not of the two catalogs being
+// compared, and this package has no configuration dependency at all and
+// must not gain one just to answer that question.
 //
-// design.md section 7.3 places every redaction determination "after
-// semantic equality and exclusions but before result serialization,"
-// i.e. at the result boundary task 9 owns. That boundary's job (not
-// this task's) is: given a resolved redaction selector that matches this
-// resource/parameter, take the model.FileContentEvidence this package
-// already produced and construct a *redacted projection* of it — per
-// design.md section 7.2's closing sentence, "a redacted content selector
-// emits a stable REDACTED value while preserving the change
-// classification and no digest in reports" — meaning a redacted
-// projection keeps State (the change classification) exactly as this
-// package computed it, clears Algorithm/BeforeDigest/AfterDigest, sets
-// some stable "REDACTED" marker in their place, and sets Redacted: true.
-// This package intentionally produces only the un-redacted, real-digest
-// FileContentEvidence as its output; it does not implement that
-// projection step, and nothing in FileContentEvidence's shape (a plain
-// serializable struct with an already-present Redacted bool) precludes
-// task 9 from building it as a separate, later transformation.
+// Every redaction determination happens after semantic equality and
+// exclusions but before result serialization, which is the result
+// boundary internal/diff owns. That boundary's job, not this package's,
+// is to take the model.FileContentEvidence this package produced and
+// construct a *redacted projection* of it when a resolved redaction
+// selector matches the resource and parameter: a redacted content
+// selector emits a stable REDACTED value while preserving the change
+// classification and no digest. So a redacted projection keeps State
+// exactly as this package computed it, clears Algorithm, BeforeDigest
+// and AfterDigest, puts a stable REDACTED marker in their place, and
+// sets Redacted: true. This package produces only the unredacted,
+// real-digest FileContentEvidence, and nothing in its shape (a plain
+// serializable struct with an already-present Redacted bool) stops that
+// projection being built as a separate, later transformation.
 package filecontent

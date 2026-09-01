@@ -1,14 +1,7 @@
 # PIACE release artifacts: checksums and signatures
 
-This document is task 12's "document checksum/signature generation and
-verification for the supported release artifacts". It covers what the
-release process produces, how it is produced, and what a consumer runs to
-verify it before installing into an air-gapped environment.
-
-Requirements: 12.1 (CGO-free binary), 12.2 (no runtime dependency
-resolution), 12.3 (checksum and signature suitable for an internal
-artifact repository). Design reference: section 11, "Security and
-distribution".
+What the release process produces, how it is produced, and what a consumer
+runs to verify it before installing into an air-gapped environment.
 
 ## What a release contains
 
@@ -16,21 +9,27 @@ distribution".
 | --- | --- |
 | `piace-<version>-<os>-<arch>` | One statically linked binary per supported platform |
 | `SHA256SUMS` | One SHA-256 line per binary, sorted by filename |
-| `SHA256SUMS.asc` | Detached OpenPGP signature over `SHA256SUMS` |
+| `SHA256SUMS.sigstore.json` | Keyless cosign signature bundle over `SHA256SUMS` |
+| `SHA256SUMS.asc` | Optional detached OpenPGP signature over the same manifest |
 
 Published alongside them, from the same artifacts:
 
 | Image | Contents |
 | --- | --- |
 | `example42/piace:<version>` | A `linux/amd64` + `linux/arm64` manifest list; `:latest` moves with every non-prerelease |
+| `ghcr.io/example42/piace:<version>` | The same manifest, mirrored |
 
-The signature covers the **manifest**, not each binary individually. One
-signature then transitively covers every artifact, and a consumer needs
-exactly one trusted public key rather than one signature per platform.
+A signature covers the **manifest**, not each binary individually. One
+signature then transitively covers every artifact, and a consumer verifies one
+thing rather than one signature per platform.
 
-The supported OS/architecture matrix and the signing key fingerprint are
-release metadata (design.md section 11): they are published with the
-release and edited deliberately in `scripts/build-release.sh`, never
+The binaries also carry a GitHub build provenance attestation, and both image
+manifests are signed by digest and attested. Provenance answers a different
+question from a signature: which workflow, at which commit, produced these
+bytes.
+
+The supported OS and architecture matrix is release metadata: it is published
+with the release and edited deliberately in `scripts/build-release.sh`, never
 discovered or downloaded at run time.
 
 ## Cutting a release
@@ -44,8 +43,8 @@ git push origin v1.0.0
 
 A tagged run uses the workflow **as it exists at the tagged commit**, so
 tag a commit that already carries `.github/workflows/ci.yml`. Tagging a
-branch the workflow has not reached yet does nothing at all — no run, no
-error, nothing in the Actions log — which is a confusing way to spend a
+branch the workflow has not reached yet does nothing at all: no run, no
+error, nothing in the Actions log, which is a confusing way to spend a
 version number.
 
 `.github/workflows/ci.yml` then runs the test matrix, builds every
@@ -58,9 +57,16 @@ A tag that is not `vMAJOR.MINOR.PATCH[-prerelease]` fails before anything
 is built; a tag whose version carries a `-suffix` is published as a
 prerelease.
 
-**The signature is not part of that.** CI holds no signing key, so a
-freshly published release contains two of the three files above. Sign the
-manifest and attach it as the last step:
+**The signature is part of that.** The release job signs `SHA256SUMS` with
+keyless cosign: the certificate is issued against the workflow's own OIDC
+identity and lives for minutes, so there is no signing key to store, rotate or
+lose, and the signature is attached from the moment the release exists. The
+release notes carry the exact `cosign verify-blob` command, including the
+certificate identity for the tag being published.
+
+An OpenPGP signature over the same manifest remains available for sites whose
+policy requires one. It is an extra, not the verification path, and CI holds no
+key for it:
 
 ```sh
 gh release download v1.0.0 --pattern SHA256SUMS
@@ -68,23 +74,23 @@ gpg --armor --detach-sign --local-user <signing-key-id> SHA256SUMS
 gh release upload v1.0.0 SHA256SUMS.asc
 ```
 
-Until that lands, the published checksums show only that a download is
-intact, not where it came from — a manifest published beside its own
-artifacts attests to integrity, never to origin. The release notes say so
-in as many words, so a consumer is not left following a verification step
-that cannot yet succeed.
-
 ### The container image
 
-Once the release exists, a fourth job packages those same binaries as
-`example42/piace:<version>` and pushes it to Docker Hub. It waits on the
-release rather than running beside it, so the GitHub Release stays the
-primary artifact: if the push fails, the release is already out and
-re-running the `publish container image` job on its own finishes the
-work. A prerelease publishes its version tag but does not move `latest`.
+Once the release exists, a fourth job packages those same binaries and pushes
+one manifest to both Docker Hub and GHCR. It waits on the release rather than
+running beside it, so the GitHub Release stays the primary artifact: if the
+push fails, the release is already out and re-running the `publish container
+image` job on its own finishes the work. A prerelease publishes its version tag
+but does not move `latest`.
 
-The image job needs two repository secrets, and fails visibly on the
-first tag pushed without them:
+Docker Hub is the name the documentation uses. GHCR exists because an anonymous
+pull from a shared CI runner IP is exactly what Docker Hub rate-limits, and a
+pipeline failing for that reason is failing for a reason that has nothing to do
+with this project. GHCR needs no stored credential: the job pushes with the
+workflow's own token.
+
+Docker Hub needs two repository secrets, and the job fails visibly on the first
+tag pushed without them:
 
 | Secret | Value |
 | --- | --- |
@@ -111,11 +117,11 @@ CGO_ENABLED=0 GOOS=<os> GOARCH=<arch> \
   -o dist/piace-<version>-<os>-<arch> ./cmd/piace
 ```
 
-- `CGO_ENABLED=0` is requirement 12.1. `cmd/piace`'s
+- `CGO_ENABLED=0` keeps the artifact a static binary. `cmd/piace`'s
   `TestRelease_BuildsWithCGODisabled` asserts the build succeeds without
   cgo, and `TestRelease_NoNonStandardDependenciesBeyondYAML` asserts the
   transitive dependency set is the standard library plus
-  `gopkg.in/yaml.v3` and nothing else — which is how requirement 12.2's
+  `gopkg.in/yaml.v3` and nothing else, which is how the no-runtime-dependency
   "no Ruby, Puppet agent, Facter, package manager, or runtime dependency
   resolution" is kept true as the code changes.
 - `-trimpath` removes local filesystem paths from the binary, so the same
@@ -151,7 +157,7 @@ common case, so pass the invoking user:
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   --volume "$PWD:/work" \
-  example42/piace:1.0.0 \
+  ghcr.io/example42/piace:1.0.0 \
   compare --targets targets.yaml --services services.yaml --html-out report.html
 ```
 
@@ -161,24 +167,26 @@ files) is resolved inside the container, so they have to be reachable
 under that mount.
 
 The image deliberately carries the binary and nothing else, which decides
-where it fits. `scripts/change-context.sh` is not in it and cannot be: it
-needs bash, git, and a checkout with history, none of which belong in an
-image whose job is to hold one static binary. It runs on the runner, which
-has all three, and PIACE reads the file it produces. For the same reason the
-image cannot serve as a GitLab or GitHub CI job image, which must provide a
-shell: in CI, install the verified binary instead. See [ci.md](ci.md).
+where it fits. `piace change-context` runs there like any other subcommand but
+execs git, which the image does not carry, so change context is produced on the
+runner. For the same reason the image cannot serve as a GitLab or GitHub CI job
+image, which must provide a shell: in CI, install the verified binary instead.
+See [ci.md](ci.md).
 
-## Signing the manifest
+## Signing the manifest by hand
+
+CI signs with keyless cosign, so nothing here is needed for an ordinary
+release. For an out-of-band build, or a site that requires OpenPGP:
 
 ```sh
 gpg --armor --detach-sign --local-user <signing-key-id> dist/SHA256SUMS
 ```
 
-This writes `dist/SHA256SUMS.asc`. Publish `SHA256SUMS`,
-`SHA256SUMS.asc`, and the binaries together, and publish the signing
-key's fingerprint through a channel independent of the artifact
-repository — a signature verified against a key fetched from the same
-place as the artifact proves nothing about the artifact's origin.
+This writes `dist/SHA256SUMS.asc`. Publish `SHA256SUMS`, `SHA256SUMS.asc` and
+the binaries together, and publish the signing key's fingerprint through a
+channel independent of the artifact repository: a signature verified against a
+key fetched from the same place as the artifact proves nothing about the
+artifact's origin.
 
 ## Verifying a downloaded release
 
@@ -186,6 +194,18 @@ Verify in this order. Checking the checksum first would confirm only that
 the binary matches a manifest that may itself have been substituted.
 
 **1. Verify the manifest signature.**
+
+```sh
+cosign verify-blob SHA256SUMS \
+  --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v<version>" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+The certificate identity is the workflow that published the tag, so it names
+both the repository and the release. Substitute the tag you downloaded.
+
+Where policy requires OpenPGP instead, and the release carries `SHA256SUMS.asc`:
 
 ```sh
 gpg --verify SHA256SUMS.asc SHA256SUMS
@@ -225,6 +245,6 @@ it ties the running binary back to the manifest entry.
 All three files transfer as ordinary artifacts; verification is entirely
 local and needs no network beyond the trusted key already being present.
 The binary itself opens network connections only to the compiler and
-PuppetDB endpoints named in its own `--services` file (requirement 12.4,
-asserted by `TestAcceptance_EndpointsRestrictedToConfiguredServices`), so
+PuppetDB endpoints named in its own `--services` file, asserted by
+`TestAcceptance_EndpointsRestrictedToConfiguredServices`, so
 an installed PIACE reaches nothing a release process introduced.

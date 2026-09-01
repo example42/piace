@@ -6,10 +6,9 @@ import (
 )
 
 // TestCanonicalJSON_MapKeyOrderIndependence verifies that two payloads
-// differing only in map key insertion/declaration order produce
-// byte-identical canonical output, per design.md section 6's "map keys
-// sort lexicographically by UTF-8 bytes" and Property 1 (Deterministic
-// results).
+// differing only in map key insertion or declaration order produce
+// byte-identical canonical output: map keys sort lexicographically by
+// UTF-8 bytes, and the result is deterministic.
 func TestCanonicalJSON_MapKeyOrderIndependence(t *testing.T) {
 	a := json.RawMessage(`{"b": 1, "a": 2, "c": 3}`)
 	b := json.RawMessage(`{"c": 3, "a": 2, "b": 1}`)
@@ -32,11 +31,10 @@ func TestCanonicalJSON_MapKeyOrderIndependence(t *testing.T) {
 }
 
 // TestCanonicalJSON_LargeIntegerPreservesExactDigits verifies a large
-// integer (beyond float64's 53-bit mantissa precision) round-trips through
-// canonicalization with every digit intact, per design.md section 6's
-// "parsed numeric tokens normalize to their exact base-10 numeric value"
-// and the task brief's explicit warning about encoding/json's default
-// float64 decoding.
+// integer (beyond float64's 53-bit mantissa precision) round-trips
+// through canonicalization with every digit intact. Parsed numeric
+// tokens normalize to their exact base-10 numeric value, which is
+// exactly what encoding/json's default float64 decoding would destroy.
 func TestCanonicalJSON_LargeIntegerPreservesExactDigits(t *testing.T) {
 	// 2^63 - 1 plus a large offset: not exactly representable as float64.
 	raw := json.RawMessage(`{"id": 9223372036854775807, "big": 123456789012345678901234567890}`)

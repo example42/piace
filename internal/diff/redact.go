@@ -17,7 +17,7 @@ const (
 // redactChanges implements pass 3 (see doc.go). It runs strictly after
 // applyExclusions and after NodeDiff.HasDifference has already been
 // computed, so masking a value can never turn a real difference into a
-// non-difference — it only replaces what a report may display.
+// non-difference: it only replaces what a report may display.
 //
 // Both redaction sources are applied to every remaining change:
 //
@@ -47,11 +47,10 @@ func redactChange(selectors []config.RedactionSelector, change model.ResourceCha
 
 	if change.FileContent != nil {
 		// A File-content entry carries no Before/After at all (see
-		// resources.go); its only redactable evidence is the digest pair.
-		// State is deliberately preserved either way, per design.md
-		// section 7.2: "a redacted content selector emits a stable
-		// REDACTED value while preserving the change classification and
-		// no digest in reports."
+		// resources.go); its only redactable evidence is the digest pair. State
+		// is deliberately preserved either way: "a redacted content selector
+		// emits a stable REDACTED value while preserving the change
+		// classification and no digest in reports."
 		evidence := *change.FileContent
 		if selected {
 			evidence.Algorithm = ""
@@ -82,8 +81,7 @@ func redactChange(selectors []config.RedactionSelector, change model.ResourceCha
 
 // matchesRedactionSelector reports whether any configured selector names
 // this exact resource type and parameter name. Both comparisons are
-// exact and case-sensitive, per requirements.md 8.8 and design.md
-// section 3.2 rule 4. A change with no parameter name (a resource
+// exact and case-sensitive. A change with no parameter name (a resource
 // added/removed entry) never matches, since a selector always names a
 // parameter.
 func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType, parameter string) bool {
@@ -99,10 +97,10 @@ func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType
 }
 
 // redactSensitiveValue walks a canonical value tree and replaces every
-// Puppet `Sensitive` wrapper it finds — at any depth, inside maps and
-// arrays alike — with model.RedactedValue, matching design.md section
-// 7.3's "Puppet `Sensitive` wrappers are detected recursively; their
-// payload is never copied to the serializable result."
+// Puppet `Sensitive` wrapper it finds, at any depth, inside maps and
+// arrays alike, with model.RedactedValue. Wrappers are detected
+// recursively and their payload is never copied to the serializable
+// result.
 //
 // The entire matched subtree is replaced, never merely its `__pvalue`
 // entry: leaving the wrapper object in place with a redacted payload
@@ -110,9 +108,9 @@ func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType
 // nesting depth), which is evidence about the secret.
 //
 // The walk never mutates its input: every map and slice containing a
-// redacted descendant is rebuilt, so the caller's pre-redaction tree —
-// the one pass 1 compared and fingerprintResourceChange digested —
-// stays intact.
+// redacted descendant is rebuilt, so the caller's pre-redaction tree,
+// the one pass 1 compared and fingerprintResourceChange digested, stays
+// intact.
 func redactSensitiveValue(v model.Value) model.Value {
 	switch val := v.(type) {
 	case map[string]model.Value:
@@ -138,9 +136,9 @@ func redactSensitiveValue(v model.Value) model.Value {
 // isSensitiveWrapper reports whether m is the Pcore generic-data
 // encoding of a Sensitive-wrapped value: a JSON object whose reserved
 // `__ptype` key holds exactly the string "Sensitive". The payload key
-// (`__pvalue`) is deliberately not required to be present — a wrapper
-// missing it is still a declared Sensitive value and must still be
-// masked rather than passed through.
+// (`__pvalue`) is deliberately not required to be present, since a
+// wrapper missing it is still a declared Sensitive value and must still
+// be masked rather than passed through.
 func isSensitiveWrapper(m map[string]model.Value) bool {
 	ptype, ok := m[pcoreTypeKey]
 	if !ok {

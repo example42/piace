@@ -77,13 +77,13 @@ func TestEstimate_SendsDesignSection8QueryToTheRootEndpoint(t *testing.T) {
 	if captured.query != wantPQL {
 		t.Errorf("query =\n  %s\nwant\n  %s", captured.query, wantPQL)
 	}
-	// Requirement 9.4: the reported PQL is exactly what was sent.
+	// the reported PQL is exactly what was sent.
 	if estimate.PQL != captured.query {
 		t.Errorf("reported PQL %q != sent PQL %q", estimate.PQL, captured.query)
 	}
 }
 
-// design.md section 8: limit = result_limit + 1, plus certname ordering.
+// limit = result_limit + 1, plus certname ordering.
 func TestEstimate_SendsLimitPlusOneAndCertnameOrdering(t *testing.T) {
 	var captured capturedRequest
 	q := serveRows(t, &captured, certnameRows("web-01"))
@@ -136,7 +136,7 @@ func TestEstimate_SortsCertnamesLocally(t *testing.T) {
 	}
 }
 
-// Requirement 9.6: reaching the limit marks the estimate truncated and
+// reaching the limit marks the estimate truncated and
 // reports a deterministic sample of exactly ResultLimit certnames.
 func TestEstimate_TruncatesAtResultLimit(t *testing.T) {
 	var captured capturedRequest
@@ -229,7 +229,7 @@ func TestEstimate_NonSuccessStatusIsAFailedEstimateWithNoBodyEcho(t *testing.T) 
 	if diag.Source != pkgNginx {
 		t.Errorf("diagnostic source = %q, want %q", diag.Source, pkgNginx)
 	}
-	// The failed estimate still records what it tried, per requirement 9.7.
+	// The failed estimate still records what it tried.
 	if estimate.PQL == "" || estimate.Request.Path == "" {
 		t.Errorf("a failed estimate must still report its query scope: %+v", estimate)
 	}
@@ -252,8 +252,8 @@ func TestEstimate_MalformedResponseIsAFailedEstimate(t *testing.T) {
 	}
 }
 
-// design.md section 8: a per-query deadline is the resolved impact
-// timeout, and exceeding it is a distinct timeout status.
+// A per-query deadline is the resolved impact timeout, and exceeding it
+// is a distinct timeout status.
 func TestEstimate_DeadlineExceededIsATimeoutStatus(t *testing.T) {
 	fixture := newTLSFixture(t, "127.0.0.1")
 	release := make(chan struct{})
@@ -311,8 +311,8 @@ func TestEstimate_UnencodableIdentityFailsWithoutARequest(t *testing.T) {
 	}
 }
 
-// Requirement 9.3 / design.md section 8: the estimate is never phrased or
-// shaped as a prediction, and never carries anything but certnames.
+// The estimate is never phrased or shaped as a prediction, and never
+// carries anything but certnames.
 func TestEstimate_ReportsOnlySafeFields(t *testing.T) {
 	var captured capturedRequest
 	q := serveRows(t, &captured, `[{"certname":"web-01","parameters":{"password":"hunter2"},"file":"/etc/x.pp"}]`)

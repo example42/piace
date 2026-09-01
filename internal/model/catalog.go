@@ -1,11 +1,10 @@
 // Package model defines the versioned normalized catalog schema shared by
 // the differ, aggregate builder, and result renderers.
 //
-// Design reference: design.md section 7.1 ("Normalized catalog model").
-// This package defines shape only. The normalization algorithm itself
-// (canonical parameter values, tag/source-line stripping, identity
-// construction from raw catalog documents) is implemented by the catalog
-// normalizer (see tasks.md task 7).
+// This package defines shape only. The normalization algorithm itself,
+// canonical parameter values, tag and source-line stripping, and
+// identity construction from raw catalog documents, is implemented by
+// internal/normalize.
 package model
 
 // Value is a canonical, JSON-compatible parameter value: string, bool,
@@ -16,20 +15,19 @@ package model
 // diffing and serialization.
 type Value = any
 
-// Number is a canonical decimal number value within the Value domain: the
-// exact base-10 digits of a catalog parameter's numeric value, with no
-// machine floating point rounding. Two Number values are equal (via Go's
-// == for a comparable context, or reflect.DeepEqual for one nested inside
-// a map/slice Value) if and only if they denote the same exact decimal
-// number, regardless of how the original JSON numeric literal was spelled
-// ("1.50" vs "1.5", "1e2" vs "100"). See design.md section 7.1: "number
-// comparisons use exact normalized decimal values rather than machine
-// floating point." The normalizer (internal/normalize, task 7) is
-// responsible for constructing Number values using the same canonical
-// decimal algorithm internal/snapshot's canonical JSON encoder already
-// implements for snapshot payload checksums (task 5), so there is exactly
-// one canonicalization behavior across the codebase, per design.md's
-// Property 1 (Deterministic results).
+// Number is a canonical decimal number value within the Value domain:
+// the exact base-10 digits of a catalog parameter's numeric value, with
+// no machine floating point rounding. Two Number values are equal, via
+// Go's == in a comparable context or reflect.DeepEqual for one nested
+// inside a map or slice Value, if and only if they denote the same exact
+// decimal number, regardless of how the original JSON numeric literal
+// was spelled ("1.50" vs "1.5", "1e2" vs "100"): number comparisons use
+// exact normalized decimal values rather than machine floating point.
+// internal/normalize constructs Number values using the same canonical
+// decimal algorithm internal/snapshot's canonical JSON encoder
+// implements for snapshot payload checksums, so there is exactly one
+// canonicalization behavior across the codebase and results stay
+// deterministic.
 type Number string
 
 // MarshalJSON emits n's canonical decimal digits directly as a JSON
@@ -71,10 +69,10 @@ type Edge struct {
 	Target string `json:"target"`
 }
 
-// NormalizedCatalog is a catalog reduced to its semantic graph: a resource
-// map and an edge set. Resources are sorted by Identity and Edges are
-// sorted by (Source, Target) before comparison and serialization, per
-// design.md section 7.1.
+// NormalizedCatalog is a catalog reduced to its semantic graph: a
+// resource map and an edge set. Resources are sorted by Identity and
+// Edges are sorted by (Source, Target) before comparison and
+// serialization.
 type NormalizedCatalog struct {
 	Certname    string     `json:"certname"`
 	Environment string     `json:"environment,omitempty"`
@@ -83,7 +81,7 @@ type NormalizedCatalog struct {
 }
 
 // FileContentState classifies the evidence available for a managed File
-// resource's effective content comparison. See design.md section 7.2.
+// resource's effective content comparison.
 type FileContentState string
 
 const (
@@ -101,8 +99,8 @@ const (
 	FileContentIndeterminate FileContentState = "content_indeterminate"
 )
 
-// FileContentEvidenceSource records which resolution step in design.md
-// section 7.2's priority order produced FileContentEvidence.
+// FileContentEvidenceSource records which resolution step in the
+// file-content priority order produced FileContentEvidence.
 type FileContentEvidenceSource string
 
 const (
@@ -113,7 +111,7 @@ const (
 
 // FileContentEvidence is the redaction-safe evidence attached to a File
 // parameter change. It never carries managed content bytes; a redacted
-// content selector suppresses even the digest, per design.md section 7.2.
+// content selector suppresses even the digest.
 type FileContentEvidence struct {
 	State          FileContentState          `json:"state"`
 	EvidenceSource FileContentEvidenceSource `json:"evidence_source,omitempty"`

@@ -7,12 +7,11 @@ import (
 	"github.com/example42/piace/internal/config"
 )
 
-// Target is the complete, validated per-target model described by
-// design.md section 3.1: every field is fully resolved from global
-// defaults and per-target overrides, and every invariant listed in
-// design.md section 3.2 has already been checked. Nothing downstream of
-// ResolveTargets/Load needs to re-check presence, source/API enum
-// validity, glob syntax, duration/limit positivity, or path safety.
+// Target is the complete, validated per-target model: every field is
+// fully resolved from global defaults and per-target overrides, and
+// every invariant has already been checked. Nothing downstream of
+// ResolveTargets or Load needs to re-check presence, source or API enum
+// validity, glob syntax, duration or limit positivity, or path safety.
 type Target struct {
 	Certname       string
 	Candidate      Candidate
@@ -34,8 +33,7 @@ type Candidate struct {
 	AllowV3Fallback bool
 	// TrustedFactsCompilerLookup mirrors
 	// config.CandidateConfig.TrustedFactsCompilerLookup, resolved to its
-	// explicit false default when unset. See that field's doc comment
-	// and design.md section 5.
+	// explicit false default when unset. See that field's doc comment.
 	TrustedFactsCompilerLookup bool
 }
 
@@ -70,7 +68,7 @@ type ImpactEstimate struct {
 // Endpoint is one resolved, validated service endpoint: an `https` URL and
 // three required TLS file paths. Path fields are validated for syntactic
 // well-formedness only (see doc.go); this package never checks that they
-// exist or are readable, since that crosses into task 3's mTLS transport
+// exist or are readable, since that crosses into internal/transport's mTLS transport
 // construction, which happens only after configuration is fully valid.
 type Endpoint struct {
 	URL        *url.URL

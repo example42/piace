@@ -15,11 +15,10 @@ import (
 )
 
 // Adapter is the PuppetDB-backed implementation of FactSource and
-// CatalogSource. It wraps a *transport.Client already built (by task 3's
-// package) from the resolved PuppetDB resolve.Endpoint, and issues only
-// GET requests against PuppetDB's v4 query API — see doc.go's "Scope"
-// section for why no write/command-endpoint call is possible from this
-// package.
+// CatalogSource. It wraps a *transport.Client already built from the
+// resolved PuppetDB resolve.Endpoint, and issues only GET requests
+// against PuppetDB's v4 query API. See doc.go's "Scope" section for why
+// no write or command endpoint call is possible from this package.
 type Adapter struct {
 	client  *transport.Client
 	baseURL *url.URL
@@ -60,11 +59,11 @@ func (a *Adapter) get(ctx context.Context, segment, certname string) (*transport
 	return a.client.Do(req, 0)
 }
 
-// diagnosticFromTransportError builds a model.Diagnostic from a transport-
-// layer error (connection/TLS/timeout/redirect/size failures — see
-// transport.Error), preferring the already-safe Kind/Host/Message fields
-// of a classified *transport.Error and falling back to
-// transport.SafeMessage for any other error reaching this package.
+// diagnosticFromTransportError builds a model.Diagnostic from a
+// transport-layer error (connection, TLS, timeout, redirect and size
+// failures; see transport.Error), preferring the already-safe Kind, Host
+// and Message fields of a classified *transport.Error and falling back
+// to transport.SafeMessage for any other error reaching this package.
 func diagnosticFromTransportError(op model.DiagnosticOperation, certname string, err error) model.Diagnostic {
 	var te *transport.Error
 	if errors.As(err, &te) {
@@ -73,12 +72,11 @@ func diagnosticFromTransportError(op model.DiagnosticOperation, certname string,
 	return transport.Diagnostic(op, certname, transport.Summary{}, transport.SafeMessage(err))
 }
 
-// notFoundOrMalformedDiagnostic builds a diagnostic for a non-2xx response,
-// a not-found PuppetDB error body, or malformed/unparseable JSON. It never
-// includes raw response body text (design.md's Error Handling section:
-// "They do not preserve raw body text by default, because service errors
-// can echo values") — only a fixed, safe classification string plus safe
-// transport.Summary metadata.
+// notFoundOrMalformedDiagnostic builds a diagnostic for a non-2xx
+// response, a not-found PuppetDB error body, or malformed or unparseable
+// JSON. It never includes raw response body text, because a service
+// error can echo values back: only a fixed, safe classification string
+// plus safe transport.Summary metadata.
 func notFoundOrMalformedDiagnostic(op model.DiagnosticOperation, certname, host string, statusCode int, reason string) model.Diagnostic {
 	return transport.Diagnostic(op, certname, transport.Summary{Host: host, StatusCode: statusCode}, reason)
 }
@@ -174,10 +172,10 @@ func (a *Adapter) Load(ctx context.Context, target resolve.Target) (Factset, mod
 
 // LoadBaseline implements CatalogSource. It retrieves target's latest
 // catalog from PuppetDB's /pdb/query/v4/catalogs/<NODE> endpoint (GET
-// only; see doc.go), then enforces requirements.md 1.3's baseline-
-// environment rejection rule before the catalog is returned as usable
-// (see doc.go's "Baseline-environment-mismatch resolution" section for why
-// this check applies unconditionally to baseline.source == puppetdb).
+// only; see doc.go), then enforces the baseline-environment rejection
+// rule before the catalog is returned as usable. See doc.go's
+// "Baseline-environment-mismatch resolution" section for why this check
+// applies unconditionally to baseline.source == puppetdb.
 func (a *Adapter) LoadBaseline(ctx context.Context, target resolve.Target) (Catalog, model.SourceProvenance, *model.Diagnostic) {
 	if target.Baseline.Source != config.BaselineSourcePuppetDB {
 		diag := transport.Diagnostic(model.OperationLoadBaseline, target.Certname, transport.Summary{},

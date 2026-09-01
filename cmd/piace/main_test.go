@@ -43,11 +43,8 @@ func TestRun_CompareMissingFlagsIsOperationalError(t *testing.T) {
 
 // TestRun_CompareMissingConfigFilesIsOperationalError verifies `compare`
 // with flags pointing at nonexistent target/services files is an
-// operational error, exercising task 2's config resolution now wired into
-// the CLI (real compiler/PuppetDB requests are not yet implemented, so a
-// valid config still ends in "not implemented yet", also an operational
-// error; this test only distinguishes "config failed to load" from a
-// panic).
+// operational error. It exercises config resolution at the CLI boundary,
+// distinguishing "config failed to load" from a panic.
 func TestRun_CompareMissingConfigFilesIsOperationalError(t *testing.T) {
 	args := []string{"compare", "--targets", "/nonexistent/targets.yaml", "--services", "/nonexistent/services.yaml"}
 	if got := run(args, os.Stdout, os.Stderr); got != exitcode.OperationalError {

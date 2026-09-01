@@ -18,37 +18,36 @@ import (
 //
 // # Which resource identities are estimated
 //
-// design.md section 8: "Impact estimation runs only for non-excluded
-// resource additions, removals, and parameter changes; it does not run
-// for edge-only differences. For each unique exact `Type[title]`..."
-// Excluded differences are already absent from a model.NodeDiff (see
-// internal/diff), so every resource-kind change present here qualifies,
-// deduplicated run-wide by identity.
+// Impact estimation runs only for non-excluded resource additions,
+// removals, and parameter changes, never for edge-only differences, once
+// per unique exact `Type[title]`. Excluded differences are already
+// absent from a model.NodeDiff (see internal/diff), so every
+// resource-kind change present here qualifies, deduplicated run-wide by
+// identity.
 //
-// # Whose configuration applies (a rule design.md leaves open)
+// # Whose configuration applies
 //
-// design.md section 8 dedupes identities run-wide, but resolve.Target
-// carries impact policy per target, so when one identity changed on
-// several targets with different timeouts or limits — or where only some
-// of them enable estimation at all — nothing in the spec says whose
-// configuration wins. Left to emerge from iteration order this would be
-// nondeterministic, so it is fixed here:
+// Identities are deduplicated run-wide, but resolve.Target carries
+// impact policy per target, so when one identity changed on several
+// targets with different timeouts or limits, or where only some of them
+// enable estimation at all, nothing says whose configuration wins. Left
+// to emerge from iteration order that would be nondeterministic, so it
+// is fixed here:
 //
 //   - An identity is estimated if at least one target that exhibits it
 //     has impact estimation enabled. An identity exhibited only by
 //     targets with estimation disabled produces no request and no
-//     failure, per requirements.md 9.1 and design.md section 8's
-//     "disabled estimates produce no request and no failure".
+//     failure.
 //   - The limits used are those of the first target in target-file order
 //     that both enables estimation and exhibits that identity. Target-file
 //     order is operator-authored and stable, so the choice is reproducible
 //     and explainable rather than dependent on map iteration or on which
 //     target happened to be diffed first.
 //
-// Estimates are issued sequentially, which design.md section 8 expressly
-// permits ("queries are bounded and may be sequential in v1 to limit
-// PuppetDB load") and which keeps PuppetDB load proportional to the
-// number of distinct changed identities rather than to target count.
+// Estimates are issued sequentially, which is expressly permitted
+// (queries are bounded and may be sequential in v1 to limit PuppetDB
+// load) and which keeps PuppetDB load proportional to the number of
+// distinct changed identities rather than to target count.
 func EstimateAll(
 	ctx context.Context,
 	querier ImpactQuerier,
@@ -69,12 +68,12 @@ func EstimateAll(
 		}
 	}
 
-	// selected maps each estimable identity to the winning target's
-	// order and limits together, so recovering the limits never has to
-	// hop back through the targets slice by index — a duplicate certname
-	// (which resolution rejects, but which this package should not
-	// silently mis-attribute if it ever appeared) cannot select one
-	// target's index and another's configuration.
+	// selected maps each estimable identity to the winning target's order
+	// and limits together, so recovering the limits never has to hop back
+	// through the targets slice by index. A duplicate certname, which
+	// resolution rejects but which this package should not silently
+	// mis-attribute if it ever appeared, cannot then select one target's
+	// index and another's configuration.
 	type winner struct {
 		order  int
 		limits Limits
@@ -126,9 +125,9 @@ func EstimateAll(
 }
 
 // isEdgeKind reports whether kind is one of the two edge-level change
-// kinds, which design.md section 8 excludes from impact estimation. A
-// model.NodeDiff keeps edge changes in their own slice, so this is
-// defensive against a resource-change entry carrying an edge kind.
+// kinds, which are excluded from impact estimation. A model.NodeDiff
+// keeps edge changes in their own slice, so this is defensive against a
+// resource-change entry carrying an edge kind.
 func isEdgeKind(kind model.ChangeKind) bool {
 	return kind == model.ChangeEdgeAdded || kind == model.ChangeEdgeRemoved
 }

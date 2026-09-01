@@ -11,10 +11,9 @@ import (
 // needs, common to both documented wire shapes (see doc.go): a PuppetDB
 // query-API resources.data entry and a compiler plain-array resource
 // entry both carry "type", "title", and "parameters" as top-level JSON
-// object fields, whatever else they additionally carry (certname,
-// resource, exported, tags, file, line, aliases — all intentionally
-// undeclared here and therefore dropped by encoding/json, per
-// requirements.md 5.9 and design.md section 7.1).
+// object fields, whatever else they additionally carry. certname,
+// resource, exported, tags, file, line and aliases are all intentionally
+// undeclared here and therefore dropped by encoding/json.
 type resourceWire struct {
 	Type       string          `json:"type"`
 	Title      string          `json:"title"`
@@ -37,10 +36,9 @@ type edgeWire struct {
 // per https://puppet.com/docs/puppetdb/8/catalogs.html's documented
 // `<expanded edges>` shape: `{"relationship", "source_title",
 // "source_type", "target_title", "target_type"}`. Relationship is
-// intentionally undeclared: design.md section 7.1 defines an edge's
-// identity solely as the ordered (source, target) identity pair,
-// direction alone being significant — relationship kind is not part of
-// the normalized model.
+// intentionally undeclared: an edge's identity is solely the ordered
+// (source, target) identity pair, direction alone being significant, and
+// relationship kind is not part of the normalized model.
 type pdbEdgeEntry struct {
 	SourceType  string `json:"source_type"`
 	SourceTitle string `json:"source_title"`
@@ -53,7 +51,7 @@ type pdbEdgeEntry struct {
 // puppetdb, puppet/lib/puppet/indirector/catalog/puppetdb.rb). The
 // semantics are load-bearing and are preserved exactly:
 //
-//   - `[^\[\]]+` — the type stops at the FIRST bracket of either kind;
+//   - `[^\[\]]+`: the type stops at the FIRST bracket of either kind;
 //   - `(.+)` is greedy against a `$`-anchored `\]`, so the title runs to
 //     the LAST `]`, which is what makes a composite title like
 //     `File[/etc/foo[bar]]` split into `File` / `/etc/foo[bar]`;
@@ -69,20 +67,20 @@ var resourceReferencePattern = regexp.MustCompile(`(?s)^([^\[\]]+)\[(.+)\]$`)
 // resourceSpecWire is one vertex of a plain-array catalog edge. It
 // accepts both forms that legitimately occur there:
 //
-//   - a JSON object, `{"type": <string>, "title": <string>}` — PuppetDB's
+//   - a JSON object, `{"type": <string>, "title": <string>}`: PuppetDB's
 //     documented catalog wire format v8 `<resource-spec>`
 //     (https://puppet.com/docs/puppetdb/8/catalog_format_v8.html), which
 //     is what the terminus submits;
-//   - a JSON string in `Type[title]` reference form — what a compiler's
+//   - a JSON string in `Type[title]` reference form: what a compiler's
 //     own v3/v4 catalog response carries, because
 //     Puppet::Relationship#to_data_hash serializes each vertex as
 //     `source.to_s` / `target.to_s`, and Puppet::Resource#to_s is its
 //     `Type[title]` ref (openvoxproject/openvox, lib/puppet/relationship.rb).
 //
 // Accepting both is not the "sniff the shape" behavior
-// internal/compiler/doc.go rules out for the v4 response envelope. There,
-// one endpoint has exactly one envelope and the version is known at the
-// call site. Here, a single documented container — the plain array —
+// internal/compiler/doc.go rules out for the v4 response envelope.
+// There, one endpoint has exactly one envelope and the version is known
+// at the call site. Here a single documented container, the plain array,
 // genuinely carries either vertex form, and the PuppetDB terminus itself
 // branches on precisely this (`edge[vertex] = resource_ref_to_hash(...)
 // if edge[vertex].is_a?(String)` in munge_edges). This type mirrors the
@@ -102,13 +100,13 @@ type resourceSpecObject struct {
 
 // UnmarshalJSON decodes either vertex form. A reference string that does
 // not parse, or a form missing its type or title, is an error rather
-// than a silently zero-valued vertex: the Ruby original yields
-// `{nil, nil}` on a non-matching ref, which this package's contract
-// forbids ("Unknown or malformed catalog/fact data is an operational
-// normalization failure, never an empty catalog"). The offending
+// than a silently zero-valued vertex: the Ruby original yields `{nil,
+// nil}` on a non-matching ref, which this package's contract forbids,
+// since unknown or malformed catalog data is an operational
+// normalization failure and never an empty catalog. The offending
 // reference is named in the error because a resource identity is not
-// secret in this model — every report prints identities like
-// `Service[nginx]` — and it is the one detail that makes the failure
+// secret in this model, every report printing identities like
+// `Service[nginx]`, and it is the one detail that makes the failure
 // actionable.
 func (s *resourceSpecWire) UnmarshalJSON(data []byte) error {
 	trimmed := bytes.TrimSpace(data)
@@ -151,9 +149,9 @@ type compilerEdgeEntry struct {
 // "edges" catalog field uses: a JSON object (PuppetDB's `{href, data}`
 // expansion) or a JSON array (the compiler's plain array). Any other
 // leading byte (or an empty/all-whitespace field) is an unrecognized
-// shape and returns an error, never a silently empty result — matching
-// this task's brief: "Treat unknown required shapes as reported
-// normalization errors rather than silently discarding them."
+// shape and returns an error, never a silently empty result: an unknown
+// required shape is a reported normalization error, never silently
+// discarded.
 func shapeContainer(raw json.RawMessage) (isObject bool, trimmed []byte, err error) {
 	trimmed = bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {

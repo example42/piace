@@ -9,17 +9,18 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/example42/piace/internal/inference"
 	"github.com/example42/piace/internal/transport"
 )
 
 // debugFlags holds the two observation options every subcommand accepts.
 //
 // They are deliberately separate because they sit on opposite sides of
-// requirements.md 3.5 ("SHALL NOT log private keys, certificate private
+// the rule that PIACE never logs private keys, certificate private
 // material, request authorization headers, or unredacted sensitive
-// catalog parameter values"):
+// catalog parameter values:
 //
-//   - --debug prints safe metadata only — method, URL, status, timing,
+//   - --debug prints safe metadata only: method, URL, status, timing,
 //     body sizes, content type, and the response body's top-level JSON
 //     *member names*. That is enough to diagnose a wire-shape mismatch
 //     (a v4 response whose only top-level key is "catalog", say) and
@@ -62,10 +63,10 @@ func (d debugFlags) transportOptions(label string, stderr io.Writer) ([]transpor
 	}
 	sink := &debugSink{label: label, stderr: stderr, printMetadata: d.debug, dumpDir: d.dumpDir}
 	if d.dumpDir != "" {
-		// 0700: the dump directory holds unredacted request/response
-		// bodies, so it is created no more readable than the 0600 files
-		// inside it. An existing directory's mode is left alone — that is
-		// the operator's choice, not this command's to override.
+		// 0700: the dump directory holds unredacted request and response bodies,
+		// so it is created no more readable than the 0600 files inside it. An
+		// existing directory's mode is left alone, that being the operator's
+		// choice rather than this command's to override.
 		if err := os.MkdirAll(d.dumpDir, 0o700); err != nil {
 			return nil, fmt.Errorf("creating --debug-dump-dir: %w", err)
 		}
@@ -74,6 +75,28 @@ func (d debugFlags) transportOptions(label string, stderr io.Writer) ([]transpor
 	opts := []transport.Option{transport.WithObserver(sink.observe)}
 	if d.dumpDir != "" {
 		opts = append(opts, transport.WithBodyCapture(true))
+	}
+	return opts, nil
+}
+
+// inferenceOptions is transportOptions' counterpart for `explain`'s one
+// service. internal/inference deliberately does not import
+// internal/transport (see that package's Client doc), so its observation
+// seam is separate; this bridges the two so one debugSink renders both.
+func (d debugFlags) inferenceOptions(label string, stderr io.Writer) ([]inference.Option, error) {
+	if !d.enabled() {
+		return nil, nil
+	}
+	sink := &debugSink{label: label, stderr: stderr, printMetadata: d.debug, dumpDir: d.dumpDir}
+	if d.dumpDir != "" {
+		if err := os.MkdirAll(d.dumpDir, 0o700); err != nil {
+			return nil, fmt.Errorf("creating --debug-dump-dir: %w", err)
+		}
+		fmt.Fprintf(stderr, "piace %s: writing raw request/response bodies to %s; the request body is the catalog-derived payload and a failed response names the account behind the token\n", label, d.dumpDir)
+	}
+	opts := []inference.Option{inference.WithObserver(sink.observeInference)}
+	if d.dumpDir != "" {
+		opts = append(opts, inference.WithBodyCapture(true))
 	}
 	return opts, nil
 }
@@ -127,9 +150,60 @@ func (s *debugSink) dump(base string, body []byte) {
 	}
 }
 
+// observeInference is observe's counterpart for inference.Event. One
+// debugSink is built per explain run and every inference request in that
+// run goes through it, so a run whose first reply was unusable and was
+// retried numbers both requests #001 and #002.
+func (s *debugSink) observeInference(ev inference.Event) {
+	s.mu.Lock()
+	s.seq++
+	seq := s.seq
+	s.mu.Unlock()
+
+	if s.printMetadata {
+		fmt.Fprintf(s.stderr, "piace %s: debug #%03d %s\n", s.label, seq, describeInferenceEvent(ev))
+	}
+	if s.dumpDir == "" {
+		return
+	}
+	base := fmt.Sprintf("%03d-%s-%s", seq, strings.ToLower(ev.Method), slugPath(ev.URL))
+	s.dump(base+".request", ev.RequestBody)
+	s.dump(base+".response", ev.ResponseBody)
+}
+
+// describeInferenceEvent renders one inference.Event as a single safe
+// line, in the same form as describeEvent. No response body value
+// reaches it: TopLevelKeys carries member names only.
+func describeInferenceEvent(ev inference.Event) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s", ev.Method, ev.URL)
+	if ev.Err != nil && ev.StatusCode == 0 {
+		fmt.Fprintf(&b, " -> no response after %s: %s", ev.Duration, transport.SafeMessage(ev.Err))
+		return b.String()
+	}
+	fmt.Fprintf(&b, " -> %d in %s (request %d B, response %d B", ev.StatusCode, ev.Duration, ev.RequestBodyBytes, ev.ResponseBodyBytes)
+	if ev.ContentType != "" {
+		fmt.Fprintf(&b, ", content-type %s", ev.ContentType)
+	}
+	fmt.Fprintf(&b, ", body %s", ev.Shape)
+	if ev.Shape == inference.ShapeObject {
+		keys := strings.Join(ev.TopLevelKeys, ",")
+		if ev.KeysTruncated {
+			keys += ",..."
+		}
+		fmt.Fprintf(&b, ", top-level keys: %s", keys)
+	}
+	if ev.Err != nil {
+		fmt.Fprintf(&b, ", body read error: %s", transport.SafeMessage(ev.Err))
+	}
+	b.WriteString(")")
+	return b.String()
+}
+
 // describeEvent renders one Event as a single safe line. Every field it
-// prints is metadata; no body content reaches it (transport.Event's
-// TopLevelKeys carries member names only — see internal/transport/debug.go).
+// prints is metadata; no body content reaches it, since
+// transport.Event's TopLevelKeys carries member names only (see
+// internal/transport/debug.go).
 func describeEvent(ev transport.Event) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s %s", ev.Method, ev.URL)

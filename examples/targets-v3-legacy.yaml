@@ -1,22 +1,22 @@
-# targets-v3-legacy.yaml — a compiler too old for the v4 catalog endpoint.
+# targets-v3-legacy.yaml: a compiler too old for the v4 catalog endpoint.
 #
 # READ THIS BEFORE COPYING THE FILE.
 #
 # The v3 catalog endpoint has no persistence control. On EVERY v3 request the
-# compiler saves the facts you submitted — rewriting the target's stored
-# factset and its facts_environment to the candidate environment — and stores
+# compiler saves the facts you submitted, rewriting the target's stored
+# factset and its facts_environment to the candidate environment, and stores
 # the compiled catalog through its PuppetDB catalog cache terminus, rewriting
 # the target's stored catalog, catalog_environment and transaction_uuid.
 #
 # That is a property of the endpoint. Nothing PIACE sends can turn it off, and
-# anything reading PuppetDB state — reporting, exported resources, inventory,
-# classification keyed on facts_environment — sees candidate values until the
+# anything reading PuppetDB state (reporting, exported resources, inventory,
+# classification keyed on facts_environment) sees candidate values until the
 # target's next agent run.
 #
 # ==> baseline.source MUST be `file` here. <==
 #
 # With `baseline.source: puppetdb`, PIACE reads the baseline, then compiles
-# the candidate, and the candidate compilation OVERWRITES THE BASELINE — for
+# the candidate, and the candidate compilation OVERWRITES THE BASELINE, for
 # the next target in the same run, and for every later run. PIACE does not
 # currently refuse that combination (requirements.md 1.8 says it should;
 # config validation does not yet enforce it). The configuration loads, the
@@ -65,7 +65,7 @@ targets:
   - certname: web-02.ops.example.com
   - certname: app-01.ops.example.com
 
-# Capture the baseline with v4 if the compiler offers it at all — a v4
+# Capture the baseline with v4 if the compiler offers it at all: a v4
 # capture stores nothing, while a v3 capture stores what it compiled. A v3
 # capture is still the least harmful case, because it compiled the *baseline*
 # environment, which is what an agent run would have stored anyway:

@@ -52,7 +52,7 @@ not the same as unimplemented, and here the distinction decides whether the
 `puppet-catalog_diff` mitigation is available at all: measured against a
 deployed OpenVox compiler on 2026-08-25, `POST /puppet/v4/catalog` returns 200
 with a `{"catalog": ...}` envelope, accepts `trusted_facts`, and honours
-`persistence: {facts: false, catalog: false}` — a request with persistence
+`persistence: {facts: false, catalog: false}`: a request with persistence
 disabled left no factset, no catalog, and no node in PuppetDB for a certname
 that had none before. The v4 mitigation works against OpenVox.
 
@@ -65,7 +65,7 @@ The trusted-fact caveat is the one the existing tools document. Measurement
 against the same deployed compiler surfaced a second, independent one: a v3
 catalog request has no persistence control. One `POST
 /puppet/v3/catalog/:certname` for a previously unknown certname created, in
-PuppetDB, a factset and a catalog under the requested environment — the stored
+PuppetDB, a factset and a catalog under the requested environment. The stored
 catalog carrying the `transaction_uuid` the request had supplied. The compiler
 saves the facts submitted with the request and stores the compiled catalog
 through its PuppetDB catalog cache terminus. Neither is suppressible from the
@@ -86,6 +86,6 @@ prominent, non-suppressible warning covering both consequences: any target code
 that uses `$trusted` can observe the service identity instead of the target
 identity, and the compilation overwrites the target's stored factset and
 catalog under the candidate environment. The second consequence also makes a
-PuppetDB baseline unusable with v3 — the candidate compilation destroys the
-baseline the comparison reads — so a v3 target is constrained to
+PuppetDB baseline unusable with v3, since the candidate compilation destroys
+the baseline the comparison reads, so a v3 target is constrained to
 `baseline.source: file`.

@@ -11,8 +11,7 @@ import (
 )
 
 // snapshotDefaults selects file-backed fact and baseline sources, whose
-// paths the target file resolves relative to its own directory
-// (design.md section 3.2 rule 5).
+// paths the target file resolves relative to its own directory.
 const snapshotDefaults = `  candidate:
     environment: feature-123
     catalog_api: v4
@@ -30,10 +29,10 @@ const snapshotDefaults = `  candidate:
   fail_on_diff: false
 `
 
-// TestAcceptance_SnapshotCaptureAndReuse covers requirements.md 11.1-11.7
-// as one workflow: capture facts from PuppetDB and a catalog from the
+// TestAcceptance_SnapshotCaptureAndReuse covers the snapshot workflow as
+// one story: capture facts from PuppetDB and a catalog from the
 // compiler, then run a comparison that consumes both snapshots. This is
-// the development-branch workflow requirement 11.7 describes.
+// the development-branch workflow snapshots exist for.
 func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 	h := newHarness(t)
 	certname := "web-01.example.test"
@@ -63,21 +62,20 @@ func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 	factSnapshot := h.path("snapshots/facts/" + certname + ".json")
 	catalogSnapshot := h.path("snapshots/catalogs/" + certname + ".json")
 
-	// requirements.md 11.4-11.5: envelopes, not bare Puppet payloads, with
-	// the mandatory catalog-snapshot metadata.
+	// Envelopes, not bare Puppet payloads, with the mandatory
+	// catalog-snapshot metadata.
 	assertEnvelope(t, factSnapshot, "factset", certname, nil)
 	assertEnvelope(t, catalogSnapshot, "catalog", certname,
 		[]string{"requested_environment", "compiler_api", "input_factset_identity"})
 
-	// A catalog snapshot's requested_environment must describe the
-	// catalog it actually holds. `capture catalog --environment ENV` once
-	// recorded ENV in the envelope while requesting the target's own
+	// A catalog snapshot's requested_environment must describe the catalog
+	// it actually holds. `capture catalog --environment ENV` once recorded
+	// ENV in the envelope while requesting the target's own
 	// candidate.environment, so a snapshot could claim production while
-	// holding a feature-branch catalog — and every later check that
-	// trusts that metadata, including the baseline-environment rule a
-	// file-backed baseline runs, would validate against the label rather
-	// than the catalog. Asserting the two agree is what names that bug if
-	// it returns.
+	// holding a feature-branch catalog, and every later check that trusts
+	// that metadata, the baseline-environment rule included, would validate
+	// against the label rather than the catalog. Asserting the two agree is
+	// what names that bug if it returns.
 	var envelope map[string]any
 	if err := json.Unmarshal([]byte(readFile(t, catalogSnapshot)), &envelope); err != nil {
 		t.Fatal(err)
@@ -91,7 +89,7 @@ func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 			payload["environment"])
 	}
 
-	// design.md section 6: snapshots are written 0600.
+	// Snapshots are written 0600.
 	for _, path := range []string{factSnapshot, catalogSnapshot} {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -110,7 +108,7 @@ func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 		}
 	}
 
-	// Overwrite protection (design.md section 6).
+	// Overwrite protection.
 	if _, stderr, code := captureRun(t, append([]string{"capture", "facts"}, configArgs...)); code == exitcode.Success {
 		t.Error("capture facts overwrote an existing snapshot without --replace")
 	} else if !strings.Contains(stderr, "exists") {
@@ -136,9 +134,8 @@ func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 	}
 }
 
-// TestAcceptance_InvalidSnapshotIsRejected covers requirements.md 11.6
-// and design.md's Property 2: a tampered envelope never reaches
-// normalization.
+// TestAcceptance_InvalidSnapshotIsRejected: a tampered envelope never
+// reaches normalization.
 func TestAcceptance_InvalidSnapshotIsRejected(t *testing.T) {
 	cases := []struct {
 		name   string

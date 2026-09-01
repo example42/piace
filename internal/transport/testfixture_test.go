@@ -20,7 +20,7 @@ import (
 
 // tlsFixture is a temporary, in-test self-signed CA plus one leaf
 // certificate/key pair signed by it, written to PEM files. Tests use this
-// instead of checked-in certificate files, per the task brief.
+// instead of checked-in certificate files.
 type tlsFixture struct {
 	dir        string
 	caBundle   string // path to CA certificate PEM

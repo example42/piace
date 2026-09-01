@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PIACE report — operational_error</title>
+<title>PIACE report: operational_error</title>
 <style>
 :root {
   color-scheme: light;
@@ -279,6 +279,13 @@ summary .count {
 .sign.add { color: var(--add); }
 .sign.remove { color: var(--remove); }
 .sign.change { color: var(--change); }
+
+ 
+.rows > li.risk {
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: start;
+}
+.rows > li.risk > .badge { justify-self: start; }
 
 .body { min-width: 0; }
 .ident { font-family: var(--mono); overflow-wrap: anywhere; }

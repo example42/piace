@@ -12,7 +12,7 @@ func plannedFixture(t *testing.T) ([]PlannedGroup, Pseudonyms) {
 	return planned, newPseudonyms(r, true)
 }
 
-// Slice 4.1: a well-formed response becomes an assessment, with any
+// a well-formed response becomes an assessment, with any
 // pseudonym the model used in its prose put back to the real certname.
 func TestInterpretReadsAWellFormedResponse(t *testing.T) {
 	planned, p := plannedFixture(t)
@@ -22,8 +22,7 @@ func TestInterpretReadsAWellFormedResponse(t *testing.T) {
       "run": {"risk":"medium","summary":"Restarting nginx on ` + alias + ` is routine.","review_focus":["` + alias + `"]},
       "groups": [
         {"id":"g001","risk":"low","rationale":"A service ensure flip.","review_focus":[]},
-        {"id":"g002","risk":"high","rationale":"Touches ` + alias + `.","review_focus":["g002"]},
-        {"id":"g003","risk":"medium","rationale":"","review_focus":[]}
+        {"id":"g002","risk":"high","rationale":"Touches ` + alias + `.","review_focus":["g002"]}
       ]}`
 
 	a, diags := Interpret([]byte(raw), planned, p)
@@ -39,8 +38,8 @@ func TestInterpretReadsAWellFormedResponse(t *testing.T) {
 	if len(a.Run.ReviewFocus) != 1 || a.Run.ReviewFocus[0] != realCertname {
 		t.Errorf("Run.ReviewFocus = %v", a.Run.ReviewFocus)
 	}
-	if len(a.Groups) != 3 {
-		t.Fatalf("Groups = %d, want 3", len(a.Groups))
+	if len(a.Groups) != 2 {
+		t.Fatalf("Groups = %d, want 2", len(a.Groups))
 	}
 	if a.Groups[0].Identity != "Service[nginx]" || a.Groups[0].Risk != RiskLow {
 		t.Errorf("Groups[0] = %+v", a.Groups[0])
@@ -53,7 +52,7 @@ func TestInterpretReadsAWellFormedResponse(t *testing.T) {
 	}
 }
 
-// Slice 4.2: an id that was never sent is a hallucinated anchor. It is
+// an id that was never sent is a hallucinated anchor. It is
 // dropped and recorded, which is the check per-group assessment exists to
 // make possible.
 func TestInterpretDropsAGroupItNeverSent(t *testing.T) {
@@ -73,7 +72,7 @@ func TestInterpretDropsAGroupItNeverSent(t *testing.T) {
 	}
 }
 
-// Slice 4.3: a group that went out and came back unmentioned is unknown,
+// a group that went out and came back unmentioned is unknown,
 // never silently absent.
 func TestInterpretMarksAnUnansweredGroupUnknown(t *testing.T) {
 	planned, p := plannedFixture(t)
@@ -82,7 +81,7 @@ func TestInterpretMarksAnUnansweredGroupUnknown(t *testing.T) {
 
 	a, _ := Interpret([]byte(raw), planned, p)
 	if len(a.Groups) != len(planned) {
-		t.Fatalf("Groups = %d, want %d — every group sent must be accounted for", len(a.Groups), len(planned))
+		t.Fatalf("Groups = %d, want %d: every group sent must be accounted for", len(a.Groups), len(planned))
 	}
 	for _, g := range a.Groups[1:] {
 		if g.Risk != RiskUnknown {
@@ -91,7 +90,7 @@ func TestInterpretMarksAnUnansweredGroupUnknown(t *testing.T) {
 	}
 }
 
-// Slice 4.4: a risk indication outside the enum becomes unknown plus a
+// a risk indication outside the enum becomes unknown plus a
 // diagnostic; it never reaches a renderer as prose.
 func TestInterpretRefusesARiskOutsideTheEnum(t *testing.T) {
 	planned, p := plannedFixture(t)
@@ -110,7 +109,7 @@ func TestInterpretRefusesARiskOutsideTheEnum(t *testing.T) {
 	}
 }
 
-// Slice 4.5's first half: an unparseable response is an error the caller
+// an unparseable response is an error the caller
 // can retry on, not a partial assessment.
 func TestInterpretRejectsAnUnparseableResponse(t *testing.T) {
 	planned, p := plannedFixture(t)

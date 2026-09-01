@@ -4,17 +4,18 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// Provenance builds the redacted model.ConfigProvenance projection for one
-// resolved target, per design.md section 3.2: "Resolved configuration
-// provenance includes source choices, paths, API, policy values, and
-// matching rules, but never endpoint credentials or private key paths."
+// Provenance builds the redacted model.ConfigProvenance projection for
+// one resolved target: "Resolved configuration provenance includes
+// source choices, paths, API, policy values, and matching rules, but
+// never endpoint credentials or private key paths."
 //
-// facts.file/baseline.file resolved paths are included: they are local
-// snapshot paths, not service credentials, and design.md's exclusion is
-// specifically "endpoint credentials or private key paths" — i.e.
-// config.ServiceEndpoint's CABundle/ClientCert/PrivateKey. This function
-// never reads from Services/Endpoint at all, so a ClientCert/PrivateKey
-// path can never reach a TargetResult's provenance through this path.
+// facts.file and baseline.file resolved paths are included: they are
+// local snapshot paths, not service credentials, and what provenance
+// excludes is endpoint credentials and private key paths, meaning
+// config.ServiceEndpoint's CABundle, ClientCert and PrivateKey. This
+// function never reads from Services or Endpoint at all, so a client
+// certificate or private key path can never reach a TargetResult's
+// provenance through here.
 func Provenance(t Target) *model.ConfigProvenance {
 	exclude := make([]model.ExclusionRuleRef, 0, len(t.Exclude))
 	for _, r := range t.Exclude {

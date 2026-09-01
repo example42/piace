@@ -170,10 +170,10 @@ func TestFileSource_LoadBaseline_Success(t *testing.T) {
 }
 
 // TestFileSource_LoadBaseline_EnvironmentMismatchRejectedUnconditionally
-// verifies the file-backed baseline source enforces requirements.md
-// 11.6's environment check strictly, unlike PuppetDB's "regardless of its
-// environment" framing for a live puppetdb source (see filesource.go's
-// doc comment).
+// verifies the file-backed baseline source enforces its environment
+// check strictly, unlike the "regardless of its environment" framing
+// that applies to a live puppetdb source (see filesource.go's doc
+// comment).
 func TestFileSource_LoadBaseline_EnvironmentMismatchRejectedUnconditionally(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "web-01-catalog.json")

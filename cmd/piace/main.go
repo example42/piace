@@ -1,6 +1,6 @@
-// Command piace is the PIACE CLI entry point. It provides four
-// subcommands: `compare`, `capture facts`, `capture catalog`, and
-// `explain`. See design.md section 2.1 ("CLI surface").
+// Command piace is the PIACE CLI entry point. It provides five
+// subcommands: `compare`, `capture facts`, `capture catalog`, `explain`
+// and `change-context`.
 //
 // This file wires argument parsing, transport/adapter construction, and
 // stable exit codes. All domain behavior lives in internal packages:
@@ -13,7 +13,7 @@
 // `compare` already wrote. It is the only subcommand that contacts an
 // inference service, and the only one that does not contact a compiler
 // or PuppetDB: the two halves share nothing but a file on disk. See
-// docs/adr/0002-keep-the-change-assessment-out-of-the-result-document.md.
+// CONTEXT.md for why the assessment stays out of the result document.
 package main
 
 import (
@@ -47,10 +47,10 @@ import (
 var toolVersion = "dev"
 
 // clock supplies the invocation timestamp recorded in a report and in a
-// snapshot envelope. It is a package variable so the acceptance suite can
-// fix it: a report's timestamp is the one field that would otherwise make
-// two runs over identical inputs differ, and requirements.md 8.6 requires
-// them not to. Production never reassigns it.
+// snapshot envelope. It is a package variable so the acceptance suite
+// can fix it: a report's timestamp is the one field that would otherwise
+// make two runs over identical inputs differ, and they must not.
+// Production never reassigns it.
 var clock = time.Now
 
 // stdin is the stream `explain --json-in -` reads a result document
@@ -90,6 +90,8 @@ func run(args []string, stdout, stderr *os.File) exitcode.Code {
 		return runCapture(args[1:], stdout, stderr)
 	case "explain":
 		return runExplain(args[1:], stdout, stderr)
+	case "change-context":
+		return runChangeContext(args[1:], stdout, stderr)
 	case "-h", "--help", "help":
 		fmt.Fprintln(stdout, usage())
 		return exitcode.Success
@@ -111,7 +113,11 @@ piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
   --environment ENVIRONMENT
 piace explain --json-in REPORT.json --services SERVICES.yaml \
   [--ai-out PATH] [--html-out PATH] [--change CHANGE.yaml] \
-  [--fail-on-inference-error]
+  [--fail-on-inference-error] [--debug] [--debug-dump-dir DIR]
+piace change-context (--base-ref REF | --base-ref-env VAR) \
+  [--head-ref REF | --head-ref-env VAR] \
+  [--title-env VAR | --title-file PATH] \
+  [--description-env VAR | --description-file PATH]
 
 The text report summarizes for a CI log: it omits dependency-graph edge
 changes and each impact estimate's PQL and request options, and names only
@@ -150,12 +156,40 @@ no inference service.
                          recorded in the artifact and the command still
                          exits 0
 
-compare and capture also accept:
+change-context writes a change context file to stdout for explain to
+read. It is the one subcommand that invokes git, and it is optional:
+explain --change reads a file the caller produced by any means, so a
+repository under a different VCS still describes its change by hand.
+Commit subjects are collected, never bodies.
+  --base-ref REF         the ref the change branched from (required, or
+                         --base-ref-env)
+  --head-ref REF         the ref under test (default HEAD)
+  --base-ref-env VAR, --head-ref-env VAR
+                         read the ref from the named environment variable
+                         instead
+  --title-env VAR, --title-file PATH
+                         the change title, by variable name or path
+  --description-env VAR, --description-file PATH
+                         the change description, by variable name or path
+
+  There is no --title or --description flag on purpose. A pull request
+  title is attacker-supplied text, and a CI system that substitutes it
+  into script text before a shell runs (GitHub ${{ }}, Azure $( )) turns
+  one into arbitrary code execution on the runner. Naming the variable
+  keeps its value off the command line.
+
+compare, capture and explain also accept:
   --debug                print one line per service request to stderr (method,
                          URL, status, duration, body sizes, response top-level
-                         JSON keys); no body content is printed
+                         JSON keys); no body content is printed. For explain
+                         this is what shows an inference endpoint's HTTP status
+                         and the response's JSON shape without the body
   --debug-dump-dir DIR   additionally write raw request/response bodies to 0600
-                         files in DIR; they may contain sensitive catalog values`
+                         files in DIR. For compare and capture these may hold
+                         sensitive catalog values; for explain the request body
+                         is the catalog-derived payload sent to the inference
+                         service and the response body of a 4xx is where the
+                         provider names the field it rejected`
 }
 
 // compareFlags holds the parsed --compare flags. Kept as a struct so tests
@@ -224,10 +258,10 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	result := workflow.Run(context.Background(), cfg)
 
 	if err := writeReports(f, result, stdout); err != nil {
-		// A report the operator asked for and did not get must not be
-		// papered over by the comparison's own outcome, however clean:
-		// requirements.md 8.2/8.3 make the artifacts part of the
-		// requested work, so a write failure is an operational error.
+		// A report the operator asked for and did not get must not be papered
+		// over by the comparison's own outcome, however clean: the artifacts are
+		// part of the requested work, so a write failure is an operational
+		// error.
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
 		return exitcode.OperationalError
 	}
@@ -236,13 +270,13 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 }
 
 // newCompareWorkflow builds the compare pipeline from resolved
-// configuration, using the same hardened transports and the same compiler
-// adapter `capture` uses (design.md section 5: "Capture catalog uses the
-// exact same adapter and policy as comparison").
+// configuration, using the same hardened transports and the same
+// compiler adapter `capture` uses. Capture catalog and comparison share
+// one adapter and one policy.
 //
 // The compiler and PuppetDB clients are built independently from their
-// own resolved endpoints, per design.md section 2.2, so neither service's
-// credentials can reach the other.
+// own resolved endpoints so neither service's credentials can reach the
+// other.
 func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*compare.Workflow, error) {
 	puppetDBAdapter, err := newPuppetDBAdapter(cfg, debugOpts)
 	if err != nil {
@@ -277,30 +311,28 @@ func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*comp
 
 // writeReports emits the requested artifacts. Text goes to stdout when
 // --text-out is omitted; JSON and HTML are written only when explicitly
-// requested, per design.md section 2.1 ("Omitting an artifact option
-// writes text to stdout and suppresses that optional artifact").
+// requested.
 //
 // The file artifacts are written before the text report, and the stdout
 // text report last of all. A failed artifact write is an operational
-// error (exit 30), and requirements.md 10.2 makes the text report's
-// stated outcome load-bearing — so emitting `outcome: clean (exit 0)` to
-// a CI log and then exiting 30 because an artifact could not be written
-// would put the log's most-read line in direct contradiction with the
-// process result. Ordering the writes this way means the contradiction
-// cannot occur: whatever reaches stdout is the outcome the process exits
-// with.
+// error (exit 30), and the text report's stated outcome is load-bearing,
+// so emitting `outcome: clean (exit 0)` to a CI log and then exiting 30
+// because an artifact could not be written would put the log's most-read
+// line in direct contradiction with the process result. Ordering the
+// writes this way means the contradiction cannot occur: whatever reaches
+// stdout is the outcome the process exits with.
 //
 // Artifacts are written 0644: unlike a snapshot envelope (0600), a report
 // is a review artifact meant to be read by CI and by humans, and it
 // contains no credentials, private material, managed content bytes, or
 // unredacted sensitive values by construction.
 func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
-	// Display policy applies to the text report alone. report.JSON takes
-	// no options by design — it is the complete machine-readable record,
-	// and a flag that changed what it contained would make one run's
-	// artifact incomparable with another's — and report.HTML takes none
-	// because it shows everything too, using disclosure rather than
-	// omission to stay readable.
+	// Display policy applies to the text report alone. report.JSON takes no
+	// options by design: it is the complete machine-readable record, and a
+	// flag that changed what it contained would make one run's artifact
+	// incomparable with another's. report.HTML takes none because it shows
+	// everything too, using disclosure rather than omission to stay
+	// readable.
 	//
 	// The nil passed to both renderers is the change assessment. `compare`
 	// never has one: it does not contact an inference service, and an
@@ -471,8 +503,8 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 }
 
 // newPuppetDBAdapter builds the PuppetDB-backed fact/baseline source
-// adapter (task 4) from cfg's resolved PuppetDB service endpoint, per
-// task 3's hardened mTLS transport construction.
+// adapter (internal/puppetdb) from cfg's resolved PuppetDB service endpoint, per
+// internal/transport's hardened mTLS transport construction.
 func newPuppetDBAdapter(cfg resolve.Config, debugOpts []transport.Option) (*puppetdb.Adapter, error) {
 	client, err := transport.NewClient(cfg.Services.PuppetDB, debugOpts...)
 	if err != nil {
@@ -482,12 +514,10 @@ func newPuppetDBAdapter(cfg resolve.Config, debugOpts []transport.Option) (*pupp
 }
 
 // newCompilerAdapter builds the compiler-backed v3/v4 candidate catalog
-// adapter (task 6) from cfg's resolved compiler service endpoint, per
-// task 3's hardened mTLS transport construction. `capture catalog` and
-// the future `compare` command both build their compiler adapter this
-// way, so they share the exact same request/policy implementation
-// (design.md section 5: "Capture catalog uses the exact same adapter and
-// policy as comparison").
+// adapter from cfg's resolved compiler service endpoint, on the hardened
+// mTLS transport. `capture catalog` and `compare` both build their
+// compiler adapter this way, so they share the exact same request and
+// policy implementation.
 func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*compiler.Adapter, error) {
 	client, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
@@ -497,12 +527,11 @@ func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*comp
 }
 
 // reportCaptureOutcomes prints one line per target outcome and returns
-// the process exit code: OperationalError if any target failed (a
-// capture run that reports a failure for even one target must never
-// exit 0 — mirroring design.md section 10's "no result with an
-// unreported ... failure can be clean" principle applied to capture),
-// Success otherwise. A skipped target (no file-backed destination
-// configured) is reported but does not affect the exit code.
+// the process exit code: OperationalError if any target failed, Success
+// otherwise. A capture run that reports a failure for even one target
+// must never exit 0, mirroring the rule that no result with an
+// unreported failure can be clean. A skipped target (no file-backed
+// destination configured) is reported but does not affect the exit code.
 func reportCaptureOutcomes(stdout, stderr *os.File, label string, outcomes []capture.TargetOutcome) exitcode.Code {
 	failed := false
 	for _, o := range outcomes {
@@ -536,12 +565,13 @@ type explainFlags struct {
 	// failing for a reason that has nothing to do with the change under
 	// test. An operator who would rather know may ask for it.
 	failOnInferenceError bool
+	debug                debugFlags
 }
 
 // runExplain produces a change assessment from a stored result document.
 //
-// It contacts exactly one service — the configured inference service —
-// and constructs no compiler client and no PuppetDB client, whatever a
+// It contacts exactly one service, the configured inference service, and
+// constructs no compiler client and no PuppetDB client, whatever a
 // services file happens to name. That is not an optimisation: `explain`
 // sends catalog-derived data outside the building, and the set of hosts
 // it can reach while doing so has to be short enough to state in one
@@ -559,6 +589,7 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.aiOut, "ai-out", "", "path to write the change assessment artifact")
 	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the report re-rendered with the assessment")
 	fs.BoolVar(&f.failOnInferenceError, "fail-on-inference-error", false, "exit 30 when the change assessment could not be produced")
+	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
 	}
@@ -611,7 +642,12 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	client, err := inference.New(in.URL, in.Token, in.Timeout)
+	inferenceOpts, err := f.debug.inferenceOptions("explain", stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+	client, err := inference.New(in.URL, in.Token, in.Timeout, inferenceOpts...)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace explain: %s\n", err)
 		return exitcode.OperationalError

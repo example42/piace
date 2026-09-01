@@ -8,17 +8,19 @@ import (
 	"testing"
 )
 
-// Slice 7.1: a nil change assessment means today's output exactly.
+// A nil change assessment means exactly the report a comparison writes.
 //
-// The golden was captured from the v0.1.0 renderer before this
-// parameter existed, so it is an independent source of truth rather
-// than a restatement of what the code now emits. Any byte this feature
-// adds to a report rendered without an assessment fails here, including
-// the stray newline a naively guarded template block emits.
-func TestHTMLWithNoAssessmentIsByteIdenticalToTheV010Report(t *testing.T) {
+// The golden was captured from the renderer before the assessment
+// parameter existed, so it is an independent source of truth rather than
+// a restatement of what the code now emits. Any byte the assessment
+// feature adds to a report rendered without one fails here, including
+// the stray newline a naively guarded template block emits. A deliberate
+// change to the page itself is expected to update the golden; an
+// accidental one is what this catches.
+func TestHTMLWithNoAssessmentIsByteIdenticalToAnAssessmentFreeReport(t *testing.T) {
 	want, err := os.ReadFile("testdata/sample_report.golden.html")
 	if err != nil {
-		t.Fatalf("reading the v0.1.0 golden report: %v", err)
+		t.Fatalf("reading the golden report: %v", err)
 	}
 
 	got, err := HTML(sampleResult(), nil)
@@ -27,7 +29,7 @@ func TestHTMLWithNoAssessmentIsByteIdenticalToTheV010Report(t *testing.T) {
 	}
 
 	if string(got) != string(want) {
-		t.Errorf("HTML(r, nil) is not byte-identical to the v0.1.0 report: got %d bytes, want %d", len(got), len(want))
+		t.Errorf("HTML(r, nil) is not byte-identical to the assessment-free report: got %d bytes, want %d", len(got), len(want))
 	}
 }
 
@@ -73,10 +75,10 @@ func sampleAssessment() assess.Assessment {
 	}
 }
 
-// Slice 7.2: the assessment is advisory and the comparison is not. A
-// reader must reach every deterministic section — the outcome, the
-// targets, the aggregate diff, the run diagnostics — before a model's
-// opinion about them.
+// The assessment is advisory and the comparison is not. A reader must
+// reach every deterministic section, the outcome, the targets, the
+// aggregate diff and the run diagnostics, before a model's opinion about
+// them.
 func TestHTMLRendersTheAssessmentBelowTheDeterministicOutcome(t *testing.T) {
 	a := sampleAssessment()
 	data, err := HTML(sampleResult(), &a)
@@ -100,8 +102,8 @@ func TestHTMLRendersTheAssessmentBelowTheDeterministicOutcome(t *testing.T) {
 	}
 }
 
-// Slice 7.3: the run risk indication is an outcome badge and lives where
-// every other outcome badge lives — outside every disclosure.
+// The run risk indication is an outcome badge and lives where every
+// other outcome badge lives, outside every disclosure.
 //
 // A substring search cannot establish this: collapsed content matches
 // just as well as visible content. So the assertion walks the document
@@ -150,15 +152,15 @@ func disclosureDepthAt(doc string, i int) int {
 	return depth
 }
 
-// Slice 7.4: a reader who scans only this section must be unable to
-// mistake it for the comparison. It names the model that produced it,
-// says in the page that it is advisory, model-generated and not
-// deterministic, and — when only part of the run was assessed — says so
-// rather than reading as a complete review.
+// A reader who scans only this section must be unable to mistake it for
+// the comparison. It names the model that produced it, says on the page
+// that it is advisory, model-generated and not deterministic, and, when
+// only part of the run was assessed, says so rather than reading as a
+// complete review.
 //
-// Every one of these is outside a disclosure, for the reason
-// requirements.md 8.5 gives about failures: a mark a reader has to go
-// looking for is not a visible mark.
+// Every one of these is outside a disclosure, for the same reason
+// failures are: a mark a reader has to go looking for is not a visible
+// mark.
 func TestHTMLMarksTheAssessmentAdvisoryAndNamesItsModel(t *testing.T) {
 	a := sampleAssessment()
 	data, err := HTML(sampleResult(), &a)
@@ -211,13 +213,13 @@ func TestHTMLSaysNothingAboutTruncationWhenEveryGroupWasAssessed(t *testing.T) {
 	}
 }
 
-// Slice 7.5: the text report is a CI log — a linear read with no way to
-// expand a section — so it carries the run risk indication and review
-// focus and stops there. Per-group rationale is model prose, one
-// paragraph per group, and a hundred of them between the aggregate diff
-// and the end of the log is the wall of text the text format exists to
-// avoid. It is in the HTML report and in the JSON artifact, both of
-// which a reader can navigate.
+// The text report is a CI log, a linear read with no way to expand a
+// section, so it carries the run risk indication and review focus and
+// stops there. Per-group rationale is model prose, one paragraph per
+// group, and a hundred of them between the aggregate diff and the end of
+// the log is the wall of text the text format exists to avoid. It is in
+// the HTML report and in the JSON artifact, both of which a reader can
+// navigate.
 //
 // This is display policy of exactly the kind Options describes, and the
 // same rule as the edge changes and PQL text already omits: the JSON

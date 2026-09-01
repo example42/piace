@@ -1,4 +1,4 @@
-# targets-snapshot-baseline.yaml — frozen baseline.
+# targets-snapshot-baseline.yaml: frozen baseline.
 #
 # Usage pattern 2: capture the production catalog once, then compare against
 # that frozen copy as often as you like. Useful when PuppetDB's latest
@@ -76,7 +76,7 @@ targets:
   - certname: lb-01.ops.example.com
 
   # A node whose facts are also frozen. `piace capture facts` writes this
-  # path — it always retrieves from PuppetDB, whatever the target's
+  # path: it always retrieves from PuppetDB, whatever the target's
   # comparison-time facts.source is. Freezing facts as well as the catalog
   # makes a run reproducible offline; the cost is that fact drift on the real
   # node stops being visible.

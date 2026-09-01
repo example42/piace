@@ -35,8 +35,7 @@ func compilerShapedCatalog(certname, environment, resourcesJSON, edgesJSON strin
 
 // TestCatalog_PuppetDBShape_ResourceAndEdgeIdentity verifies a PuppetDB
 // query-API {href, data}-shaped catalog normalizes into the exact
-// Type[title] resource identities and (source, target) edge identities,
-// per design.md section 7.1.
+// Type[title] resource identities and (source, target) edge identities.
 func TestCatalog_PuppetDBShape_ResourceAndEdgeIdentity(t *testing.T) {
 	raw := pdbShapedCatalog("web-01.example.test", "production",
 		`[
@@ -114,10 +113,10 @@ func TestCatalog_CompilerShape_ResourceAndEdgeIdentity(t *testing.T) {
 
 // TestCatalog_DropsTagsFileLineAndOtherMetadata verifies that tags,
 // source file/line, exported, aliases, certname/resource fields never
-// appear anywhere in the normalized model.Resource, per requirements.md
-// 5.9. Since model.Resource has no field at all for these, this test
-// verifies indirectly: parameters are exactly what was supplied, and
-// nothing else leaked in as an extra "parameter".
+// appear anywhere in the normalized model.Resource. Since model.Resource
+// has no field at all for these, this test verifies indirectly:
+// parameters are exactly what was supplied, and nothing else leaked in
+// as an extra "parameter".
 func TestCatalog_DropsTagsFileLineAndOtherMetadata(t *testing.T) {
 	raw := pdbShapedCatalog("web-01.example.test", "production",
 		`[{"certname":"web-01.example.test","resource":"aaa","type":"File","title":"/etc/motd","exported":true,"tags":["a","b"],"file":"/manifests/site.pp","line":42,"parameters":{"ensure":"file"}}]`,
@@ -160,7 +159,7 @@ func TestCatalog_DropsTagsFileLineAndOtherMetadata(t *testing.T) {
 // TestCatalog_DropsAliasParameter verifies the `alias` metaparameter the
 // PuppetDB terminus injects into a stored catalog is dropped from both
 // wire shapes, so a PuppetDB baseline and a compiled candidate do not
-// differ by it alone (requirements.md 5.9; see doc.go).
+// differ by it alone (see doc.go).
 func TestCatalog_DropsAliasParameter(t *testing.T) {
 	resources := `[{"type":"File","title":"info scripts","parameters":{"path":"/etc/tp/run_info","alias":["/etc/tp/run_info"]}}]`
 
@@ -213,7 +212,7 @@ func TestCatalog_ResourceWithOnlyAliasParameter(t *testing.T) {
 // TestCatalog_RejectsMalformedResourcesShape verifies an unrecognized
 // "resources" shape (neither object nor array) produces a reported
 // model.OperationNormalize diagnostic and a zero NormalizedCatalog,
-// rather than silently discarding the catalog, per this task's brief.
+// rather than silently discarding the catalog.
 func TestCatalog_RejectsMalformedResourcesShape(t *testing.T) {
 	raw := puppetdb.Catalog{
 		Certname:    "web-01.example.test",
@@ -308,9 +307,8 @@ func TestCatalog_RejectsEdgeMissingEndpointTypeOrTitle(t *testing.T) {
 }
 
 // TestCatalog_CaseSensitiveIdentity verifies resource identity uses no
-// case folding: "file[/x]" and "File[/x]" are distinct identities, per
-// design.md section 7.1 ("type and title are strings with no case
-// folding").
+// case folding: "file[/x]" and "File[/x]" are distinct identities.
+// ("type and title are strings with no case folding").
 func TestCatalog_CaseSensitiveIdentity(t *testing.T) {
 	raw := compilerShapedCatalog("web-01.example.test", "production",
 		`[{"type":"File","title":"/x","parameters":{}},{"type":"file","title":"/x","parameters":{}}]`,
@@ -350,8 +348,7 @@ func TestCatalog_NumberCanonicalization(t *testing.T) {
 // TestCatalog_ArrayOrderPreservedObjectKeysCanonical verifies array
 // parameter values retain order while nested object parameter values are
 // still exactly comparable (map equality does not depend on encounter
-// order), per design.md section 7.1: "arrays retain order; object keys
-// sort recursively."
+// order): "arrays retain order; object keys sort recursively."
 func TestCatalog_ArrayOrderPreservedObjectKeysCanonical(t *testing.T) {
 	raw := compilerShapedCatalog("web-01.example.test", "production",
 		`[{"type":"File","title":"/x","parameters":{"list":[3,1,2],"nested":{"b":1,"a":2}}}]`,
@@ -395,10 +392,9 @@ func TestCatalog_EmptyResourcesAndEdges(t *testing.T) {
 }
 
 // TestCatalog_LargeIntegerPreservesAllDigits verifies a large integer
-// parameter value (far beyond float64's 53-bit mantissa precision) keeps
-// every digit exactly, per this task's brief and design.md section 7.1's
-// "number comparisons use exact normalized decimal values rather than
-// machine floating point."
+// parameter value, far beyond float64's 53-bit mantissa precision, keeps
+// every digit exactly: number comparisons use exact normalized decimal
+// values rather than machine floating point.
 func TestCatalog_LargeIntegerPreservesAllDigits(t *testing.T) {
 	const bigDigits = "123456789012345678901234567890"
 	raw := compilerShapedCatalog("web-01.example.test", "production",
@@ -415,12 +411,13 @@ func TestCatalog_LargeIntegerPreservesAllDigits(t *testing.T) {
 }
 
 // TestCatalog_CompilerShape_StringResourceReferenceEdges covers the edge
-// vertex form a real compiler actually returns: a `Type[title]` reference
-// string, not a `{type, title}` object. Puppet::Relationship#to_data_hash
-// serializes each vertex as `source.to_s`/`target.to_s`, so this is what
-// every v3/v4 catalog response and every `capture catalog` snapshot
-// carries — the object form only appears in a terminus-submitted wire
-// format v8 catalog.
+// vertex form a real compiler actually returns: a `Type[title]`
+// reference string, not a `{type, title}` object.
+// Puppet::Relationship#to_data_hash serializes each vertex as
+// `source.to_s` and `target.to_s`, so this is what every v3 and v4
+// catalog response and every `capture catalog` snapshot carries. The
+// object form only appears in a terminus-submitted wire format v8
+// catalog.
 func TestCatalog_CompilerShape_StringResourceReferenceEdges(t *testing.T) {
 	raw := compilerShapedCatalog("web-01.example.test", "production",
 		`[

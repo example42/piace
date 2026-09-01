@@ -19,14 +19,14 @@ const DefaultMaxGroups = 200
 const MaxPolicyNotesBytes = 4000
 
 // maxGroupNodes bounds how many node names one group lists. The exact
-// count always accompanies the list, so the number is never hidden — only
-// the names are, which is the same treatment the text report gives an
-// impact estimate's certnames.
+// count always accompanies the list, so the number is never hidden and
+// only the names are, which is the same treatment the text report gives
+// an impact estimate's certnames.
 const maxGroupNodes = 20
 
-// The user message is assembled from labelled blocks rather than prose so
-// that what is deterministic evidence and what is caller-supplied text can
-// never be confused for one another — by a reader or by a model.
+// The user message is assembled from labelled blocks rather than prose,
+// so that what is deterministic evidence and what is caller-supplied
+// text can never be confused for one another, by a reader or by a model.
 const (
 	payloadFenceOpen  = "<comparison_data>\n"
 	payloadFenceClose = "\n</comparison_data>"
@@ -65,8 +65,14 @@ Rules you must follow:
 
 // Config is the resolved inference policy for one change assessment.
 type Config struct {
-	Model            string
-	MaxTokens        int
+	Model     string
+	MaxTokens int
+	// TokenLimitParam is "max_tokens" or "max_completion_tokens"; an empty
+	// value is treated as "max_tokens". See inference.Request.
+	TokenLimitParam string
+	// Temperature, when non-nil, is sent as the request's sampling
+	// temperature. Nil sends none. See inference.Request.
+	Temperature      *float64
 	MaxGroups        int
 	Pseudonymize     bool
 	StructuredOutput bool
@@ -78,9 +84,9 @@ type Config struct {
 // This function is the disclosure boundary. The payload it sends is
 // constructed field by field, never by marshalling a model.Result: a
 // field reaches an inference service only because a line here put it
-// there. That is what makes "what does PIACE disclose" a question with an
-// answer someone can read, and it is why the service authorities in
-// Invocation.Services are simply absent rather than pseudonymized — a
+// there. That is what makes "what does PIACE disclose" a question with a
+// readable answer, and it is why the service authorities in
+// Invocation.Services are simply absent rather than pseudonymized. A
 // model has no use for which hosts PIACE was configured to reach.
 //
 // Pseudonymization covers the certnames PIACE derived from the result
@@ -93,9 +99,9 @@ type Config struct {
 //
 // Groups are ranked by how many nodes they reach, then by kind, then by
 // canonical identity, and the top MaxGroups are sent. Because the total
-// is known locally — unlike an impact estimate, which is bounded by a
-// server-side limit and can only be reported as *more than* it — the
-// payload states the exact number of groups and how many were assessed.
+// is known locally, unlike an impact estimate bounded by a server-side
+// limit that can only be reported as *more than* it, the payload states
+// the exact number of groups and how many were assessed.
 func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Request, Pseudonyms, error) {
 	p := newPseudonyms(r, cfg.Pseudonymize)
 
@@ -115,12 +121,20 @@ func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Reque
 	}
 
 	req := inference.Request{
-		Model:     cfg.Model,
-		MaxTokens: cfg.MaxTokens,
+		Model: cfg.Model,
 		Messages: []inference.Message{
 			{Role: "system", Content: TaskPrompt},
 			{Role: "user", Content: user},
 		},
+	}
+	if cfg.TokenLimitParam == "max_completion_tokens" {
+		req.MaxCompletionTokens = cfg.MaxTokens
+	} else {
+		req.MaxTokens = cfg.MaxTokens
+	}
+	if cfg.Temperature != nil {
+		t := *cfg.Temperature
+		req.Temperature = &t
 	}
 	if cfg.StructuredOutput {
 		req.ResponseFormat = &inference.ResponseFormat{
@@ -284,8 +298,8 @@ func GroupID(index int) string { return fmt.Sprintf("g%03d", index+1) }
 
 // PlannedGroup is one aggregate group as a request presents it: the
 // opaque id the inference service must reference it by, and the real
-// group behind that id. It carries real certnames — a plan never leaves
-// the process, only the payload built from it does.
+// group behind that id. It carries real certnames, because a plan never
+// leaves the process; only the payload built from it does.
 type PlannedGroup struct {
 	ID        string
 	Key       model.AggregateChangeKey
@@ -300,11 +314,28 @@ type PlannedGroup struct {
 // whether bounding dropped any. BuildRequest builds its payload from this
 // and Interpret resolves returned ids against it, so the two cannot
 // disagree about which id means which group.
+//
+// Edge groups are dropped before ranking. A dependency-graph edge change
+// is a consequence of the resource changes around it, carries no value
+// pair for a model to reason about, and a run's edges routinely outnumber
+// its resource changes: sending them spends the group budget and returns
+// a wall of "unknown" that tells a reader nothing. The deterministic
+// report still lists every edge group in its own section, so nothing is
+// hidden, only kept out of the inference request. groups_total counts
+// what was eligible for assessment, so truncation accounting stays
+// consistent.
 func PlanGroups(r model.Result, maxGroups int) (planned []PlannedGroup, total int, truncated bool) {
 	if maxGroups <= 0 {
 		maxGroups = DefaultMaxGroups
 	}
-	ranked := rankGroups(r.Aggregate.Groups)
+	assessable := make([]model.AggregateGroup, 0, len(r.Aggregate.Groups))
+	for _, g := range r.Aggregate.Groups {
+		if g.Key.Edge != nil {
+			continue
+		}
+		assessable = append(assessable, g)
+	}
+	ranked := rankGroups(assessable)
 	total = len(ranked)
 	if len(ranked) > maxGroups {
 		ranked = ranked[:maxGroups]

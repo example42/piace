@@ -8,8 +8,7 @@ import (
 // AISchemaVersion is the change assessment artifact's own version. It is
 // independent of model.ResultSchemaVersion by design: the assessment is
 // quarantined out of the result document so that document's determinism
-// guarantee is not weakened to accommodate it. See
-// docs/adr/0002-keep-the-change-assessment-out-of-the-result-document.md.
+// guarantee is not weakened to accommodate it. See CONTEXT.md.
 const AISchemaVersion = 1
 
 // DiagnosticSeverity mirrors the result document's two severities without
@@ -57,7 +56,7 @@ type Assessment struct {
 	ModelID         string `json:"model_id,omitempty"`
 	// EndpointAuthority is the inference service's host, recorded so a
 	// reader can audit where an assessment came from without opening the
-	// services file — the same reason model.ServiceProvenance exists.
+	// services file. That is the same reason model.ServiceProvenance exists.
 	EndpointAuthority string `json:"endpoint_authority,omitempty"`
 	// SourceReportChecksum ties an assessment to the exact result
 	// document it was derived from.
@@ -70,13 +69,17 @@ type Assessment struct {
 	Run    RunAssessment     `json:"run"`
 	Groups []GroupAssessment `json:"groups,omitempty"`
 
+	// GroupsTotal counts the groups eligible for assessment, which is
+	// resource-change groups only: edge groups are dropped before ranking
+	// (see PlanGroups), so GroupsAssessed and GroupsTruncated are stated
+	// against this number rather than against every aggregate group.
 	GroupsTotal     int  `json:"groups_total"`
 	GroupsAssessed  int  `json:"groups_assessed"`
 	GroupsTruncated bool `json:"groups_truncated"`
 
-	// InputPartial records that the result document itself was
-	// incomplete — a retrieval or compilation failure — so the assessment
-	// says what it could not see rather than reading as a full review.
+	// InputPartial records that the result document itself was incomplete,
+	// from a retrieval or compilation failure, so the assessment says what
+	// it could not see rather than reading as a full review.
 	InputPartial bool `json:"input_partial,omitempty"`
 
 	ChangeContext *ChangeContext `json:"change_context,omitempty"`

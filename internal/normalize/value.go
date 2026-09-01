@@ -10,10 +10,10 @@ import (
 )
 
 // generatedMetadataParameters names the resource parameters this package
-// drops as generated catalog metadata rather than managed configuration,
-// per requirements.md 5.9 ("THE CLI SHALL exclude generated/noise-oriented
-// fields from the semantic diff: tags, source file/line information, and
-// catalog metadata unrelated to managed file content"). See doc.go's
+// drops as generated catalog metadata rather than managed
+// configuration. Generated and noise-oriented fields are excluded from
+// the semantic diff: tags, source file and line information, and catalog
+// metadata unrelated to managed file content. See doc.go's
 // "What is dropped, and why that is safe" section for the full rationale
 // and the measurements behind it.
 var generatedMetadataParameters = map[string]bool{
@@ -26,21 +26,21 @@ func isGeneratedMetadataParameter(name string) bool {
 	return generatedMetadataParameters[name]
 }
 
-// decodeParameters decodes a resource's raw "parameters" JSON object into
-// the model.Value domain, canonicalizing every numeric value with
+// decodeParameters decodes a resource's raw "parameters" JSON object
+// into the model.Value domain, canonicalizing every numeric value with
 // snapshot.CanonicalNumberString along the way, and dropping every
-// parameter isGeneratedMetadataParameter names. A missing/empty
+// parameter isGeneratedMetadataParameter names. A missing or empty
 // "parameters" field decodes to an empty (nil) parameter map rather than
-// an error: PuppetDB's documented catalog wire format v8 states "Puppet
+// an error. PuppetDB's documented catalog wire format v8 states "Puppet
 // will only provide Booleans, strings, arrays, and hashes... Attributes
-// with undef values are not added to the catalog," so a resource with no
+// with undef values are not added to the catalog", so a resource with no
 // parameters at all is a legitimate, if unusual, input, and both
-// documented wire shapes always declare "parameters" as present at the
-// wire level even when a Puppet manifest sets none — but this package
-// treats an entirely absent field the same as an empty object rather than
-// rejecting it, since design.md section 7.1's "unknown/unparseable
-// required shapes" concern is about a value that cannot be decoded at
-// all, not about an empty-but-present or absent optional collection.
+// documented wire shapes always declare "parameters" at the wire level
+// even when a Puppet manifest sets none. This package treats an entirely
+// absent field the same as an empty object rather than rejecting it: the
+// concern about unknown or unparseable required shapes is about a value
+// that cannot be decoded at all, not about an empty-but-present or
+// absent optional collection.
 func decodeParameters(raw json.RawMessage) (map[string]model.Value, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 || string(trimmed) == "null" {
@@ -126,10 +126,9 @@ func canonicalizeValue(v any) (model.Value, error) {
 		}
 		return out, nil
 	default:
-		// Unreachable from any value produced by encoding/json's decoder
-		// (see doc.go); guarded defensively per design.md section 7.1's
-		// "Catalog data outside this JSON-compatible value domain is
-		// rejected as a normalization error."
+		// Unreachable from any value produced by encoding/json's decoder (see
+		// doc.go); guarded defensively, since "catalog data outside this
+		// JSON-compatible value domain is rejected as a normalization error."
 		return nil, fmt.Errorf("unsupported value type %T", v)
 	}
 }

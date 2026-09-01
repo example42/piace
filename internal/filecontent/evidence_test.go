@@ -13,10 +13,10 @@ import (
 // file uses when it needs a File resource's literal content: no test
 // output (a returned model.FileContentEvidence, a *model.Diagnostic
 // message, or any error string this package produces) may ever contain
-// this exact string. assertNoRawContentLeak checks that directly, per
-// this task's brief: "confirm no test ever finds raw content bytes in a
-// returned FileContentEvidence, diagnostic message, or any string this
-// package produces."
+// this exact string. assertNoRawContentLeak checks that directly: no
+// test may ever find raw content bytes in a returned
+// FileContentEvidence, a diagnostic message, or any string this package
+// produces.
 const sampleContentBytes = "TOP-SECRET-MANAGED-FILE-BYTES-4f8e2a"
 
 func fileParams(overrides map[string]model.Value) map[string]model.Value {
@@ -347,8 +347,7 @@ func TestResolveFileContentEvidence_Step4b_SameReferenceNoRetriever(t *testing.T
 
 // TestResolveFileContentEvidence_NeverLeaksContentAcrossAllStates runs a
 // broad sweep across every step/state this function can produce and
-// asserts sampleContentBytes never appears anywhere in the output, per
-// this task's explicit testing requirement.
+// asserts sampleContentBytes never appears anywhere in the output.
 func TestResolveFileContentEvidence_NeverLeaksContentAcrossAllStates(t *testing.T) {
 	cases := []struct {
 		name      string

@@ -16,21 +16,21 @@ import (
 )
 
 // CatalogRequester is the compiler-adapter contract this package needs:
-// design.md's `Compiler.RequestCandidate(target, facts) -> Catalog,
-// Provenance, Warnings`. *compiler.Adapter (task 6) implements it.
+// `Compiler.RequestCandidate(target, facts) -> Catalog, Provenance,
+// Warnings`. *compiler.Adapter implements it.
 //
 // It is declared here rather than imported from internal/capture so the
-// two commands do not couple to each other; both name the same method set
-// and both are satisfied by the same single adapter, which is what
-// design.md section 5 requires ("Capture catalog uses the exact same
-// adapter and policy as comparison").
+// two commands do not couple to each other. Both name the same method
+// set and both are satisfied by the same single adapter, which is what
+// capture catalog using the exact same adapter and policy as comparison
+// means in practice.
 type CatalogRequester interface {
 	RequestCandidate(ctx context.Context, target resolve.Target, facts puppetdb.Factset) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic)
 }
 
 // Workflow implements `piace compare`. Every collaborator is injected so
-// the whole pipeline is exercisable without a network, which is what task
-// 12's fixture matrix needs.
+// the whole pipeline is exercisable without a network, which is what the
+// fixture matrix needs.
 type Workflow struct {
 	// PuppetDBFacts and FileFacts are the two FactSource implementations;
 	// puppetdb.SelectFactSource picks between them per target.
@@ -75,11 +75,11 @@ func (w *Workflow) Run(ctx context.Context, cfg resolve.Config) model.Result {
 		result.Targets = append(result.Targets, tr)
 	}
 
-	// The document is target-sorted (design.md section 9) while the work
-	// above ran in target-file order, which impact.EstimateAll's
-	// documented "first target in target-file order" tie-break for an
-	// identity exhibited by several targets depends on. Sorting the
-	// emitted results rather than the input preserves both.
+	// The document is target-sorted while the work above ran in target-file
+	// order, which impact.EstimateAll's documented "first target in
+	// target-file order" tie-break for an identity exhibited by several
+	// targets depends on. Sorting the emitted results rather than the input
+	// preserves both.
 	sort.SliceStable(result.Targets, func(i, j int) bool {
 		return result.Targets[i].Certname < result.Targets[j].Certname
 	})
@@ -102,7 +102,7 @@ func (w *Workflow) Run(ctx context.Context, cfg resolve.Config) model.Result {
 //
 // Outcome is left unset here; model.Result.Reduce classifies it from the
 // diagnostics and node diff this function collects, so there is exactly
-// one implementation of design.md section 10's taxonomy.
+// one implementation of the taxonomy.
 func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) model.TargetResult {
 	tr := model.TargetResult{
 		Certname: target.Certname,
@@ -131,13 +131,13 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		return tr
 	}
 	tr.Candidate = &candidateProvenance
-	// Compiler warnings (a permitted v4-to-v3 fallback notice) become
+	// Compiler warnings, a permitted v4-to-v3 fallback notice, become
 	// warning-severity diagnostics so there is one channel a renderer and
 	// the reducer both read. The non-suppressible v3 trusted-fact warning
 	// itself stays where internal/compiler put it, on
 	// CandidateProvenance.V3Warning, and every renderer surfaces it from
-	// there — requirements.md 2.5 requires it "in every output format",
-	// which is a stronger obligation than being one diagnostic among many.
+	// there: it is owed in every output format, which is a stronger
+	// obligation than being one diagnostic among many.
 	for _, warning := range warnings {
 		tr.Diagnostics = append(tr.Diagnostics, model.Diagnostic{
 			Severity:  model.SeverityWarning,
@@ -165,9 +165,9 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 }
 
 // estimateImpact runs the run-wide impact estimation stage, or reports
-// why it could not. It is a no-op — no request, no diagnostic — when no
-// target enables estimation, per requirements.md 9.1 and design.md
-// section 8's "disabled estimates produce no request and no failure".
+// why it could not. It is a no-op, no request and no diagnostic, when no
+// target enables estimation: a disabled estimate produces no request and
+// no failure.
 func (w *Workflow) estimateImpact(ctx context.Context, targets []resolve.Target, nodeDiffs []model.NodeDiff) ([]model.ImpactEstimate, []model.Diagnostic) {
 	if !anyEstimateEnabled(targets) {
 		return nil, nil
@@ -192,11 +192,11 @@ func anyEstimateEnabled(targets []resolve.Target) bool {
 }
 
 // serviceProvenance records the two authorities this run was configured
-// to reach. Only URL.Host is read — never a CA bundle, client
-// certificate, or private key path — so the run-level provenance cannot
-// become a disclosure channel for the material design.md section 3.2
-// excludes. A zero Services (a test-constructed Config) yields nil rather
-// than a pair of empty strings.
+// to reach. Only URL.Host is read, never a CA bundle, client
+// certificate, or private key path, so the run-level provenance cannot
+// become a disclosure channel for the material provenance excludes. A
+// zero Services, from a test-constructed Config, yields nil rather than
+// a pair of empty strings.
 func serviceProvenance(services resolve.Services) *model.ServiceProvenance {
 	compiler, puppetDB := "", ""
 	if services.Compiler.URL != nil {

@@ -1,7 +1,6 @@
 // Package exitcode defines PIACE's stable process exit codes and the
 // outcome classes that map to them.
 //
-// Design reference: design.md section 10 "Error taxonomy and outcomes".
 // The mapping and precedence order below are part of PIACE's public,
 // versioned contract: CI pipelines depend on these exact numeric values.
 package exitcode
@@ -52,8 +51,7 @@ const (
 	OutcomeOperationalError Outcome = "operational_error"
 )
 
-// Precedence lists every outcome from highest to lowest precedence, matching
-// design.md section 10:
+// Precedence lists every outcome from highest to lowest precedence:
 //
 //	operational error (30) > compilation failure (20)
 //	  > policy-disallowed difference (10) > differences_allowed (0) > clean (0)

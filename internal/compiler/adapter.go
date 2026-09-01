@@ -15,10 +15,10 @@ import (
 // Adapter is the v3/v4 compiler-backed implementation of
 // capture.CompilerCatalogRequester (see internal/capture/compiler.go for
 // the interface contract this type satisfies). It wraps a
-// *transport.Client already built (by internal/transport) from the
-// resolved compiler resolve.Endpoint, and issues only the documented
-// catalog-compilation POST requests described in doc.go — never a
-// PuppetDB request of any kind (see doc.go's "Scope" section).
+// *transport.Client already built from the resolved compiler
+// resolve.Endpoint, and issues only the documented catalog-compilation
+// POST requests described in doc.go, never a PuppetDB request of any
+// kind (see doc.go's "Scope" section).
 type Adapter struct {
 	client  *transport.Client
 	baseURL *url.URL
@@ -35,12 +35,10 @@ func NewAdapter(client *transport.Client, endpoint *url.URL) *Adapter {
 
 // RequestCandidate implements capture.CompilerCatalogRequester. It
 // requests target's candidate catalog for its configured candidate
-// environment using facts as the target's input factset, applying
-// design.md section 5's exact v4 trusted-fact policy, v4-to-v3 fallback
-// conditions, and v3 warning rule. It is reused identically by `capture
-// catalog` (already wired against this interface by task 5) and by the
-// future `compare` command, per design.md's "Capture catalog uses the
-// exact same adapter and policy as comparison."
+// environment using facts as the target's input factset, applying the v4
+// trusted-fact policy, the v4-to-v3 fallback conditions, and the v3
+// warning rule. It is reused identically by `capture catalog` and by
+// `compare`, which share the exact same adapter and policy.
 func (a *Adapter) RequestCandidate(ctx context.Context, target resolve.Target, facts puppetdb.Factset) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic) {
 	host := a.client.Host()
 
@@ -78,9 +76,8 @@ func (a *Adapter) RequestCandidate(ctx context.Context, target resolve.Target, f
 }
 
 // requestV3 issues one v3 candidate catalog request and applies the
-// non-suppressible v3 warning unconditionally, per requirements.md
-// 2.5-2.6 and design.md section 5 ("For API v3... PIACE attaches a
-// prominent, non-suppressible warning").
+// non-suppressible v3 warning unconditionally: for API v3, PIACE
+// attaches a prominent, non-suppressible warning.
 func (a *Adapter) requestV3(ctx context.Context, target resolve.Target, flatFacts map[string]json.RawMessage, base model.CandidateProvenance) (puppetdb.Catalog, model.CandidateProvenance, *model.Diagnostic) {
 	req, err := buildV3Request(ctx, a.client, a.baseURL, target.Certname, target.Candidate.Environment, flatFacts)
 	if err != nil {
@@ -106,13 +103,12 @@ func (a *Adapter) requestV3(ctx context.Context, target resolve.Target, flatFact
 }
 
 // requestV4WithFallback issues one v4 candidate catalog request,
-// enforcing design.md section 5's trusted-fact policy first, then applies
-// the v4-to-v3 fallback decision on the response per design.md section
-// 3.1: fallback happens only when target.Candidate.AllowV3Fallback is
-// true AND the v4 response is a verified-unsupported response
-// (isVerifiedUnsupportedV4); it never happens for authentication,
-// authorization, timeout, malformed response, or candidate identity/
-// environment mismatch.
+// enforcing the trusted-fact policy first, then applies the v4-to-v3
+// fallback decision on the response: fallback happens only when
+// target.Candidate.AllowV3Fallback is true AND the v4 response is a
+// verified-unsupported response (isVerifiedUnsupportedV4). It never
+// happens for authentication, authorization, timeout, malformed
+// response, or candidate identity or environment mismatch.
 func (a *Adapter) requestV4WithFallback(ctx context.Context, target resolve.Target, flatFacts map[string]json.RawMessage, base model.CandidateProvenance) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic) {
 	host := a.client.Host()
 
@@ -133,10 +129,10 @@ func (a *Adapter) requestV4WithFallback(ctx context.Context, target resolve.Targ
 
 	resp, err := a.client.Do(req, 0)
 	if err != nil {
-		// A transport-level failure (TLS/connect/timeout/etc.) never
-		// triggers fallback: design.md section 3.1 explicitly excludes
-		// timeout, and there is no HTTP response at all here to classify
-		// as "verified unsupported" in the first place.
+		// A transport-level failure (TLS, connect, timeout and the like) never
+		// triggers fallback: timeout is explicitly excluded, and there is no
+		// HTTP response at all here to classify as verified unsupported in the
+		// first place.
 		diag := diagnosticFromTransportError(target.Certname, err)
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
 	}

@@ -91,7 +91,7 @@ func assessableResult() model.Result {
 	nginx := model.ResourceIdentity{Type: "Service", Title: "nginx"}
 	shadow := model.ResourceIdentity{Type: "File", Title: "/etc/shadow"}
 	r.Aggregate = model.AggregateDiff{Groups: []model.AggregateGroup{
-		// One target only — must rank below the two-target group.
+		// One target only, so it must rank below the two-target group.
 		{
 			Key:       model.AggregateChangeKey{Kind: model.ChangeParameterChanged, Identity: &shadow, Parameter: "content"},
 			Before:    model.RedactedValue,
@@ -102,7 +102,7 @@ func assessableResult() model.Result {
 			Key:       model.AggregateChangeKey{Kind: model.ChangeEdgeAdded, Edge: &model.Edge{Source: "Class[a]", Target: "Class[b]"}},
 			Certnames: []string{realCertname},
 		},
-		// Two targets — must rank first.
+		// Two targets, so it must rank first.
 		{
 			Key:       model.AggregateChangeKey{Kind: model.ChangeParameterChanged, Identity: &nginx, Parameter: "ensure"},
 			Before:    "stopped",

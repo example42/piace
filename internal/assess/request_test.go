@@ -25,7 +25,7 @@ func buildBody(t *testing.T, cfg Config, cc ChangeContext) (string, Pseudonyms) 
 
 // --- Increment 2: pseudonymized identity ---
 
-// Slice 2.1 and 2.4: no real certname and no service authority leaves.
+// no real certname and no service authority leaves.
 func TestRequestCarriesNoRealNodeNameOrServiceAuthority(t *testing.T) {
 	body, p := buildBody(t, testConfig(), ChangeContext{})
 
@@ -39,7 +39,7 @@ func TestRequestCarriesNoRealNodeNameOrServiceAuthority(t *testing.T) {
 	}
 }
 
-// Slice 2.4 again, stated separately: authorities are omitted outright
+// Stated separately: authorities are omitted outright
 // rather than pseudonymized. A model has no use for them.
 func TestRequestOmitsServiceAuthoritiesEvenWithoutPseudonymization(t *testing.T) {
 	cfg := testConfig()
@@ -53,7 +53,7 @@ func TestRequestOmitsServiceAuthoritiesEvenWithoutPseudonymization(t *testing.T)
 	}
 }
 
-// Slice 2.2: the mapping is stable and injective within a run.
+// the mapping is stable and injective within a run.
 func TestPseudonymsAreStableAndInjective(t *testing.T) {
 	_, p := buildBody(t, testConfig(), ChangeContext{})
 
@@ -69,18 +69,18 @@ func TestPseudonymsAreStableAndInjective(t *testing.T) {
 	}
 }
 
-// Slice 2.3: resource identities are the signal and pass through whole.
+// resource identities are the signal and pass through whole.
 func TestResourceIdentitiesAreNotPseudonymized(t *testing.T) {
 	body, _ := buildBody(t, testConfig(), ChangeContext{})
 
-	for _, want := range []string{"Service[nginx]", "File[/etc/shadow]", "Class[a]"} {
+	for _, want := range []string{"Service[nginx]", "File[/etc/shadow]"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("inference request body lost the resource identity %q", want)
 		}
 	}
 }
 
-// Slice 2.5: the opt-out sends real certnames and nothing else changes.
+// the opt-out sends real certnames and nothing else changes.
 func TestPseudonymizationOptOutSendsRealCertnames(t *testing.T) {
 	cfg := testConfig()
 	cfg.Pseudonymize = false
@@ -96,7 +96,7 @@ func TestPseudonymizationOptOutSendsRealCertnames(t *testing.T) {
 
 // --- Increment 3: building the request ---
 
-// Slice 3.1: ranking is by reach, then kind, then canonical identity.
+// ranking is by reach, then kind, then canonical identity.
 func TestGroupsAreRankedByHowManyNodesTheyReach(t *testing.T) {
 	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
 	if err != nil {
@@ -105,8 +105,8 @@ func TestGroupsAreRankedByHowManyNodesTheyReach(t *testing.T) {
 	payload := decodePayload(t, req)
 
 	groups, _ := payload["groups"].([]any)
-	if len(groups) != 3 {
-		t.Fatalf("groups = %d, want 3", len(groups))
+	if len(groups) != 2 {
+		t.Fatalf("groups = %d, want 2", len(groups))
 	}
 	first, _ := groups[0].(map[string]any)
 	if first["identity"] != "Service[nginx]" {
@@ -117,8 +117,28 @@ func TestGroupsAreRankedByHowManyNodesTheyReach(t *testing.T) {
 	}
 }
 
-// Slice 3.2: over the cap, the top N are sent and the omission is counted
-// exactly — unlike an impact estimate, the total is known locally.
+// An edge group is a consequence of the resource changes around it and
+// carries no value pair to reason about, so PlanGroups drops it before it
+// reaches the request. The fixture has one; nothing about it may leave.
+func TestEdgeGroupsAreNotSentForAssessment(t *testing.T) {
+	body, _ := buildBody(t, testConfig(), ChangeContext{})
+	if strings.Contains(body, "Class[a] -> Class[b]") {
+		t.Errorf("an edge group's identity reached the inference request")
+	}
+
+	planned, total, _ := PlanGroups(assessableResult(), DefaultMaxGroups)
+	if total != 2 {
+		t.Errorf("groups_total = %d, want 2 (edge group not counted as assessable)", total)
+	}
+	for _, g := range planned {
+		if g.Key.Edge != nil {
+			t.Errorf("planned group %s is an edge group", g.ID)
+		}
+	}
+}
+
+// Over the cap, the top N are sent and the omission is counted exactly.
+// Unlike an impact estimate, the total is known locally.
 func TestOverTheGroupCapTheRequestSaysWhatItLeftOut(t *testing.T) {
 	cfg := testConfig()
 	cfg.MaxGroups = 1
@@ -131,15 +151,15 @@ func TestOverTheGroupCapTheRequestSaysWhatItLeftOut(t *testing.T) {
 	if groups, _ := payload["groups"].([]any); len(groups) != 1 {
 		t.Errorf("groups sent = %d, want 1", len(groups))
 	}
-	if payload["groups_total"] != json.Number("3") {
-		t.Errorf("groups_total = %v, want 3", payload["groups_total"])
+	if payload["groups_total"] != json.Number("2") {
+		t.Errorf("groups_total = %v, want 2", payload["groups_total"])
 	}
 	if payload["groups_truncated"] != true {
 		t.Errorf("groups_truncated = %v, want true", payload["groups_truncated"])
 	}
 }
 
-// Slice 3.3 and 3.4: caller-supplied free text is fenced and labelled,
+// caller-supplied free text is fenced and labelled,
 // and an instruction-shaped description stays inside the fence.
 func TestChangeContextFreeTextIsFencedAsUntrustedData(t *testing.T) {
 	cc := ChangeContext{
@@ -172,7 +192,7 @@ func TestChangeContextFreeTextIsFencedAsUntrustedData(t *testing.T) {
 	}
 }
 
-// Slice 3.5: site policy notes reach the request at one designated point.
+// site policy notes reach the request at one designated point.
 func TestPolicyNotesAreCarriedAndCapped(t *testing.T) {
 	cfg := testConfig()
 	cfg.PolicyNotes = strings.Repeat("p", MaxPolicyNotesBytes*2)
@@ -193,10 +213,10 @@ func TestPolicyNotesAreCarriedAndCapped(t *testing.T) {
 	}
 }
 
-// Slice 3.6: the assembled request equals a checked-in golden fixture, so
-// changing what PIACE asks the inference service — the task prompt, the
-// fences, the order of the blocks, the sampling options, the
-// structured-output nesting — is a visible diff in review rather than a
+// The assembled request equals a checked-in golden fixture, so changing
+// what PIACE asks the inference service, whether the task prompt, the
+// fences, the order of the blocks, the sampling options or the
+// structured-output nesting, is a visible diff in review rather than a
 // runtime surprise.
 //
 // The golden is over the whole marshalled request, not over the TaskPrompt
@@ -236,7 +256,7 @@ func TestAssembledRequestEqualsItsGoldenFixture(t *testing.T) {
 	}
 }
 
-// Slice 3.6, stated separately: the system message is the binary-fixed
+// the system message is the binary-fixed
 // prompt verbatim, and its vocabulary is the one CONTEXT.md fixes.
 func TestTaskPromptIsFixed(t *testing.T) {
 	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
@@ -256,7 +276,7 @@ func TestTaskPromptIsFixed(t *testing.T) {
 	}
 }
 
-// Slice 3.7: the disclosure boundary, at the seam that decides it.
+// the disclosure boundary, at the seam that decides it.
 func TestRequestDisclosesNoSecretOrManagedBytes(t *testing.T) {
 	body, _ := buildBody(t, testConfig(), ChangeContext{})
 
@@ -292,8 +312,9 @@ func TestRequestDisclosesNoSecretOrManagedBytes(t *testing.T) {
 	}
 }
 
-// Slice 3.8: the structured-output field, in the shape the OpenAI API
-// reference documents, and the fixed sampling options.
+// The structured-output field, in the shape the OpenAI API reference
+// documents. No sampling parameter is sent unless one is configured; see
+// TestRequestSamplingAndTokenLimit.
 func TestRequestAsksForStructuredOutput(t *testing.T) {
 	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
 	if err != nil {
@@ -308,14 +329,19 @@ func TestRequestAsksForStructuredOutput(t *testing.T) {
 	if !req.ResponseFormat.JSONSchema.Strict {
 		t.Error("strict is not set; Chat Completions is non-strict by default")
 	}
-	if req.Temperature != 0 || req.Seed != 0 {
-		t.Errorf("temperature/seed = %v/%v, want 0/0", req.Temperature, req.Seed)
+	if req.Temperature != nil {
+		t.Errorf("temperature = %v, want unset", *req.Temperature)
 	}
 
 	raw, _ := json.Marshal(req)
-	for _, want := range []string{`"response_format"`, `"json_schema"`, `"strict":true`, `"temperature":0`, `"seed":0`} {
+	for _, want := range []string{`"response_format"`, `"json_schema"`, `"strict":true`} {
 		if !strings.Contains(string(raw), want) {
 			t.Errorf("request body is missing %s", want)
+		}
+	}
+	for _, absent := range []string{`"temperature"`, `"seed"`} {
+		if strings.Contains(string(raw), absent) {
+			t.Errorf("request body carries %s with nothing configured", absent)
 		}
 	}
 
@@ -330,6 +356,59 @@ func TestRequestAsksForStructuredOutput(t *testing.T) {
 	}
 	if raw, _ := json.Marshal(off); strings.Contains(string(raw), "response_format") {
 		t.Error("response_format is serialized with structured_output disabled")
+	}
+}
+
+// TestRequestSamplingAndTokenLimit covers the two provider-compatibility
+// knobs: the output-token bound is carried by whichever field
+// token_limit_param names, and a temperature is sent only when configured.
+func TestRequestSamplingAndTokenLimit(t *testing.T) {
+	base := testConfig()
+
+	// Default: max_tokens, no temperature.
+	def, _, err := BuildRequest(assessableResult(), ChangeContext{}, base)
+	if err != nil {
+		t.Fatalf("BuildRequest: %v", err)
+	}
+	if def.MaxTokens != base.MaxTokens || def.MaxCompletionTokens != 0 {
+		t.Errorf("default token limit = max_tokens %d / max_completion_tokens %d", def.MaxTokens, def.MaxCompletionTokens)
+	}
+
+	// max_completion_tokens: the value moves to the other field, nothing
+	// is sent under the old name.
+	cfg := testConfig()
+	cfg.TokenLimitParam = "max_completion_tokens"
+	temp := 0.2
+	cfg.Temperature = &temp
+	got, _, err := BuildRequest(assessableResult(), ChangeContext{}, cfg)
+	if err != nil {
+		t.Fatalf("BuildRequest: %v", err)
+	}
+	if got.MaxTokens != 0 || got.MaxCompletionTokens != cfg.MaxTokens {
+		t.Errorf("token limit = max_tokens %d / max_completion_tokens %d", got.MaxTokens, got.MaxCompletionTokens)
+	}
+	if got.Temperature == nil || *got.Temperature != 0.2 {
+		t.Errorf("temperature = %v, want 0.2", got.Temperature)
+	}
+	raw, _ := json.Marshal(got)
+	if strings.Contains(string(raw), `"max_tokens"`) {
+		t.Errorf("body carries max_tokens under max_completion_tokens config: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"max_completion_tokens":4000`) || !strings.Contains(string(raw), `"temperature":0.2`) {
+		t.Errorf("body missing the configured fields: %s", raw)
+	}
+
+	// An explicit zero temperature is still sent, because a pointer
+	// distinguishes it from unset.
+	zero := 0.0
+	cfg2 := testConfig()
+	cfg2.Temperature = &zero
+	z, _, err := BuildRequest(assessableResult(), ChangeContext{}, cfg2)
+	if err != nil {
+		t.Fatalf("BuildRequest: %v", err)
+	}
+	if z.Temperature == nil || *z.Temperature != 0 {
+		t.Errorf("explicit zero temperature = %v, want 0", z.Temperature)
 	}
 }
 

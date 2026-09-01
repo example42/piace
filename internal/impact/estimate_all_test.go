@@ -86,7 +86,7 @@ func TestEstimateAll_DeduplicatesIdentitiesRunWideAndSortsThem(t *testing.T) {
 	}
 }
 
-// design.md section 8: edge-only differences never trigger an estimate.
+// Edge-only differences never trigger an estimate.
 func TestEstimateAll_SkipsEdgeOnlyDifferences(t *testing.T) {
 	targets := []resolve.Target{impactTarget("web-01", true, time.Second, 5)}
 	diffs := []model.NodeDiff{{
@@ -105,8 +105,7 @@ func TestEstimateAll_SkipsEdgeOnlyDifferences(t *testing.T) {
 	}
 }
 
-// Requirement 9.1 / design.md section 8: a disabled estimate produces no
-// request and no failure.
+// A disabled estimate produces no request and no failure.
 func TestEstimateAll_DisabledTargetProducesNoRequest(t *testing.T) {
 	targets := []resolve.Target{impactTarget("web-01", false, time.Second, 5)}
 	diffs := []model.NodeDiff{changed("web-01", id("Package", "nginx"))}
@@ -191,8 +190,8 @@ func TestEstimateAll_SkipsIdentityNoEnablingTargetExhibits(t *testing.T) {
 	}
 }
 
-// A failed estimate is reported both as an estimate (requirement 9.7)
-// and as a diagnostic (design.md section 8's operational outcome).
+// A failed estimate is reported both as an estimate and as a diagnostic
+// that reduces to an operational outcome.
 func TestEstimateAll_FailedEstimateIsReportedTwice(t *testing.T) {
 	targets := []resolve.Target{impactTarget("web-01", true, time.Second, 5)}
 	diffs := []model.NodeDiff{changed("web-01", id("Package", "nginx"), id("File", "/etc/motd"))}
