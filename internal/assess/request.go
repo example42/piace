@@ -65,8 +65,14 @@ Rules you must follow:
 
 // Config is the resolved inference policy for one change assessment.
 type Config struct {
-	Model            string
-	MaxTokens        int
+	Model     string
+	MaxTokens int
+	// TokenLimitParam is "max_tokens" or "max_completion_tokens"; an empty
+	// value is treated as "max_tokens". See inference.Request.
+	TokenLimitParam string
+	// Temperature, when non-nil, is sent as the request's sampling
+	// temperature. Nil sends none. See inference.Request.
+	Temperature      *float64
 	MaxGroups        int
 	Pseudonymize     bool
 	StructuredOutput bool
@@ -115,12 +121,20 @@ func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Reque
 	}
 
 	req := inference.Request{
-		Model:     cfg.Model,
-		MaxTokens: cfg.MaxTokens,
+		Model: cfg.Model,
 		Messages: []inference.Message{
 			{Role: "system", Content: TaskPrompt},
 			{Role: "user", Content: user},
 		},
+	}
+	if cfg.TokenLimitParam == "max_completion_tokens" {
+		req.MaxCompletionTokens = cfg.MaxTokens
+	} else {
+		req.MaxTokens = cfg.MaxTokens
+	}
+	if cfg.Temperature != nil {
+		t := *cfg.Temperature
+		req.Temperature = &t
 	}
 	if cfg.StructuredOutput {
 		req.ResponseFormat = &inference.ResponseFormat{
@@ -300,11 +314,28 @@ type PlannedGroup struct {
 // whether bounding dropped any. BuildRequest builds its payload from this
 // and Interpret resolves returned ids against it, so the two cannot
 // disagree about which id means which group.
+//
+// Edge groups are dropped before ranking. A dependency-graph edge change
+// is a consequence of the resource changes around it, carries no value
+// pair for a model to reason about, and a run's edges routinely outnumber
+// its resource changes: sending them spends the group budget and returns
+// a wall of "unknown" that tells a reader nothing. The deterministic
+// report still lists every edge group in its own section, so nothing is
+// hidden, only kept out of the inference request. groups_total counts
+// what was eligible for assessment, so truncation accounting stays
+// consistent.
 func PlanGroups(r model.Result, maxGroups int) (planned []PlannedGroup, total int, truncated bool) {
 	if maxGroups <= 0 {
 		maxGroups = DefaultMaxGroups
 	}
-	ranked := rankGroups(r.Aggregate.Groups)
+	assessable := make([]model.AggregateGroup, 0, len(r.Aggregate.Groups))
+	for _, g := range r.Aggregate.Groups {
+		if g.Key.Edge != nil {
+			continue
+		}
+		assessable = append(assessable, g)
+	}
+	ranked := rankGroups(assessable)
 	total = len(ranked)
 	if len(ranked) > maxGroups {
 		ranked = ranked[:maxGroups]

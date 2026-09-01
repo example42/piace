@@ -35,6 +35,10 @@ type inferenceStub struct {
 	// replies, when non-empty, is consumed one entry per request, so a
 	// test can make the first attempt unusable and the second good.
 	replies []string
+	// rawBody, when non-empty, is written verbatim as the response body
+	// instead of a chat-completions envelope — for exercising an error
+	// payload shaped like a real provider's.
+	rawBody string
 
 	requests []string
 	auth     []string
@@ -56,6 +60,10 @@ func newInferenceStub(t *testing.T) *inferenceStub {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(s.status)
+		if s.rawBody != "" {
+			io.WriteString(w, s.rawBody)
+			return
+		}
 		io.WriteString(w, chatEnvelope(s.reply(string(raw))))
 	}))
 	t.Cleanup(s.server.Close)

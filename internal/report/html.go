@@ -341,7 +341,7 @@ func buildHTMLAssessment(a *assess.Assessment) *htmlAssessment {
 	}
 	if a.GroupsTruncated {
 		view.Truncation = fmt.Sprintf(
-			"Assessed %d of %d aggregate groups. The rest were ranked lower and never sent, so this section says nothing about them.",
+			"Assessed %d of %d resource-change groups. The rest were ranked lower and never sent, so this section says nothing about them.",
 			a.GroupsAssessed, a.GroupsTotal)
 	}
 	if a.InputPartial {

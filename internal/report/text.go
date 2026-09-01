@@ -74,7 +74,7 @@ func writeTextAssessment(b *bytes.Buffer, a *assess.Assessment) {
 		fmt.Fprintf(b, "  review focus: %s\n", f)
 	}
 	if a.GroupsTruncated {
-		fmt.Fprintf(b, "  assessed %d of %d aggregate groups\n", a.GroupsAssessed, a.GroupsTotal)
+		fmt.Fprintf(b, "  assessed %d of %d resource-change groups\n", a.GroupsAssessed, a.GroupsTotal)
 	}
 	if a.InputPartial {
 		fmt.Fprintf(b, "  input partial: the result document records diagnostics\n")

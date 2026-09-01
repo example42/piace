@@ -21,8 +21,54 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   unchanged and unrelated: it names the environment to snapshot, not the
   candidate environment under test.
 
+- **`piace explain --debug` / `--debug-dump-dir DIR`**: the two observation
+  options `compare` and `capture` already accept now work on `explain` too, so
+  a rejected inference request can be diagnosed without guessing. `--debug`
+  prints one stderr line for the inference round trip: method, URL, HTTP
+  status, duration, request and response body sizes, and the response body's
+  top-level JSON member names. `--debug-dump-dir` additionally writes the raw
+  request and response bodies to `0600` files in DIR: the request-body dump is
+  the exact catalog-derived payload PIACE sent, and the response-body dump of a
+  4xx is where a provider names the field it rejected. Neither the returned
+  error nor any log line ever carries a response-body value, and the bearer
+  token is a header so it reaches no dump file.
+
+- **`services.inference.token_limit_param`**: selects the request field that
+  carries the output-token bound, `max_tokens` (the default) or
+  `max_completion_tokens`. OpenAI's GPT-5 family rejects `max_tokens` outright
+  and requires `max_completion_tokens`; OpenAI-compatible servers other than
+  current OpenAI (Ollama, vLLM, llama.cpp) only understand `max_tokens`. The
+  value in `max_tokens` is unchanged; only the wire field name differs.
+
+- **`services.inference.temperature`**: optional sampling temperature, sent
+  only when set.
+
+### Changed
+
+- **`piace explain`**: no sampling parameter is sent unless
+  `services.inference.temperature` is configured. PIACE previously hard-coded
+  `temperature: 0` and `seed: 0` into every request; Claude 4+ and OpenAI's
+  GPT-5 family reject any non-default `temperature` with a 400, and `seed`
+  never left a mark (Anthropic's compat endpoint ignores it, OpenAI deprecated
+  it, reasoning models reject it), so the `seed` field is gone. Pinning them
+  never made a model-generated assessment reproducible in the first place: a
+  provider-side model revision still moves the bytes.
+
+- **`piace explain`**: dependency-graph edge groups are no longer sent to the
+  inference service. An edge change is a consequence of the resource changes
+  around it, carries no before/after pair to reason about, and a run's edges
+  routinely outnumber its resource changes, so sending them spent the group
+  budget and returned a wall of `unknown` risk indications. The deterministic
+  report still lists every edge group in its own section; only the change
+  assessment skips them, and `groups_total` now counts what was eligible for
+  assessment.
+
 ### Fixed
 
+- **HTML report**: risk-indication rows in the change assessment's "Group risk
+  indications" list put a full risk badge in a grid track sized for a
+  one-character change sign, so the badge overlapped the group identity and was
+  stretched to the row height. The row now has its own track width.
 - **[docs/ci.md](docs/ci.md) and [examples/ci/](examples/ci/)**: the shipped
   pipelines never bound `candidate.environment` to the environment CI had just
   deployed, and never added the merge request title and description to the

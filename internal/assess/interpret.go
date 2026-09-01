@@ -70,6 +70,10 @@ type Assessment struct {
 	Run    RunAssessment     `json:"run"`
 	Groups []GroupAssessment `json:"groups,omitempty"`
 
+	// GroupsTotal counts the groups eligible for assessment, which is
+	// resource-change groups only: edge groups are dropped before ranking
+	// (see PlanGroups), so GroupsAssessed and GroupsTruncated are stated
+	// against this number rather than against every aggregate group.
 	GroupsTotal     int  `json:"groups_total"`
 	GroupsAssessed  int  `json:"groups_assessed"`
 	GroupsTruncated bool `json:"groups_truncated"`

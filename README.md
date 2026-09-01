@@ -188,8 +188,8 @@ piace explain --json-in REPORT.json --services SERVICES.yaml \
 | `--change` | explain | Change context file (see [Change context](#change-context)) |
 | `--ai-out` | explain | Change assessment artifact path |
 | `--fail-on-inference-error` | explain | Exit 30 when the assessment could not be produced |
-| `--debug` | compare, capture | One metadata line per service request to stderr |
-| `--debug-dump-dir` | compare, capture | Also write raw bodies to `0600` files in DIR |
+| `--debug` | compare, capture, explain | One metadata line per service request to stderr |
+| `--debug-dump-dir` | compare, capture, explain | Also write raw bodies to `0600` files in DIR |
 
 `compare --candidate-environment ENV` compiles every target against `ENV`,
 overriding `candidate.environment` in both the `defaults:` block and any
@@ -248,8 +248,27 @@ is safe for a CI log.
 > directory and never go to a console — but use it on a workstation, not in CI,
 > and delete the directory afterwards.
 
-`explain` accepts neither: they instrument the mTLS transport, which it never
-uses.
+`explain` accepts both, instrumenting its one outbound call to the inference
+service instead of the mTLS transport:
+
+```sh
+piace explain ... --debug
+piace explain ... --debug-dump-dir /tmp/piace-infer-dump
+```
+
+`--debug` prints the HTTP status and the response body's JSON shape, which is
+usually enough to place a `400` from a provider:
+
+```
+piace explain: debug #001 POST https://api.anthropic.com/v1/chat/completions -> 400 in 240ms (request 6144 B, response 180 B, content-type application/json, body object, top-level keys: type,error)
+```
+
+The returned error still names only the status, never a response-body value,
+because that value reaches the change assessment artifact and CI logs.
+`--debug-dump-dir` is how you read the body: the response dump of a 4xx is
+where the provider names the field it rejected, and the request dump is the
+exact payload PIACE sent (the catalog-derived data, already pseudonymized).
+The bearer token is an HTTP header, so it is in no dump file.
 
 ---
 
@@ -618,6 +637,8 @@ inference:
   pseudonymize: true
   structured_output: true
   policy_notes_file: docs/piace-policy.md
+  # token_limit_param: max_completion_tokens   # for OpenAI GPT-5 family
+  # temperature: 0                             # only if the provider accepts one
 ```
 
 | Key | Required | Default | Notes |
@@ -626,11 +647,17 @@ inference:
 | `model` | yes | — | Model identifier the provider expects |
 | `token_env` / `token_file` | yes, exactly one | — | The bearer token is always *referenced*; there is no field to inline one. Naming both is an error |
 | `timeout` | no | `60s` | |
-| `max_tokens` | no | `4000` | |
+| `max_tokens` | no | `4000` | Value of the output-token bound |
+| `token_limit_param` | no | `max_tokens` | Request field that carries `max_tokens`' value: `max_tokens`, or `max_completion_tokens` for OpenAI's GPT-5 family (which rejects `max_tokens`) |
+| `temperature` | no | *unset* | When unset, no temperature is sent. Claude 4+ and GPT-5 reject any non-default value; set this only for a provider that needs and accepts one |
 | `max_groups` | no | `200` | Caps how many aggregate groups leave |
 | `pseudonymize` | no | `true` | `false` sends real certnames |
 | `structured_output` | no | `true` | Latency optimisation; replies are validated locally either way |
 | `policy_notes_file` | no | — | Site policy notes appended to the request, capped at 4000 bytes. A relative path resolves against the services file's directory |
+
+**`api.anthropic.com`**: use a workspace-scoped API key (Console → a Workspace →
+API keys). An identity-linked key is rejected with a 400,
+`anthropic-workspace-id is required`, a header PIACE does not send.
 
 This is the one place in PIACE that sends an `Authorization` header;
 `internal/transport`, which every compiler and PuppetDB request goes through,

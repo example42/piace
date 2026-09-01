@@ -100,12 +100,13 @@ func TestOutstanding_SensitiveWireShape(t *testing.T) {
 //     silently ignores the flag returns a shape PIACE's own validation
 //     then has to degrade — correctly, but with diagnostics on every run.
 //
-//  3. That `temperature: 0` and `seed: 0` are accepted. Neither is
-//     configurable, and neither makes an assessment reproducible — a
-//     provider-side model revision changes what it says, which is the
-//     whole reason the assessment is a separate artifact. They reduce
-//     variance between two runs over the same report; that is all they
-//     are for.
+//  3. (Resolved.) PIACE used to hard-code `temperature: 0` and `seed: 0`
+//     into every request. Both Claude 4+ and OpenAI's GPT-5 family reject
+//     any non-default `temperature` with a 400, and `seed` was ignored or
+//     rejected everywhere, so no sampling parameter is sent now unless
+//     `services.inference.temperature` is set. Pinning them never made an
+//     assessment reproducible anyway — a provider-side model revision
+//     still moves the bytes.
 //
 // What IS already covered, and why it is not enough:
 // internal/assess's request tests assert the exact nesting, the exact

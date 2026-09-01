@@ -42,16 +42,25 @@ type ResponseFormat struct {
 
 // Request is one chat-completions request body.
 //
-// Temperature and Seed are always serialized, never omitted: they are
-// fixed at zero and are not configurable. Zero temperature does not make
-// a change assessment deterministic — a provider-side model revision
-// still moves the bytes — but it is what makes re-running `piace explain`
-// over the same report give a reader the same reading.
+// The output-token bound is carried by exactly one of MaxTokens or
+// MaxCompletionTokens, never both: OpenAI's GPT-5 family rejects
+// `max_tokens` outright and requires `max_completion_tokens`, while
+// OpenAI-compatible servers other than current OpenAI (Ollama, vLLM,
+// llama.cpp) only understand `max_tokens`. internal/assess picks the
+// field from services.inference.token_limit_param.
+//
+// Temperature is a pointer and omitted when nil. PIACE sends no sampling
+// parameter unless one is configured: Claude 4+ and GPT-5 reject any
+// non-default temperature with a 400, and pinning it never made a
+// model-generated assessment reproducible anyway — a provider-side model
+// revision still moves the bytes. There is deliberately no Seed field:
+// Anthropic's compat endpoint ignores it, OpenAI deprecated it, and
+// reasoning models reject it.
 type Request struct {
-	Model          string          `json:"model"`
-	Messages       []Message       `json:"messages"`
-	MaxTokens      int             `json:"max_tokens,omitempty"`
-	Temperature    float64         `json:"temperature"`
-	Seed           int             `json:"seed"`
-	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	Model               string          `json:"model"`
+	Messages            []Message       `json:"messages"`
+	MaxTokens           int             `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	ResponseFormat      *ResponseFormat `json:"response_format,omitempty"`
 }

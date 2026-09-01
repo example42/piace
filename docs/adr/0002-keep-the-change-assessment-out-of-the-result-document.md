@@ -3,8 +3,8 @@
 PIACE's result document is canonically encoded and `schema_version`-tagged so
 that identical input catalogs and configuration produce byte-identical
 artifacts, and `cmd/piace/acceptance_determinism_test.go` asserts exactly that.
-A model-generated **change assessment** cannot hold that property: even at a
-fixed temperature and seed, a provider-side model revision changes the bytes.
+A model-generated **change assessment** cannot hold that property: even with
+sampling pinned, a provider-side model revision changes the bytes.
 Rather than weaken the invariant to accommodate an advisory feature, v0.2.0
 quarantines the assessment into a separate artifact with its own independent
 `ai_schema_version`, carrying a SHA-256 checksum of the canonical result

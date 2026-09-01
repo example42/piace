@@ -83,8 +83,37 @@ func TestClientSendsTheConfiguredRequestOptions(t *testing.T) {
 	if s.lastReq["max_tokens"] != float64(4000) {
 		t.Errorf("max_tokens = %v", s.lastReq["max_tokens"])
 	}
-	if s.lastReq["temperature"] != float64(0) || s.lastReq["seed"] != float64(0) {
-		t.Errorf("temperature/seed = %v/%v", s.lastReq["temperature"], s.lastReq["seed"])
+	// Nothing is sent that the caller did not set: sampleRequest configures
+	// no temperature, and there is no seed field at all.
+	if _, ok := s.lastReq["temperature"]; ok {
+		t.Errorf("temperature was sent unset: %v", s.lastReq["temperature"])
+	}
+	if _, ok := s.lastReq["seed"]; ok {
+		t.Errorf("seed reached the wire: %v", s.lastReq["seed"])
+	}
+}
+
+// A configured temperature reaches the wire; max_completion_tokens is
+// carried under its own name.
+func TestClientSendsTemperatureAndMaxCompletionTokensWhenSet(t *testing.T) {
+	s := newStubService(t)
+	req := sampleRequest()
+	req.MaxTokens = 0
+	req.MaxCompletionTokens = 2048
+	temp := 0.5
+	req.Temperature = &temp
+
+	if _, err := s.client(t, "t").Complete(context.Background(), req); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if s.lastReq["temperature"] != float64(0.5) {
+		t.Errorf("temperature = %v", s.lastReq["temperature"])
+	}
+	if s.lastReq["max_completion_tokens"] != float64(2048) {
+		t.Errorf("max_completion_tokens = %v", s.lastReq["max_completion_tokens"])
+	}
+	if _, ok := s.lastReq["max_tokens"]; ok {
+		t.Errorf("max_tokens was sent alongside max_completion_tokens: %v", s.lastReq["max_tokens"])
 	}
 }
 
@@ -181,5 +210,70 @@ func TestClientHonoursItsTimeout(t *testing.T) {
 
 	if _, err := c.Complete(context.Background(), sampleRequest()); err == nil {
 		t.Error("Complete returned before its deadline elapsed")
+	}
+}
+
+// WithObserver sees one Event per Complete, carrying the status and the
+// response body's top-level member names but never its values — and the
+// raw bodies only when WithBodyCapture is also set.
+func TestClientObserverSeesStatusAndShapeButNotValues(t *testing.T) {
+	s := newStubService(t)
+	s.status = http.StatusBadRequest
+	s.body = `{"type":"error","error":{"message":"temperature: only 1 is allowed"}}`
+
+	u, _ := url.Parse(s.server.URL)
+
+	var got []Event
+	c, err := New(u, "t", 5*time.Second, WithObserver(func(ev Event) { got = append(got, ev) }))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c.HTTPClient = s.server.Client()
+
+	if _, err := c.Complete(context.Background(), sampleRequest()); err == nil {
+		t.Fatal("Complete accepted a 400")
+	}
+	if len(got) != 1 {
+		t.Fatalf("observer called %d times, want 1", len(got))
+	}
+	ev := got[0]
+	if ev.StatusCode != 400 {
+		t.Errorf("Event.StatusCode = %d", ev.StatusCode)
+	}
+	if ev.Shape != ShapeObject || strings.Join(ev.TopLevelKeys, ",") != "type,error" {
+		t.Errorf("Event shape/keys = %s / %v", ev.Shape, ev.TopLevelKeys)
+	}
+	if ev.RequestBodyBytes == 0 || ev.ResponseBodyBytes == 0 {
+		t.Errorf("Event sizes = %d / %d", ev.RequestBodyBytes, ev.ResponseBodyBytes)
+	}
+	// No body capture: neither the payload nor the error message is retained.
+	if ev.RequestBody != nil || ev.ResponseBody != nil {
+		t.Error("Event carries raw bodies without WithBodyCapture")
+	}
+}
+
+func TestClientObserverCapturesRawBodiesWhenAsked(t *testing.T) {
+	s := newStubService(t)
+	s.body = `{"choices":[{"message":{"content":"{\"run\":{}}"}}]}`
+
+	u, _ := url.Parse(s.server.URL)
+
+	var ev Event
+	c, err := New(u, "t", 5*time.Second,
+		WithObserver(func(e Event) { ev = e }),
+		WithBodyCapture(true))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c.HTTPClient = s.server.Client()
+
+	if _, err := c.Complete(context.Background(), sampleRequest()); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if !strings.Contains(string(ev.RequestBody), `"model":"test-model"`) {
+		t.Errorf("Event.RequestBody = %s", ev.RequestBody)
+	}
+	if string(ev.ResponseBody) != s.body {
+		t.Errorf("Event.ResponseBody = %s", ev.ResponseBody)
 	}
 }

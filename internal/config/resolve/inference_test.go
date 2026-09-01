@@ -44,6 +44,48 @@ inference:
 	if !in.Assess.Pseudonymize || !in.Assess.StructuredOutput {
 		t.Errorf("defaults are not on: %+v", in.Assess)
 	}
+	if in.Assess.TokenLimitParam != "max_tokens" || in.Assess.Temperature != nil {
+		t.Errorf("sampling defaults wrong: token_limit_param=%q temperature=%v", in.Assess.TokenLimitParam, in.Assess.Temperature)
+	}
+}
+
+// token_limit_param and temperature are the provider-compatibility knobs
+// for frontier models that reject `max_tokens` or a pinned temperature.
+func TestInferenceSamplingKnobsResolve(t *testing.T) {
+	t.Setenv("PIACE_TEST_TOKEN", "s3cret")
+
+	path := writeServices(t, `
+version: 1
+inference:
+  endpoint: https://api.openai.com/v1/chat/completions
+  model: gpt-5
+  token_env: PIACE_TEST_TOKEN
+  token_limit_param: max_completion_tokens
+  temperature: 0.3
+`)
+	in, err := LoadInferenceFile(path)
+	if err != nil {
+		t.Fatalf("LoadInferenceFile: %v", err)
+	}
+	if in.Assess.TokenLimitParam != "max_completion_tokens" {
+		t.Errorf("TokenLimitParam = %q", in.Assess.TokenLimitParam)
+	}
+	if in.Assess.Temperature == nil || *in.Assess.Temperature != 0.3 {
+		t.Errorf("Temperature = %v, want 0.3", in.Assess.Temperature)
+	}
+
+	bad := writeServices(t, `
+version: 1
+inference:
+  endpoint: https://api.openai.com/v1/chat/completions
+  model: gpt-5
+  token_env: PIACE_TEST_TOKEN
+  token_limit_param: max_output_tokens
+  temperature: -1
+`)
+	if _, err := LoadInferenceFile(bad); err == nil {
+		t.Fatal("LoadInferenceFile accepted an invalid token_limit_param and a negative temperature")
+	}
 }
 
 // Slice 6.2: a token is referenced, never written. There is no field to

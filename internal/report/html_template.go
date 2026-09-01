@@ -334,6 +334,18 @@ summary .count {
 .sign.remove { color: var(--remove); }
 .sign.change { color: var(--change); }
 
+/* Assessment rows lead with a risk badge instead of a one-character
+   sign, so they need a wider first track. It stays a fixed width rather
+   than max-content so every row's identity lines up down the list: the
+   risk enum is closed and "unknown" is its widest value. align-items
+   keeps the pill its natural height instead of stretching it to a
+   two-line row. */
+.rows > li.risk {
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: start;
+}
+.rows > li.risk > .badge { justify-self: start; }
+
 .body { min-width: 0; }
 .ident { font-family: var(--mono); overflow-wrap: anywhere; }
 .param { font-family: var(--mono); color: var(--muted); }
@@ -646,7 +658,7 @@ pre {
       <div class="disclosed">
         <ul class="rows">
           {{range .Groups}}
-          <li>
+          <li class="risk">
             <span class="badge {{.RiskClass}}">{{.Risk}}</span>
             <span class="body"><span class="ident">{{.Identity}}</span>{{if .Parameter}}<span class="param">{{.Parameter}}</span>{{end}}<span class="on">{{.Targets}}</span>{{if .Rationale}}<span class="note">{{.Rationale}}</span>{{end}}{{range .ReviewFocus}}<span class="note">{{.}}</span>{{end}}</span>
           </li>

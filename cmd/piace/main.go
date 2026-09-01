@@ -111,7 +111,7 @@ piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
   --environment ENVIRONMENT
 piace explain --json-in REPORT.json --services SERVICES.yaml \
   [--ai-out PATH] [--html-out PATH] [--change CHANGE.yaml] \
-  [--fail-on-inference-error]
+  [--fail-on-inference-error] [--debug] [--debug-dump-dir DIR]
 
 The text report summarizes for a CI log: it omits dependency-graph edge
 changes and each impact estimate's PQL and request options, and names only
@@ -150,12 +150,18 @@ no inference service.
                          recorded in the artifact and the command still
                          exits 0
 
-compare and capture also accept:
+All four subcommands also accept:
   --debug                print one line per service request to stderr (method,
                          URL, status, duration, body sizes, response top-level
-                         JSON keys); no body content is printed
+                         JSON keys); no body content is printed. For explain
+                         this is what shows an inference endpoint's HTTP status
+                         and the response's JSON shape without the body
   --debug-dump-dir DIR   additionally write raw request/response bodies to 0600
-                         files in DIR; they may contain sensitive catalog values`
+                         files in DIR. For compare and capture these may hold
+                         sensitive catalog values; for explain the request body
+                         is the catalog-derived payload sent to the inference
+                         service and the response body of a 4xx is where the
+                         provider names the field it rejected`
 }
 
 // compareFlags holds the parsed --compare flags. Kept as a struct so tests
@@ -536,6 +542,7 @@ type explainFlags struct {
 	// failing for a reason that has nothing to do with the change under
 	// test. An operator who would rather know may ask for it.
 	failOnInferenceError bool
+	debug                debugFlags
 }
 
 // runExplain produces a change assessment from a stored result document.
@@ -559,6 +566,7 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.aiOut, "ai-out", "", "path to write the change assessment artifact")
 	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the report re-rendered with the assessment")
 	fs.BoolVar(&f.failOnInferenceError, "fail-on-inference-error", false, "exit 30 when the change assessment could not be produced")
+	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
 	}
@@ -611,7 +619,12 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	client, err := inference.New(in.URL, in.Token, in.Timeout)
+	inferenceOpts, err := f.debug.inferenceOptions("explain", stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+	client, err := inference.New(in.URL, in.Token, in.Timeout, inferenceOpts...)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace explain: %s\n", err)
 		return exitcode.OperationalError

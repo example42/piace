@@ -22,6 +22,21 @@ type InferenceSection struct {
 	MaxTokens int    `json:"max_tokens" yaml:"max_tokens"`
 	MaxGroups int    `json:"max_groups" yaml:"max_groups"`
 
+	// TokenLimitParam selects the request field that carries the
+	// output-token bound: "max_tokens" (the default; what OpenAI-compatible
+	// servers other than current OpenAI expect) or "max_completion_tokens"
+	// (required by OpenAI's GPT-5 family, also accepted by Anthropic's
+	// OpenAI-compatible endpoint). The value in MaxTokens is unchanged;
+	// only the field name on the wire differs.
+	TokenLimitParam string `json:"token_limit_param" yaml:"token_limit_param"`
+
+	// Temperature, when set, is sent as the request's sampling temperature.
+	// Left unset (the default) PIACE sends no temperature at all: Claude 4+
+	// and GPT-5 reject any non-default value with a 400, and pinning it
+	// never made a model-generated assessment reproducible. A pointer so an
+	// explicit 0 is distinguishable from unset.
+	Temperature *float64 `json:"temperature" yaml:"temperature"`
+
 	// Pseudonymize and StructuredOutput are pointers so an unset field is
 	// distinguishable from an explicit `false`; both default to true.
 	Pseudonymize     *bool `json:"pseudonymize" yaml:"pseudonymize"`

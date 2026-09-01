@@ -40,11 +40,28 @@ inference:
 
   # The bearer token is always *referenced* — there is no field to inline one.
   # Set exactly one of token_env or token_file; naming both is an error.
+  #
+  # For api.anthropic.com use a WORKSPACE-scoped key (Console -> a Workspace
+  # -> API keys). An identity-linked key is rejected with a 400,
+  # "anthropic-workspace-id is required", a header PIACE does not send.
   token_env: PIACE_INFERENCE_TOKEN
   # token_file: /etc/piace/inference-token       # absolute path
 
   timeout: 60s                  # default 60s
   max_tokens: 4000              # default 4000
+
+  # Which request field carries max_tokens' value: "max_tokens" (default;
+  # what Ollama, vLLM, llama.cpp and older OpenAI models expect) or
+  # "max_completion_tokens" (required by OpenAI's GPT-5 family, also
+  # accepted by Anthropic's OpenAI-compatible endpoint).
+  # token_limit_param: max_tokens
+
+  # Sampling temperature. Unset by default, and then NO temperature is
+  # sent: Claude 4+ and GPT-5 reject any non-default value with a 400, and
+  # pinning it never made a model-generated assessment reproducible. Set it
+  # only for a provider that both needs and accepts one.
+  # temperature: 0
+
   max_groups: 200               # default 200; caps how many aggregate groups
                                 # leave the process
 

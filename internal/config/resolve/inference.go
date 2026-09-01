@@ -103,6 +103,19 @@ func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 		c.addf("services.inference.max_groups: must be positive, got %d", maxGroups)
 	}
 
+	tokenLimitParam := "max_tokens"
+	switch in.TokenLimitParam {
+	case "", "max_tokens":
+	case "max_completion_tokens":
+		tokenLimitParam = "max_completion_tokens"
+	default:
+		c.addf(`services.inference.token_limit_param: must be "max_tokens" or "max_completion_tokens", got %q`, in.TokenLimitParam)
+	}
+
+	if in.Temperature != nil && *in.Temperature < 0 {
+		c.addf("services.inference.temperature: must not be negative, got %v", *in.Temperature)
+	}
+
 	var notes string
 	if in.PolicyNotesFile != "" {
 		path := in.PolicyNotesFile
@@ -128,6 +141,8 @@ func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 		Assess: assess.Config{
 			Model:            in.Model,
 			MaxTokens:        maxTokens,
+			TokenLimitParam:  tokenLimitParam,
+			Temperature:      in.Temperature,
 			MaxGroups:        maxGroups,
 			Pseudonymize:     boolOrDefault(in.Pseudonymize, true),
 			StructuredOutput: boolOrDefault(in.StructuredOutput, true),
