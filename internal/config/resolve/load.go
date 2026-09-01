@@ -8,10 +8,10 @@ import (
 
 // LoadTargetFile decodes and fully resolves a `--targets` YAML file from
 // path: strict decode (unknown-field rejection), version check,
-// invocation overrides, default resolution, per-target override,
-// exclude/redact append-only merge, and every validation rule in
-// design.md section 3.2. Relative facts.file/baseline.file values resolve
-// against path's containing directory.
+// invocation overrides, default resolution, per-target override, exclude
+// and redact append-only merge, and every validation rule. Relative
+// facts.file and baseline.file values resolve against path's containing
+// directory.
 //
 // ov is applied to the decoded document before resolution, so an
 // overridden field is validated and reported exactly as a file-supplied
@@ -40,7 +40,7 @@ func LoadTargetFile(path string, ov Overrides) ([]Target, error) {
 // directory. It performs no network or service I/O; only local filesystem
 // access to read path itself, and to read any file an environment variable
 // the file names points at. TLS file existence/readability is validated
-// later, at transport construction (task 3).
+// later, at transport construction (internal/transport).
 func LoadServicesFile(path string) (Services, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -56,12 +56,11 @@ func LoadServicesFile(path string) (Services, error) {
 	return ResolveServices(sf, filepath.Dir(path))
 }
 
-// Load decodes and resolves both the target and services files, per
-// design.md section 3, applying ov to the target file as LoadTargetFile
-// documents. Both files are always attempted and every problem from both
-// is accumulated into one error: a user configuring both files wrong sees
-// every problem from one run, per design.md section 3.2's "Invalid
-// configuration is one operational diagnostic" rule.
+// Load decodes and resolves both the target and services files applying
+// ov to the target file as LoadTargetFile documents. Both files are
+// always attempted and every problem from both is accumulated into one
+// error: a user configuring both files wrong sees every problem from one
+// run: invalid configuration is one operational diagnostic.
 func Load(targetsPath, servicesPath string, ov Overrides) (Config, error) {
 	var c errorCollector
 

@@ -3,11 +3,10 @@
 // JSON encoder, SHA-256 checksum, atomic 0600 writer, and loader/
 // validator that operate on it.
 //
-// Design reference: design.md section 6 ("Snapshot envelopes and
-// capture"). See canonical.go/checksum.go for the canonical JSON encoding
-// and checksum algorithm, and store.go for Write/Load/Validate. The
+// See canonical.go and checksum.go for the canonical JSON encoding and
+// checksum algorithm, and store.go for Write/Load/Validate. The
 // file-backed FactSource/CatalogSource adapters that select this package
-// as a target's fact/baseline source (per target.Facts.Source ==
+// as a target's fact or baseline source (per target.Facts.Source ==
 // config.FactSourceFile / target.Baseline.Source ==
 // config.BaselineSourceFile) live in internal/puppetdb, not here, to
 // avoid this package importing puppetdb's adapter interfaces; see
@@ -17,7 +16,7 @@ package snapshot
 import "encoding/json"
 
 // FormatVersion is the only supported `format_version` value for a
-// snapshot envelope. See requirements.md 11.5 and design.md section 6.
+// snapshot envelope.
 const FormatVersion = 1
 
 // Kind distinguishes a factset snapshot from a catalog snapshot within one
@@ -48,11 +47,10 @@ type Source struct {
 	Producer string `json:"producer,omitempty"`
 }
 
-// Envelope is the on-disk PIACE snapshot file shape: a UTF-8 JSON document
-// wrapping an unmodified validated service payload with integrity and
-// capture metadata. See design.md section 6 for the exact field set and
-// checksum scope (SHA-256 over the canonical encoding of Payload only,
-// excluding envelope metadata).
+// Envelope is the on-disk PIACE snapshot file shape: a UTF-8 JSON
+// document wrapping an unmodified validated service payload with
+// integrity and capture metadata. The checksum scope is SHA-256 over the
+// canonical encoding of Payload only, excluding envelope metadata.
 type Envelope struct {
 	FormatVersion int    `json:"format_version"`
 	Kind          Kind   `json:"kind"`
@@ -61,9 +59,8 @@ type Envelope struct {
 	// CapturedAt is RFC 3339 in UTC.
 	CapturedAt string `json:"captured_at"`
 
-	// RequestedEnvironment, CompilerAPIVersion, and InputFactsetIdentity
-	// are mandatory for catalog snapshots and omitted for factset
-	// snapshots, per design.md section 6.
+	// RequestedEnvironment, CompilerAPIVersion, and InputFactsetIdentity are
+	// mandatory for catalog snapshots and omitted for factset snapshots.
 	RequestedEnvironment string      `json:"requested_environment,omitempty"`
 	CompilerAPIVersion   CompilerAPI `json:"compiler_api,omitempty"`
 	InputFactsetIdentity string      `json:"input_factset_identity,omitempty"`

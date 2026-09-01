@@ -13,8 +13,7 @@ import (
 // entry both carry "type", "title", and "parameters" as top-level JSON
 // object fields, whatever else they additionally carry (certname,
 // resource, exported, tags, file, line, aliases — all intentionally
-// undeclared here and therefore dropped by encoding/json, per
-// requirements.md 5.9 and design.md section 7.1).
+// undeclared here and therefore dropped by encoding/json.1).
 type resourceWire struct {
 	Type       string          `json:"type"`
 	Title      string          `json:"title"`
@@ -37,10 +36,9 @@ type edgeWire struct {
 // per https://puppet.com/docs/puppetdb/8/catalogs.html's documented
 // `<expanded edges>` shape: `{"relationship", "source_title",
 // "source_type", "target_title", "target_type"}`. Relationship is
-// intentionally undeclared: design.md section 7.1 defines an edge's
-// identity solely as the ordered (source, target) identity pair,
-// direction alone being significant — relationship kind is not part of
-// the normalized model.
+// intentionally undeclared: an edge's identity is solely the ordered
+// (source, target) identity pair, direction alone being significant, and
+// relationship kind is not part of the normalized model.
 type pdbEdgeEntry struct {
 	SourceType  string `json:"source_type"`
 	SourceTitle string `json:"source_title"`
@@ -151,9 +149,9 @@ type compilerEdgeEntry struct {
 // "edges" catalog field uses: a JSON object (PuppetDB's `{href, data}`
 // expansion) or a JSON array (the compiler's plain array). Any other
 // leading byte (or an empty/all-whitespace field) is an unrecognized
-// shape and returns an error, never a silently empty result — matching
-// this task's brief: "Treat unknown required shapes as reported
-// normalization errors rather than silently discarding them."
+// shape and returns an error, never a silently empty result: an unknown
+// required shape is a reported normalization error, never silently
+// discarded.
 func shapeContainer(raw json.RawMessage) (isObject bool, trimmed []byte, err error) {
 	trimmed = bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {

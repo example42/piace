@@ -7,8 +7,8 @@ import (
 	"github.com/example42/piace/internal/exitcode"
 )
 
-// This file is task 12's acceptance suite: fixture-driven validation of
-// the behavior tasks 1-11 implement, exercised through the CLI entry
+// This file is the acceptance suite's acceptance suite: fixture-driven validation of
+// the behavior the internal packages implement, exercised through the CLI entry
 // point against two in-process mTLS services.
 //
 // It deliberately drives run() rather than compare.Workflow. The
@@ -18,7 +18,7 @@ import (
 // mTLS handshakes, HTTP status and JSON decoding inside the adapters,
 // artifact writing, and the process exit code.
 //
-// Two of task 12's acceptance conditions cannot be discharged here and
+// Two of the acceptance suite's acceptance conditions cannot be discharged here and
 // remain outstanding; see acceptance_assumptions_test.go, which states
 // each one at the exact place a green test could otherwise be mistaken
 // for confirmation.
@@ -106,8 +106,8 @@ func TestAcceptance_CleanRunOverPuppetDBSources(t *testing.T) {
 		t.Errorf("JSON report does not report a clean outcome")
 	}
 
-	// requirements.md 1.6: a candidate request must never ask the
-	// compiler to persist facts or the catalog.
+	// A candidate request must never ask the compiler to persist facts or
+	// the catalog.
 	if len(h.compiler.v4Bodies) != 1 {
 		t.Fatalf("compiler received %d v4 requests, want 1", len(h.compiler.v4Bodies))
 	}
@@ -115,8 +115,8 @@ func TestAcceptance_CleanRunOverPuppetDBSources(t *testing.T) {
 	if persistence["facts"] != false || persistence["catalog"] != false {
 		t.Errorf("v4 request persistence = %+v, want both false", persistence)
 	}
-	// requirements.md 2.4: v4 uses the target trusted-fact mechanism when
-	// the factset supplies one.
+	// v4 uses the target trusted-fact mechanism when the factset supplies
+	// one.
 	if _, ok := h.compiler.v4Bodies[0]["trusted_facts"]; !ok {
 		t.Error("v4 request omitted trusted_facts despite a valid trusted fact in the factset")
 	}
@@ -125,8 +125,8 @@ func TestAcceptance_CleanRunOverPuppetDBSources(t *testing.T) {
 	}
 }
 
-// TestAcceptance_EndpointsRestrictedToConfiguredServices discharges
-// requirements.md 12.4 structurally: the exact set of paths contacted on
+// TestAcceptance_EndpointsRestrictedToConfiguredServices checks the
+// network-egress claim structurally: the exact set of paths contacted on
 // each configured authority is asserted, and a third mTLS service that
 // fails the test on contact witnesses the absence of any other traffic.
 func TestAcceptance_EndpointsRestrictedToConfiguredServices(t *testing.T) {
@@ -173,10 +173,10 @@ func comparePaths(got, want []string) string {
 	return "got " + strings.Join(got, ",") + ", want " + strings.Join(want, ",")
 }
 
-// TestAcceptance_OutcomePrecedence exercises design.md section 10's full
-// precedence chain through combinations rather than single-outcome runs:
-// only a combination can show that the reducer picks the most severe
-// outcome instead of the last or first one.
+// TestAcceptance_OutcomePrecedence exercises the full precedence chain
+// through combinations rather than single-outcome runs: only a
+// combination can show that the reducer picks the most severe outcome
+// instead of the last or first one.
 func TestAcceptance_OutcomePrecedence(t *testing.T) {
 	// Each target below is seeded to produce exactly one outcome class.
 	// The cases then select which of them participate.
@@ -249,8 +249,8 @@ func TestAcceptance_OutcomePrecedence(t *testing.T) {
 			if !strings.Contains(got.stdout, "outcome: "+tc.wantWord) {
 				t.Errorf("text report outcome is not %q:\n%s", tc.wantWord, got.stdout)
 			}
-			// design.md section 10: "A target's diagnostic remains in
-			// every output regardless of global precedence."
+			// A target's diagnostic remains in every output regardless of global
+			// precedence.
 			for _, certname := range tc.targets {
 				if !strings.Contains(got.json, certname) {
 					t.Errorf("JSON report dropped target %s", certname)
@@ -260,9 +260,9 @@ func TestAcceptance_OutcomePrecedence(t *testing.T) {
 	}
 }
 
-// TestAcceptance_BaselineEnvironmentRejection covers requirements.md 1.3:
-// a PuppetDB baseline whose environment differs from the configured
-// baseline environment fails the target before it is diffed.
+// TestAcceptance_BaselineEnvironmentRejection: a PuppetDB baseline whose
+// environment differs from the configured baseline environment fails the
+// target before it is diffed.
 func TestAcceptance_BaselineEnvironmentRejection(t *testing.T) {
 	h := newHarness(t)
 	h.pdb.factsets["web-01.example.test"] = pdbFactset("web-01.example.test", true)
@@ -285,8 +285,8 @@ func TestAcceptance_BaselineEnvironmentRejection(t *testing.T) {
 }
 
 // TestAcceptance_ExclusionsSuppressDifferencesAndAreReported covers
-// requirements.md 6.3-6.5 end to end, including the edge-suppression rule
-// (6.4) and the visible suppression counts (6.5).
+// exclusion handling end to end, including the edge-suppression rule and
+// the visible suppression counts.
 func TestAcceptance_ExclusionsSuppressDifferencesAndAreReported(t *testing.T) {
 	h := newHarness(t)
 	baseline := []resourceSpec{
@@ -317,12 +317,12 @@ func TestAcceptance_ExclusionsSuppressDifferencesAndAreReported(t *testing.T) {
 	if !strings.Contains(got.stdout, "excluded: Notify[noi*]") {
 		t.Errorf("text report does not report the applied exclusion rule:\n%s", got.stdout)
 	}
-	// requirements.md 6.4/6.5: the edge attached to the excluded resource
-	// is suppressed and counted. The count is asserted against the JSON
-	// report because the text and HTML formats omit edge information
-	// entirely (see internal/report's doc.go); 6.5 asks for the counts in
-	// "machine-readable and human-readable output", and the human-readable
-	// half is the rule identity and its resource/parameter counts above.
+	// The edge attached to the excluded resource is suppressed and counted.
+	// The count is asserted against the JSON report because the text and
+	// HTML formats omit edge information entirely (see internal/report's
+	// doc.go). The counts are owed in machine-readable and human-readable
+	// output alike, and the human-readable half is the rule identity and its
+	// resource/parameter counts above.
 	if !strings.Contains(got.json, `"suppressed_edges":1`) {
 		t.Errorf("the edge attached to an excluded resource was not suppressed and counted:\n%s", got.json)
 	}
@@ -330,7 +330,7 @@ func TestAcceptance_ExclusionsSuppressDifferencesAndAreReported(t *testing.T) {
 		t.Errorf("the text report still prints the suppressed-edge count:\n%s", got.stdout)
 	}
 	if !strings.Contains(got.html, "Excluded differences") {
-		t.Error("the HTML report does not visibly mark excluded differences (requirements.md 8.5)")
+		t.Error("the HTML report does not visibly mark excluded differences")
 	}
 }
 

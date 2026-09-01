@@ -6,10 +6,9 @@ import (
 	"github.com/example42/piace/internal/exitcode"
 )
 
-// TestOutcomeForDiagnostic_OperationMapping locks design.md section 10's
-// error taxonomy, including the split diagnostic.go documents as task
-// 11's obligation: request_candidate is a compilation failure while its
-// transport sibling stays operational.
+// TestOutcomeForDiagnostic_OperationMapping locks the error taxonomy,
+// including the split diagnostic.go documents: request_candidate is a
+// compilation failure while its transport sibling stays operational.
 func TestOutcomeForDiagnostic_OperationMapping(t *testing.T) {
 	cases := []struct {
 		operation DiagnosticOperation
@@ -38,9 +37,8 @@ func TestOutcomeForDiagnostic_OperationMapping(t *testing.T) {
 	}
 }
 
-// TestOutcomeForDiagnostic_WarningContributesNothing locks design.md
-// section 10: "a reported v3 compatibility warning alone does not change
-// exit status".
+// TestOutcomeForDiagnostic_WarningContributesNothing locks the rule that
+// a reported v3 compatibility warning alone does not change exit status.
 func TestOutcomeForDiagnostic_WarningContributesNothing(t *testing.T) {
 	_, contributes := OutcomeForDiagnostic(Diagnostic{
 		Severity:  SeverityWarning,
@@ -146,10 +144,10 @@ func TestTargetResult_ClassifyOutcome(t *testing.T) {
 	}
 }
 
-// TestResult_Reduce_RunDiagnosticOutranksCleanTargets verifies design.md
-// section 8's rule that an enabled impact estimate's failure "contributes
-// an operational outcome after all other targets finish", even when every
-// target compared cleanly.
+// TestResult_Reduce_RunDiagnosticOutranksCleanTargets verifies that an
+// enabled impact estimate's failure contributes an operational outcome
+// after all other targets finish, even when every target compared
+// cleanly.
 func TestResult_Reduce_RunDiagnosticOutranksCleanTargets(t *testing.T) {
 	r := NewResult("dev", "2026-08-25T00:00:00Z")
 	r.Targets = []TargetResult{{
@@ -224,8 +222,8 @@ func TestResult_Reduce_ReasonsAreOrderedAndIndependentOfTargetOrder(t *testing.T
 	}
 }
 
-// TestResult_Reduce_CleanRunStillReportsAReason covers requirements.md
-// 10.2: outcome and reason are reported in every case, including success.
+// TestResult_Reduce_CleanRunStillReportsAReason: outcome and reason are
+// reported in every case, success included.
 func TestResult_Reduce_CleanRunStillReportsAReason(t *testing.T) {
 	r := NewResult("dev", "2026-08-25T00:00:00Z")
 	r.Targets = []TargetResult{{Certname: "a", NodeDiff: &NodeDiff{}, Config: &ConfigProvenance{}}}

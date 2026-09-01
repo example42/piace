@@ -73,7 +73,7 @@ func newTLSFixture(t *testing.T) *tlsFixture {
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
 		// The acceptance services listen on 127.0.0.1; the leaf must be
 		// valid for that address or the client's own hostname
-		// verification (task 3) rejects the handshake.
+		// verification (internal/transport) rejects the handshake.
 		IPAddresses: []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
 		DNSNames:    []string{"localhost"},
 	}

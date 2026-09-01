@@ -47,11 +47,10 @@ func redactChange(selectors []config.RedactionSelector, change model.ResourceCha
 
 	if change.FileContent != nil {
 		// A File-content entry carries no Before/After at all (see
-		// resources.go); its only redactable evidence is the digest pair.
-		// State is deliberately preserved either way, per design.md
-		// section 7.2: "a redacted content selector emits a stable
-		// REDACTED value while preserving the change classification and
-		// no digest in reports."
+		// resources.go); its only redactable evidence is the digest pair. State
+		// is deliberately preserved either way: "a redacted content selector
+		// emits a stable REDACTED value while preserving the change
+		// classification and no digest in reports."
 		evidence := *change.FileContent
 		if selected {
 			evidence.Algorithm = ""
@@ -82,8 +81,7 @@ func redactChange(selectors []config.RedactionSelector, change model.ResourceCha
 
 // matchesRedactionSelector reports whether any configured selector names
 // this exact resource type and parameter name. Both comparisons are
-// exact and case-sensitive, per requirements.md 8.8 and design.md
-// section 3.2 rule 4. A change with no parameter name (a resource
+// exact and case-sensitive. A change with no parameter name (a resource
 // added/removed entry) never matches, since a selector always names a
 // parameter.
 func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType, parameter string) bool {
@@ -99,10 +97,10 @@ func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType
 }
 
 // redactSensitiveValue walks a canonical value tree and replaces every
-// Puppet `Sensitive` wrapper it finds — at any depth, inside maps and
-// arrays alike — with model.RedactedValue, matching design.md section
-// 7.3's "Puppet `Sensitive` wrappers are detected recursively; their
-// payload is never copied to the serializable result."
+// Puppet `Sensitive` wrapper it finds, at any depth, inside maps and
+// arrays alike, with model.RedactedValue. Wrappers are detected
+// recursively and their payload is never copied to the serializable
+// result.
 //
 // The entire matched subtree is replaced, never merely its `__pvalue`
 // entry: leaving the wrapper object in place with a redacted payload

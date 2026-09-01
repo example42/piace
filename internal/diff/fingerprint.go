@@ -16,7 +16,7 @@ import (
 // before redactChanges runs.
 //
 // The digested tuple deliberately includes kind, identity, and parameter
-// name in addition to the before/after evidence: task 10 groups on
+// name in addition to the before/after evidence: internal/aggregate groups on
 // (kind, identity, parameter) already, but including them here means two
 // changes with different keys can never collide on Fingerprint alone, so
 // a consumer may treat the Fingerprint as the complete group token
@@ -26,10 +26,10 @@ import (
 // FileContentEvidence (state, evidence source, algorithm, and both
 // digests) rather than Before/After, which that entry deliberately
 // leaves unset (see resources.go). Without this, every redacted File
-// content change on the same path would collapse into a single
-// aggregate group regardless of whether the underlying content actually
-// matched — exactly the "merging distinct sensitive changes in aggregate
-// groups" design.md section 7.3 forbids.
+// content change on the same path would collapse into a single aggregate
+// group regardless of whether the underlying content actually matched,
+// which is exactly the merging of distinct sensitive changes that
+// redaction ordering exists to prevent.
 func fingerprintResourceChange(change model.ResourceChange) (string, error) {
 	evidence := map[string]model.Value{
 		"kind":      string(change.Kind),
@@ -70,15 +70,14 @@ func fingerprintResourceChange(change model.ResourceChange) (string, error) {
 //
 // model.Value is a type alias for `any`, so []model.Value and
 // map[string]model.Value are already []any and map[string]any and need
-// no conversion; only model.Number — a defined type over string, which
-// the encoder's type switch does not recognize and would reject as an
-// unsupported type — has to be converted. It is rewritten to a
+// no conversion. Only model.Number, a defined type over string that the
+// encoder's type switch does not recognize and would reject as an
+// unsupported type, has to be converted, and it is rewritten to a
 // json.Number carrying the same digits. That reuses snapshot's single
-// canonicalization algorithm rather than introducing a second one (per
-// design.md's Property 1), and is exactly idempotent: model.Number
-// values are produced by internal/normalize via
-// snapshot.CanonicalNumberString, so re-canonicalizing their digits
-// yields the same string.
+// canonicalization algorithm rather than introducing a second one, and
+// is exactly idempotent: model.Number values are produced by
+// internal/normalize via snapshot.CanonicalNumberString, so
+// re-canonicalizing their digits yields the same string.
 func fingerprintable(v model.Value) model.Value {
 	switch val := v.(type) {
 	case model.Number:

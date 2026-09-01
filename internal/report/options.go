@@ -3,8 +3,8 @@ package report
 // Options is the display policy the text and HTML renderers apply. It
 // carries presentation choices only — never anything that could change
 // what the comparison found — so the JSON report, which is the complete
-// machine-readable record (requirements.md 8.2), ignores it entirely and
-// takes no Options at all.
+// machine-readable record, ignores it entirely and takes no Options at
+// all.
 //
 // Two formats therefore show less than the document contains, by design:
 // a CI log and a review page are read top to bottom by a human, and a

@@ -77,8 +77,8 @@ func displayJSON(canonical []byte) string {
 
 // changeSummary renders one resource-level change as a single line.
 // File-content evidence is summarized from its state, algorithm, and
-// digests only; managed content bytes are never available here to render
-// (requirements.md 5.8).
+// digests only; managed content bytes are never available here to
+// render.
 func changeSummary(c model.ResourceChange) string {
 	switch c.Kind {
 	case model.ChangeResourceAdded:
@@ -96,8 +96,8 @@ func changeSummary(c model.ResourceChange) string {
 }
 
 // fileContentSummary describes File-content evidence: the comparison
-// state, which step of design.md section 7.2's priority order produced
-// it, and the digest pair when one exists and is not redacted.
+// state, which step of the priority order produced it, and the digest
+// pair when one exists and is not redacted.
 func fileContentSummary(e model.FileContentEvidence) string {
 	summary := string(e.State)
 	if e.EvidenceSource != "" {
@@ -194,10 +194,9 @@ func targetCountList(certnames []string) string {
 // no way to skip a section, and a run's edge groups routinely outnumber
 // its resource groups.
 //
-// HTML does not use this — it renders edge groups behind their own
-// disclosure — and the underlying model.AggregateDiff is untouched:
-// requirements.md 7.4 requires edge changes to survive aggregation as a
-// distinct kind, and they do.
+// HTML does not use this, since it renders edge groups behind their own
+// disclosure, and the underlying model.AggregateDiff is untouched: edge
+// changes survive aggregation as a distinct kind, and they do here too.
 func displayedGroups(groups []model.AggregateGroup) []model.AggregateGroup {
 	displayed := make([]model.AggregateGroup, 0, len(groups))
 	for _, g := range groups {
@@ -210,9 +209,9 @@ func displayedGroups(groups []model.AggregateGroup) []model.AggregateGroup {
 }
 
 // exclusionSummary renders one applied exclusion rule and its suppressed
-// counts for the text report, per requirements.md 6.5. The
-// suppressed-edge count is omitted for the same reason edge changes
-// themselves are omitted from that format (see doc.go).
+// counts for the text report. The suppressed-edge count is omitted for
+// the same reason edge changes themselves are omitted from that format
+// (see doc.go).
 func exclusionSummary(e model.ExclusionOutcome) string {
 	return fmt.Sprintf("%s[%s]: %d resource(s), %d parameter(s) suppressed",
 		e.Rule.Type, e.Rule.Title, e.SuppressedResources, e.SuppressedParameters)
@@ -232,15 +231,14 @@ func exclusionSummaryFull(e model.ExclusionOutcome) string {
 // prediction; see model.ImpactEstimate.ResultCount.
 //
 // Only the happy path collapses. A truncated estimate still says so and
-// still names its result_limit (requirements.md 9.6), and a timeout or
-// failure still reports its status and reason rather than a node count
-// (requirements.md 9.7) — compacting either into "N nodes" would state
-// something the run does not know.
+// still names its result_limit, and a timeout or failure still reports
+// its status and reason rather than a node count — compacting either
+// into "N nodes" would state something the run does not know.
 //
 // The PQL and the request options are deliberately absent: they are the
 // same string on every line of a several-hundred-estimate section, and
-// requirements.md 9.4's "report the exact generated PQL query" is
-// discharged by the JSON report, which records both verbatim.
+// reporting the exact generated PQL query is discharged by the JSON
+// report, which records both verbatim.
 func estimateSummary(e model.ImpactEstimate, showAllNodes bool) string {
 	summary := estimateCount(e)
 	if e.Status != model.ImpactStatusCompleted {
@@ -258,10 +256,10 @@ func estimateSummary(e model.ImpactEstimate, showAllNodes bool) string {
 // the certnames sit behind a disclosure.
 //
 // Only the happy path collapses to a bare count. A truncated estimate
-// still says so and still names its result_limit (requirements.md 9.6),
-// and a timeout or failure still reports its status and reason rather
-// than a node count (requirements.md 9.7) — compacting either into
-// "N nodes" would state something the run does not know.
+// still says so and still names its result_limit, and a timeout or
+// failure still reports its status and reason rather than a node count —
+// compacting either into "N nodes" would state something the run does
+// not know.
 func estimateCount(e model.ImpactEstimate) string {
 	if e.Status != model.ImpactStatusCompleted {
 		reason := e.FailureReason
@@ -282,7 +280,7 @@ func estimateCount(e model.ImpactEstimate) string {
 
 // sortedKeys returns m's keys in lexicographic order. Every map in a
 // model.Result is iterated through this, so no text or HTML output
-// depends on Go's randomized map iteration order (design.md Property 1).
+// depends on Go's randomized map iteration order.
 func sortedKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

@@ -104,7 +104,7 @@ func TestResult_JSONRoundTrip(t *testing.T) {
 
 // TestResult_Finalize_OperationalErrorWins verifies Finalize applies the
 // exitcode package's fixed precedence: operational error outranks every
-// other target outcome, per design.md section 10.
+// other target outcome.
 func TestResult_Finalize_OperationalErrorWins(t *testing.T) {
 	r := NewResult("dev", "2026-08-24T00:00:00Z")
 	r.Targets = []TargetResult{

@@ -49,7 +49,7 @@ func TestWrite_ThenLoad_RoundTrips(t *testing.T) {
 }
 
 // TestWrite_CorrectFinalPermissions verifies the written file has mode
-// 0600, per design.md section 6.
+// 0600.
 func TestWrite_CorrectFinalPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX file mode bits are not meaningful on windows")
@@ -89,7 +89,7 @@ func TestWrite_NoTempFileLeftBehind(t *testing.T) {
 	}
 }
 
-// TestWrite_RefusesOverwriteWithoutReplace verifies design.md section 6's
+// TestWrite_RefusesOverwriteWithoutReplace verifies the
 // overwrite-protection rule.
 func TestWrite_RefusesOverwriteWithoutReplace(t *testing.T) {
 	dir := t.TempDir()
@@ -236,7 +236,7 @@ func TestValidate_RejectsTargetMismatch(t *testing.T) {
 
 // TestValidate_RejectsMissingCatalogMetadata verifies a catalog envelope
 // missing its mandatory requested_environment/compiler_api/
-// input_factset_identity fields is rejected, per requirements.md 11.5.
+// input_factset_identity fields is rejected.
 func TestValidate_RejectsMissingCatalogMetadata(t *testing.T) {
 	payload := json.RawMessage(`{"certname":"web-01.example.test"}`)
 	sum, err := Checksum(payload)

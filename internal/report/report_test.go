@@ -15,7 +15,7 @@ func TestSampleResult_ReducesAsExpected(t *testing.T) {
 }
 
 // TestJSON_IsValidAndCarriesTheSchemaVersion checks the JSON artifact
-// parses and keeps the versioned envelope requirements.md 8.2 requires.
+// parses and keeps its versioned envelope.
 func TestJSON_IsValidAndCarriesTheSchemaVersion(t *testing.T) {
 	data, err := JSON(sampleResult())
 	if err != nil {
@@ -40,8 +40,8 @@ func TestJSON_IsValidAndCarriesTheSchemaVersion(t *testing.T) {
 	}
 }
 
-// TestJSON_IsByteIdenticalForIdenticalInput is design.md's Property 1
-// applied to the JSON artifact. Rendering the same document twice must
+// TestJSON_IsByteIdenticalForIdenticalInput applies the determinism
+// property to the JSON artifact. Rendering the same document twice must
 // produce the same bytes despite the map fields in ConfigProvenance,
 // whose Go iteration order is randomized.
 func TestJSON_IsByteIdenticalForIdenticalInput(t *testing.T) {
@@ -62,7 +62,7 @@ func TestJSON_IsByteIdenticalForIdenticalInput(t *testing.T) {
 
 // TestJSON_CanonicalizesNumberSpelling verifies the canonical encoder is
 // actually in the path: two spellings of the same number must produce
-// identical bytes (design.md section 6/7.1).
+// identical bytes.
 func TestJSON_CanonicalizesNumberSpelling(t *testing.T) {
 	render := func(number model.Number) string {
 		r := model.NewResult("test", "2026-08-25T12:00:00Z")
@@ -90,9 +90,9 @@ func TestJSON_CanonicalizesNumberSpelling(t *testing.T) {
 	}
 }
 
-// TestText_SectionOrder locks design.md section 9's fixed text order:
-// final outcome first, then per-target status, node changes,
-// warnings/errors, aggregate summary, impact summary.
+// TestText_SectionOrder locks the fixed text order: final outcome first,
+// then per-target status, node changes, warnings and errors, aggregate
+// summary, impact summary.
 func TestText_SectionOrder(t *testing.T) {
 	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
@@ -116,10 +116,9 @@ func TestText_SectionOrder(t *testing.T) {
 	}
 }
 
-// TestText_RequiredContent checks the elements requirements.md 2.5, 6.5,
-// 9.3, 9.6, and 10.2 require to be visible in the CI log. Requirement
-// 9.4's PQL is deliberately not among them: it is discharged by the JSON
-// report — see TestJSON_KeepsWhatTextAndHTMLOmit.
+// TestText_RequiredContent checks the elements that have to be visible
+// in the CI log. The PQL is deliberately not among them: it is
+// discharged by the JSON report, see TestJSON_KeepsWhatTextAndHTMLOmit.
 func TestText_RequiredContent(t *testing.T) {
 	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
@@ -207,11 +206,11 @@ func TestText_AggregateLineIsUnambiguous(t *testing.T) {
 	}
 }
 
-// TestText_EdgeOnlyTargetIsNotReportedAsUnchanged is the report/exit-code
-// contract. A target whose only differences are edges still has
-// HasDifference true and still drives the run's outcome, so hiding its
-// edge list must not turn its section into a blank that reads as "nothing
-// changed" (requirements.md 10.2/10.5).
+// TestText_EdgeOnlyTargetIsNotReportedAsUnchanged is the
+// report/exit-code contract. A target whose only differences are edges
+// still has HasDifference true and still drives the run's outcome, so
+// hiding its edge list must not turn its section into a blank that reads
+// as "nothing changed".
 func TestText_EdgeOnlyTargetIsNotReportedAsUnchanged(t *testing.T) {
 	r := model.NewResult("test", "2026-08-25T12:00:00Z")
 	r.Targets = []model.TargetResult{{
@@ -244,11 +243,11 @@ func TestText_EdgeOnlyTargetIsNotReportedAsUnchanged(t *testing.T) {
 	}
 }
 
-// TestJSON_KeepsWhatTextAndHTMLOmit is where requirements.md 5.3, 6.5,
-// 7.4, 8.2, and 9.4 are actually discharged. Trimming the two
-// human-facing formats is only defensible while the machine-readable
-// record stays complete, so this test fails the moment display policy
-// leaks into JSON.
+// TestJSON_KeepsWhatTextAndHTMLOmit is where edges, suppression counts,
+// complete node diffs and the exact generated PQL are actually
+// discharged. Trimming the two human-facing formats is only defensible
+// while the machine-readable record stays complete, so this test fails
+// the moment display policy leaks into JSON.
 func TestJSON_KeepsWhatTextAndHTMLOmit(t *testing.T) {
 	data, err := JSON(sampleResult())
 	if err != nil {
@@ -331,9 +330,9 @@ func TestText_ImpactNodesControlsTheCertnameSample(t *testing.T) {
 	}
 }
 
-// TestText_NeverClaimsEstimatedNodesWillChange guards requirements.md
-// 9.3's prohibition and CONTEXT.md's _Avoid_ wording for impact
-// estimates.
+// TestText_NeverClaimsEstimatedNodesWillChange guards the prohibition on
+// saying selected nodes will change, and CONTEXT.md's _Avoid_ wording
+// for impact estimates.
 func TestText_NeverClaimsEstimatedNodesWillChange(t *testing.T) {
 	data, err := Text(sampleResult(), nil, Options{})
 	if err != nil {
@@ -350,8 +349,8 @@ func TestText_NeverClaimsEstimatedNodesWillChange(t *testing.T) {
 	}
 }
 
-// TestText_IsByteIdenticalForIdenticalInput is design.md's Property 1
-// applied to the text report, which iterates provenance maps.
+// TestText_IsByteIdenticalForIdenticalInput applies the determinism
+// property to the text report, which iterates provenance maps.
 func TestText_IsByteIdenticalForIdenticalInput(t *testing.T) {
 	first, err := Text(sampleResult(), nil, Options{})
 	if err != nil {

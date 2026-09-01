@@ -9,9 +9,9 @@ import (
 )
 
 // StubCompiler is a CompilerCatalogRequester that always fails with a
-// clear, per-target operational diagnostic rather than a working v3/v4
-// compiler request. It exists as a lightweight test double for this
-// package's own workflow tests (workflow_test.go), so
+// clear, per-target diagnostic rather than serving a v3 or v4 compiler
+// request. It is a test double for this package's own workflow tests
+// (workflow_test.go), so
 // `capture catalog`'s target-loop, envelope-construction, and per-target
 // error-isolation logic can be exercised without a real compiler — see
 // compiler.go's doc comment for the real implementation
@@ -28,7 +28,7 @@ func (StubCompiler) RequestCandidate(ctx context.Context, target resolve.Target,
 		Severity:  model.SeverityError,
 		Operation: model.OperationRequestCandidate,
 		Certname:  target.Certname,
-		Message:   "compiler catalog requester is not implemented yet (task 6); catalog capture cannot complete",
+		Message:   "no compiler catalog requester is configured; catalog capture cannot complete",
 	}
 	return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
 }

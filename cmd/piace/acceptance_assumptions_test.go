@@ -2,9 +2,9 @@ package main
 
 import "testing"
 
-// This file records the acceptance conditions in tasks.md task 12 that
-// CANNOT be discharged by the fixture-driven suite, so that a fully green
-// test run is never mistaken for full acceptance.
+// This file records the acceptance conditions that CANNOT be discharged
+// by the fixture-driven suite, so that a fully green test run is never
+// mistaken for full acceptance.
 //
 // Each condition below asks for confirmation against a *deployed*
 // service. A fixture cannot supply it: the suite's fake PuppetDB and fake
@@ -18,28 +18,27 @@ import "testing"
 // in CI output, and it sits next to the tests that would otherwise be
 // read as covering the same ground.
 
-// TestOutstanding_PuppetDBImpactEndpointAssumptions is tasks.md task 12's
-// second bullet.
+// TestOutstanding_PuppetDBImpactEndpointAssumptions is one of them.
 //
 // What must be confirmed against a deployed PuppetDB:
 //
-//  1. design.md section 8's PQL text —
+//  1. The PQL text
 //     `resources[certname] { type = <quoted-type> and title = <quoted-title> }`
-//     — is accepted at the ROOT endpoint `/pdb/query/v4`.
-//     requirements.md 9.2 names `/pdb/query/v4/resources`, which takes an
-//     AST query already scoped to resources, not a PQL string that names
-//     its own entity. internal/impact/doc.go explains why the root
-//     endpoint is the only one that can accept the mandated text; that
-//     reasoning is from PuppetDB's documentation, not from a live
-//     response.
+//     is accepted at the ROOT endpoint `/pdb/query/v4`. The obvious
+//     candidate, `/pdb/query/v4/resources`, takes an AST query already
+//     scoped to resources rather than a PQL string that names its own
+//     entity. internal/impact/doc.go explains why the root endpoint is
+//     the only one that can accept the text; that reasoning is from
+//     PuppetDB's documentation, not from a live response.
 //
 //  2. The `limit` and `order_by` URL parameters are honored alongside a
 //     `query` parameter at that endpoint. This one has a consequence, not
 //     just a risk: without an honored `order_by`, *which* subset PuppetDB
 //     returns for an over-limit query is unconstrained, so a TRUNCATED
-//     impact sample is not reproducible — and requirements.md 9.6 assumes
-//     it is. An untruncated sample stays reproducible either way, because
-//     the full set is returned and sorted locally.
+//     impact sample is not reproducible, when a deterministic sample is
+//     exactly what the estimate promises. An untruncated sample stays
+//     reproducible either way, because the full set is returned and
+//     sorted locally.
 //
 // What IS already covered, and why it is not enough:
 // TestAcceptance_ImpactQueryWireShape asserts the exact path, query text,
@@ -55,7 +54,7 @@ func TestOutstanding_PuppetDBImpactEndpointAssumptions(t *testing.T) {
 	t.Skip("requires a deployed PuppetDB; see this test's doc comment for the exact confirmation procedure")
 }
 
-// TestOutstanding_SensitiveWireShape is tasks.md task 12's third bullet.
+// TestOutstanding_SensitiveWireShape is another.
 //
 // What must be confirmed against a rich-data-enabled compiler: that a
 // Puppet `Sensitive` value serializes into a catalog as the Pcore

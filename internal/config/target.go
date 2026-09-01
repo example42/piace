@@ -3,14 +3,10 @@
 //
 // This package defines shape only: decoding (including unknown-field
 // rejection), default resolution, path/glob validation, and cross-field
-// validation are implemented separately (see design.md section 3,
-// "Target configuration resolution"). Keeping the schema and the resolver
-// in separate concerns lets later work build a resolved model on top of
-// this stable wire shape without churning the wire shape itself.
-//
-// Design reference: design.md section 2.2 ("Service configuration") and
-// section 3 ("Target configuration resolution"); requirements.md section 8
-// ("Target-file shape").
+// validation are implemented separately (, "Target configuration
+// resolution"). Keeping the schema and the resolver in separate concerns
+// lets later work build a resolved model on top of this stable wire
+// shape without churning the wire shape itself.
 package config
 
 // TargetFileVersion is the only supported `version` value for a target
@@ -25,8 +21,8 @@ type TargetFile struct {
 	Targets  []Target `json:"targets" yaml:"targets"`
 }
 
-// Defaults holds the global defaults merged into every target per
-// design.md section 3.2 ("Merge and validation rules").
+// Defaults holds the global defaults merged into every target before
+// its own overrides are applied.
 type Defaults struct {
 	Candidate      CandidateConfig      `json:"candidate,omitempty" yaml:"candidate,omitempty"`
 	Facts          FactsConfig          `json:"facts,omitempty" yaml:"facts,omitempty"`
@@ -52,7 +48,7 @@ type Target struct {
 }
 
 // CatalogAPI is the compiler catalog API version selected for candidate
-// compilation. See requirements.md 2.3-2.6 and design.md section 3.1.
+// compilation.
 type CatalogAPI string
 
 const (
@@ -65,17 +61,15 @@ type CandidateConfig struct {
 	Environment string     `json:"environment,omitempty" yaml:"environment,omitempty"`
 	CatalogAPI  CatalogAPI `json:"catalog_api,omitempty" yaml:"catalog_api,omitempty"`
 	// AllowV3Fallback is only meaningful when CatalogAPI is v4. It defaults
-	// to false and must be explicitly enabled; see design.md section 3.1.
+	// to false and must be explicitly enabled;
 	AllowV3Fallback *bool `json:"allow_v3_fallback,omitempty" yaml:"allow_v3_fallback,omitempty"`
 	// TrustedFactsCompilerLookup is only meaningful when CatalogAPI is v4.
 	// It asserts an operator-confirmed fact PIACE cannot itself observe:
 	// that the configured compiler is set up to obtain a target's trusted
-	// facts from PuppetDB when a v4 request omits the `trusted_facts`
-	// field, per design.md section 5 ("PIACE uses the documented v4
-	// omitted-field behavior only when the compiler is configured to
-	// obtain target trusted facts from PuppetDB"). It defaults to false:
-	// PIACE never assumes this compiler-side configuration exists. See
-	// requirements.md 2.4 and design.md section 5.
+	// facts from PuppetDB when a v4 request omits the `trusted_facts` field.
+	// PIACE uses the documented v4 omitted-field behavior only when that is
+	// true, and the field defaults to false, so PIACE never assumes the
+	// compiler-side configuration exists.
 	TrustedFactsCompilerLookup *bool `json:"trusted_facts_compiler_lookup,omitempty" yaml:"trusted_facts_compiler_lookup,omitempty"`
 }
 
@@ -114,25 +108,22 @@ type BaselineConfig struct {
 // ExclusionRule suppresses matching resource (and connected edge)
 // differences from the displayed and evaluated result. Type is an exact,
 // case-sensitive Puppet resource type; Title is a case-sensitive
-// `path.Match` glob pattern. See requirements.md 6.1-6.2 and design.md
-// section 3.2 rule 3.
+// `path.Match` glob pattern.
 type ExclusionRule struct {
 	Type  string `json:"type" yaml:"type"`
 	Title string `json:"title" yaml:"title"`
 }
 
-// RedactionSelector replaces every matching parameter value with a stable
-// redaction marker in all output formats. Both fields are exact,
-// case-sensitive names. See requirements.md 8.8 and design.md section 3.2
-// rule 4.
+// RedactionSelector replaces every matching parameter value with a
+// stable redaction marker in all output formats. Both fields are exact,
+// case-sensitive names.
 type RedactionSelector struct {
 	Type      string `json:"type" yaml:"type"`
 	Parameter string `json:"parameter" yaml:"parameter"`
 }
 
 // ImpactEstimateConfig configures the optional PuppetDB-backed
-// stored-catalog footprint estimate. See requirements.md section 9 and
-// design.md section 8.
+// stored-catalog footprint estimate.
 type ImpactEstimateConfig struct {
 	Enabled *bool `json:"enabled,omitempty" yaml:"enabled,omitempty"`
 	// Timeout is a Go duration string (e.g. "10s"), resolved and bounded by
@@ -140,6 +131,6 @@ type ImpactEstimateConfig struct {
 	Timeout string `json:"timeout,omitempty" yaml:"timeout,omitempty"`
 	// ResultLimit bounds the number of certnames retained in an impact
 	// estimate sample; the adapter requests ResultLimit+1 to detect
-	// truncation. See design.md section 8.
+	// truncation.
 	ResultLimit *int `json:"result_limit,omitempty" yaml:"result_limit,omitempty"`
 }

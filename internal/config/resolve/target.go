@@ -7,15 +7,14 @@ import (
 )
 
 // ResolveTargets resolves and validates every target in tf against its
-// global defaults, per design.md section 3. targetFileDir is the
-// directory containing the target file, used to resolve relative
-// facts.file/baseline.file values (design.md section 3.2 rule 5).
+// global defaults. targetFileDir is the directory containing the target
+// file, used to resolve relative facts.file/baseline.file values.
 //
-// It validates config.TargetFileVersion (version: 1) and accumulates every
-// problem found across every target into a single error, per design.md
-// section 3.2 ("Invalid configuration is one operational diagnostic").
-// When err is non-nil, targets is nil: a caller must not act on partial
-// results from an invalid target file.
+// It validates config.TargetFileVersion (version: 1) and accumulates
+// every problem found across every target into a single error.
+// ("Invalid configuration is one operational diagnostic"). When err is
+// non-nil, targets is nil: a caller must not act on partial results from
+// an invalid target file.
 func ResolveTargets(tf config.TargetFile, targetFileDir string) (targets []Target, err error) {
 	var c errorCollector
 

@@ -12,10 +12,10 @@ import (
 	"github.com/example42/piace/internal/transport"
 )
 
-// isVerifiedUnsupportedV4 implements this package's "verified unsupported
-// v4 response" detection rule, the judgment call design.md section 3.1
-// leaves to the adapter: "A v4 request may fall back only for a
-// documented unsupported-endpoint or unsupported-version response."
+// isVerifiedUnsupportedV4 implements this package's
+// verified-unsupported-v4-response detection rule, the judgment call
+// left to the adapter: a v4 request may fall back only for a documented
+// unsupported-endpoint or unsupported-version response.
 //
 // Rule: exactly HTTP 404 (Not Found) or 501 (Not Implemented) on the v4
 // request, decided from the status code alone, before any response body
@@ -38,44 +38,41 @@ import (
 //     convention for that exact case.
 //
 // This rule is deliberately status-code-only and independent of response
-// body content: design.md section 3.1 requires that fallback "must not
-// fall back after authentication, authorization, timeout, malformed
-// response, or candidate identity/environment mismatch" — none of those
-// conditions can ever produce a 404 or 501 by definition (401/403 for
-// auth/authz, a transport.Error with no HTTP status at all for
-// timeout/malformed-response-below-the-HTTP-layer, and a 2xx response
-// body for identity/environment mismatch), so a status-code-only rule
-// cannot accidentally satisfy this prohibition list. A body-shape-based
-// rule was deliberately rejected: there is no publicly documented,
-// fixture-verified "unsupported" error body shape to check, and requiring
-// one would make this rule silently inert against a real server that
-// signals "unsupported" via status code alone (the common case for an
-// unregistered route).
+// body content. Fallback must not happen after authentication,
+// authorization, timeout, malformed response, or candidate identity or
+// environment mismatch, and none of those conditions can produce a 404
+// or 501 by definition: 401 or 403 for auth and authz, a transport.Error
+// with no HTTP status at all for a timeout or a malformed response below
+// the HTTP layer, and a 2xx response body for an identity or environment
+// mismatch. So a status-code-only rule cannot accidentally satisfy that
+// prohibition list. A body-shape-based rule was deliberately rejected:
+// there is no publicly documented, fixture-verified "unsupported" error
+// body shape to check, and requiring one would make this rule silently
+// inert against a real server that signals unsupported via status code
+// alone, which is the common case for an unregistered route.
 func isVerifiedUnsupportedV4(statusCode int) bool {
 	return statusCode == http.StatusNotFound || statusCode == http.StatusNotImplemented
 }
 
-// processResponse implements design.md section 5's response validation
-// contract for a received (non-fallback-triggering) HTTP response: "Its
-// contract requires that the returned catalog identify the requested
-// certname and candidate environment exactly. A non-2xx compiler
-// response, semantic request rejection, identity mismatch, or environment
-// mismatch is a compilation failure."
+// processResponse implements the response validation contract for a
+// received, non-fallback-triggering HTTP response: the returned catalog
+// must identify the requested certname and candidate environment
+// exactly, and a non-2xx compiler response, semantic request rejection,
+// identity mismatch, or environment mismatch is a compilation failure.
 //
-// A malformed/unparseable response body is deliberately NOT included in
-// that compilation-failure list (design.md section 5 names exactly four
-// conditions; malformed response is absent), and design.md section 3.1
-// treats "malformed response" as a condition distinct from a verified
-// compiler rejection (fallback must not happen for it, the same way it
-// must not happen for a transport timeout). This package therefore
-// classifies a malformed/unparseable response body as an operational
-// error (model.OperationRequestCandidateTransport) via design.md section
-// 10's general taxonomy, which explicitly lists "response decoding/
-// normalization" under "operational error" — matching how a malformed
-// PuppetDB response is already classified by internal/puppetdb/adapter.go
-// (model.OperationLoadFacts/OperationLoadBaseline, both operational),
-// rather than forcing every response-shape problem into the same
-// compilation-failure bucket as a verified rejection.
+// A malformed or unparseable response body is deliberately NOT in that
+// compilation-failure list, which names exactly four conditions and does
+// not include it, and malformed response is a condition distinct from a
+// verified compiler rejection: fallback must not happen for it, the same
+// way it must not happen for a transport timeout. This package therefore
+// classifies a malformed or unparseable response body as an operational
+// error (model.OperationRequestCandidateTransport), since response
+// decoding and normalization sit under the operational-error class. That
+// matches how a malformed PuppetDB response is already classified by
+// internal/puppetdb/adapter.go (model.OperationLoadFacts and
+// model.OperationLoadBaseline, both operational), rather than forcing
+// every response-shape problem into the same compilation-failure bucket
+// as a verified rejection.
 func processResponse(resp *transport.Response, host, certname, environment string, effectiveAPI config.CatalogAPI) (puppetdb.Catalog, *model.Diagnostic) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		diag := compilationFailureDiagnostic(certname, host, resp.StatusCode,
@@ -90,10 +87,10 @@ func processResponse(resp *transport.Response, host, certname, environment strin
 		return puppetdb.Catalog{}, &diag
 	}
 	if probe.Error != "" {
-		// The raw probe.Error text is never placed into the diagnostic
-		// message: it is compiler-supplied text that can echo request
-		// content, matching design.md's Error Handling principle already
-		// applied by internal/puppetdb/adapter.go's notFoundOrMalformedDiagnostic.
+		// The raw probe.Error text is never placed into the diagnostic message:
+		// it is compiler-supplied text that can echo request content, the same
+		// principle internal/puppetdb/adapter.go's notFoundOrMalformedDiagnostic
+		// already applies.
 		diag := compilationFailureDiagnostic(certname, host, resp.StatusCode,
 			"compiler rejected the candidate catalog request (semantic request rejection)")
 		return puppetdb.Catalog{}, &diag
@@ -150,13 +147,13 @@ func processResponse(resp *transport.Response, host, certname, environment strin
 // The version is taken from the caller rather than sniffed from the
 // body. A "top-level `name`, else look under `catalog`" heuristic would
 // accept either shape from either endpoint, which is exactly the
-// speculative-probing behavior design.md section 5 rules out — and it
-// would also mask a compiler that started returning the wrong envelope.
+// speculative probing this package rules out, and it would also mask a
+// compiler that started returning the wrong envelope.
 //
 // effectiveAPI is the API of the request that produced this very
-// response, never target.Candidate.CatalogAPI: on the permitted
-// v4-to-v3 fallback path (design.md section 3.1) the target is
-// configured for v4 while the response in hand came from v3.
+// response, never target.Candidate.CatalogAPI: on the permitted v4-to-v3
+// fallback path the target is configured for v4 while the response in
+// hand came from v3.
 func catalogDocument(resp *transport.Response, host, certname string, effectiveAPI config.CatalogAPI) (json.RawMessage, *model.Diagnostic) {
 	if effectiveAPI != config.CatalogAPIv4 {
 		return resp.Body, nil
@@ -176,33 +173,31 @@ func catalogDocument(resp *transport.Response, host, certname string, effectiveA
 	return envelope.Catalog, nil
 }
 
-// compilationFailureDiagnostic builds a model.Diagnostic classified as
-// design.md section 10's "compilation failure" (model.OperationRequestCandidate).
+// compilationFailureDiagnostic builds a model.Diagnostic classified as a
+// compilation failure (model.OperationRequestCandidate).
 func compilationFailureDiagnostic(certname, host string, statusCode int, message string) model.Diagnostic {
 	return transport.Diagnostic(model.OperationRequestCandidate, certname, transport.Summary{Host: host, StatusCode: statusCode}, message)
 }
 
 // compilationFailureDiagnosticNoResponse builds a compilation-failure
 // diagnostic for a policy prerequisite that failed before any HTTP
-// request was attempted (the v4 trusted-fact-source-unavailable case),
-// per design.md section 10's explicit "v4 trusted-fact requirements are
-// unmet" compilation-failure condition.
+// request was attempted, the v4 trusted-fact-source-unavailable case:
+// unmet v4 trusted-fact requirements are a compilation failure.
 func compilationFailureDiagnosticNoResponse(certname, host, message string) model.Diagnostic {
 	return transport.Diagnostic(model.OperationRequestCandidate, certname, transport.Summary{Host: host}, message)
 }
 
 // operationalResponseDiagnostic builds a model.Diagnostic classified as
-// design.md section 10's "operational error"
-// (model.OperationRequestCandidateTransport) for a response that was
-// received but could not be decoded/normalized.
+// an operational error (model.OperationRequestCandidateTransport) for a
+// response that was received but could not be decoded or normalized.
 func operationalResponseDiagnostic(certname, host string, statusCode int, message string) model.Diagnostic {
 	return transport.Diagnostic(model.OperationRequestCandidateTransport, certname, transport.Summary{Host: host, StatusCode: statusCode}, message)
 }
 
-// operationalLocalDiagnostic builds a model.Diagnostic classified as
-// design.md section 10's "operational error" for a local failure that
-// occurred before any HTTP request was sent (e.g. malformed input
-// factset shape encountered while building the request body).
+// operationalLocalDiagnostic builds a model.Diagnostic classified as an
+// operational error for a local failure that occurred before any HTTP
+// request was sent, such as a malformed input factset shape encountered
+// while building the request body.
 func operationalLocalDiagnostic(certname, host, message string) model.Diagnostic {
 	return transport.Diagnostic(model.OperationRequestCandidateTransport, certname, transport.Summary{Host: host}, message)
 }

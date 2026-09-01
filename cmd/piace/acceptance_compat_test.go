@@ -11,10 +11,9 @@ import (
 // v3Defaults selects the v3 catalog API for every target.
 var v3Defaults = strings.Replace(defaultDefaults, "catalog_api: v4", "catalog_api: v3", 1)
 
-// TestAcceptance_V3WarningAppearsInEveryFormat covers requirements.md
-// 2.5-2.6: a v3 request emits a prominent trusted-fact compatibility
-// warning in text, JSON, and HTML, and that warning alone does not change
-// the exit status (design.md section 10).
+// TestAcceptance_V3WarningAppearsInEveryFormat: a v3 request emits a
+// prominent trusted-fact compatibility warning in text, JSON, and HTML,
+// and that warning alone does not change the exit status.
 func TestAcceptance_V3WarningAppearsInEveryFormat(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
@@ -41,14 +40,13 @@ func TestAcceptance_V3WarningAppearsInEveryFormat(t *testing.T) {
 	}
 	if !strings.Contains(got.html, "Trusted-fact compatibility warning") ||
 		!strings.Contains(got.html, "can observe the catalog-reader") {
-		t.Error("the HTML report does not visibly mark the v3 trusted-fact warning (requirements.md 8.5)")
+		t.Error("the HTML report does not visibly mark the v3 trusted-fact warning")
 	}
 }
 
-// TestAcceptance_V4ToV3Fallback covers design.md section 3.1's fallback
-// conditions from both sides: a verified-unsupported v4 response falls
-// back only when the target opted in, and produces the same
-// non-suppressible warning.
+// TestAcceptance_V4ToV3Fallback covers the fallback conditions from both
+// sides: a verified-unsupported v4 response falls back only when the
+// target opted in, and produces the same non-suppressible warning.
 func TestAcceptance_V4ToV3Fallback(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -97,10 +95,10 @@ func TestAcceptance_V4ToV3Fallback(t *testing.T) {
 	}
 }
 
-// TestAcceptance_V4WithoutTrustedFactSourceFailsCompilation covers
-// design.md section 5's rule that PIACE fails compilation rather than
-// inventing trusted facts, and its escape hatch: an explicit
-// trusted_facts_compiler_lookup opt-in.
+// TestAcceptance_V4WithoutTrustedFactSourceFailsCompilation covers the
+// rule that PIACE fails compilation rather than inventing trusted facts,
+// and its escape hatch: an explicit trusted_facts_compiler_lookup
+// opt-in.
 func TestAcceptance_V4WithoutTrustedFactSourceFailsCompilation(t *testing.T) {
 	t.Run("no trusted fact and no lookup opt-in fails", func(t *testing.T) {
 		h := newHarness(t)
@@ -138,9 +136,8 @@ func TestAcceptance_V4WithoutTrustedFactSourceFailsCompilation(t *testing.T) {
 	})
 }
 
-// TestAcceptance_CandidateIdentityAndEnvironmentAreVerified covers
-// requirements.md 1.5 and design.md's Property 3: a response naming a
-// different certname or environment is never diffed.
+// TestAcceptance_CandidateIdentityAndEnvironmentAreVerified: a response
+// naming a different certname or environment is never diffed.
 func TestAcceptance_CandidateIdentityAndEnvironmentAreVerified(t *testing.T) {
 	cases := []struct {
 		name        string

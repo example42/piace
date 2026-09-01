@@ -3,8 +3,8 @@ package exitcode
 import "testing"
 
 // TestForOutcome_StableMapping locks the exact outcome-to-exit-code
-// mapping from design.md section 10. CI pipelines depend on these values;
-// this test must fail loudly if any mapping is ever changed accidentally.
+// mapping. CI pipelines depend on these values; this test must fail
+// loudly if any mapping is ever changed accidentally.
 func TestForOutcome_StableMapping(t *testing.T) {
 	cases := []struct {
 		outcome Outcome
@@ -32,7 +32,7 @@ func TestForOutcome_UnknownIsOperationalError(t *testing.T) {
 }
 
 // TestReduce_Precedence checks every pairwise combination against the
-// fixed precedence order in design.md section 10:
+// fixed precedence order:
 //
 //	operational error > compilation failure > policy-disallowed difference
 //	  > differences_allowed > clean
@@ -75,8 +75,8 @@ func TestReduceAll_EmptyIsClean(t *testing.T) {
 	}
 }
 
-// TestReduceAll_MostSevereWins exercises ReduceAll across a mixed slice of
-// outcomes, per design.md section 10's precedence.
+// TestReduceAll_MostSevereWins exercises ReduceAll across a mixed slice
+// of outcomes.
 func TestReduceAll_MostSevereWins(t *testing.T) {
 	outcomes := []Outcome{
 		OutcomeClean,

@@ -7,10 +7,10 @@ import (
 	"github.com/example42/piace/internal/config"
 )
 
-// ResolveServices validates a `--services` file per design.md section 2.2:
-// version 1, and for each of compiler/puppetdb, a non-empty https endpoint
-// URL and exactly one usable reference to each of the CA bundle, client
-// certificate and private key.
+// ResolveServices validates a `--services` file: version 1, and for each
+// of compiler/puppetdb, a non-empty https endpoint URL and exactly one
+// usable reference to each of the CA bundle, client certificate and
+// private key.
 //
 // dir is the services file's directory. A relative path written in the file
 // resolves against it, because every file path named in a config file
@@ -23,8 +23,8 @@ import (
 // absolute, so the open error the transport reports names one unambiguous
 // location rather than a relative path the reader has to resolve by hand.
 //
-// Like ResolveTargets, it accumulates every problem it finds into a single
-// error rather than failing on the first one, per design.md section 3.2.
+// Like ResolveTargets, it accumulates every problem it finds into a
+// single error rather than failing on the first one.
 func ResolveServices(sf config.ServicesFile, dir string) (Services, error) {
 	var c errorCollector
 

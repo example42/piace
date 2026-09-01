@@ -39,10 +39,10 @@ func TestDescribeBody(t *testing.T) {
 	}
 }
 
-// TestDescribeBody_NeverReturnsValues asserts the one property that makes
-// an Event safe to print to a CI log under requirements.md 3.5: only
-// top-level member *names* are collected, never member values, however
-// deeply the value nests.
+// TestDescribeBody_NeverReturnsValues asserts the one property that
+// makes an Event safe to print to a CI log: only top-level member
+// *names* are collected, never member values, however deeply the value
+// nests.
 func TestDescribeBody_NeverReturnsValues(t *testing.T) {
 	body := `{"catalog": {"resources": [{"parameters": {"password": "s3cret"}}]}}`
 	shape, keys, _ := describeBody([]byte(body))

@@ -156,9 +156,9 @@ func disclosureDepthAt(doc string, i int) int {
 // deterministic, and — when only part of the run was assessed — says so
 // rather than reading as a complete review.
 //
-// Every one of these is outside a disclosure, for the reason
-// requirements.md 8.5 gives about failures: a mark a reader has to go
-// looking for is not a visible mark.
+// Every one of these is outside a disclosure, for the same reason
+// failures are: a mark a reader has to go looking for is not a visible
+// mark.
 func TestHTMLMarksTheAssessmentAdvisoryAndNamesItsModel(t *testing.T) {
 	a := sampleAssessment()
 	data, err := HTML(sampleResult(), &a)

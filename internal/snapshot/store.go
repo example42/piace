@@ -9,15 +9,14 @@ import (
 	"time"
 )
 
-// ErrExists is returned by Write when path already exists and replace was
-// not requested, per design.md section 6: "Capture refuses to overwrite a
-// snapshot unless --replace is supplied." Callers can check for this with
-// errors.Is to distinguish overwrite refusal from any other write
-// failure.
+// ErrExists is returned by Write when path already exists and replace
+// was not requested: "Capture refuses to overwrite a snapshot unless
+// --replace is supplied." Callers can check for this with errors.Is to
+// distinguish overwrite refusal from any other write failure.
 var ErrExists = errors.New("snapshot: destination already exists (use --replace to overwrite)")
 
 // Write atomically writes env to path as canonical, checksum-verified
-// JSON, per design.md section 6:
+// JSON:
 //
 //   - refuses to overwrite an existing file at path unless replace is
 //     true (returns ErrExists, wrapped, without touching path);
@@ -42,14 +41,13 @@ var ErrExists = errors.New("snapshot: destination already exists (use --replace 
 // Load could never validate.
 //
 // Write creates path's containing directory (and any missing parents,
-// mode 0700) if it does not already exist. Neither requirements.md nor
-// design.md states whether a first-time capture must have its
-// destination directory pre-created by the operator or by PIACE itself;
-// requiring the operator to pre-create every per-target snapshot
-// directory before the very command that populates it can run for the
-// first time would make requirements.md 11.7's described CI workflow
-// ("CI refreshes catalog snapshots ... after merge to main/production
-// branch") fail on a repository's first capture, so this package creates
+// mode 0700) if it does not already exist. Nothing states whether a
+// first-time capture must have its destination directory pre-created by
+// the operator or by PIACE itself, and requiring the operator to
+// pre-create every per-target snapshot directory before the very command
+// that populates it can run for the first time would make the snapshot
+// workflow (CI refreshes catalog snapshots after a merge to the baseline
+// branch) fail on a repository's first capture. So this package creates
 // the directory rather than requiring that out-of-band step. This has no
 // bearing on overwrite protection: the file-exists check above still
 // runs first and is unaffected by whether the directory already existed.
@@ -112,13 +110,12 @@ func Write(path string, env Envelope, replace bool) error {
 }
 
 // syncDirBestEffort opens dir and fsyncs it so the preceding atomic
-// rename is durable against a crash, per design.md section 6's "directory
-// sync where supported". Any failure (permission, or a platform/
-// filesystem that does not support fsync on a directory descriptor at
-// all) is silently ignored: this is a durability best-effort, not a
-// correctness requirement Write's success depends on — the rename itself
-// has already completed and is visible to any reader by the time this
-// runs.
+// rename is durable against a crash. Any failure (permission, or a
+// platform or filesystem that does not support fsync on a directory
+// descriptor at all) is silently ignored: this is a durability
+// best-effort, not a correctness requirement Write's success depends on,
+// and the rename itself has already completed and is visible to any
+// reader by the time this runs.
 func syncDirBestEffort(dir string) {
 	d, err := os.Open(dir)
 	if err != nil {
@@ -129,13 +126,12 @@ func syncDirBestEffort(dir string) {
 }
 
 // Load reads path, decodes it as an Envelope, and verifies its
-// format_version and payload_checksum, per design.md section 6: "Reuse
-// validates version, kind, target, checksum, required metadata, and file
-// decoding before it is accepted." Load itself checks format_version and
-// the checksum (the two invariants that apply to every envelope
-// regardless of caller intent); Kind/target/required-metadata/baseline-
-// environment checks depend on what the caller expects and are Validate's
-// job.
+// format_version and payload_checksum: "Reuse validates version, kind,
+// target, checksum, required metadata, and file decoding before it is
+// accepted." Load itself checks format_version and the checksum (the two
+// invariants that apply to every envelope regardless of caller intent);
+// Kind/target/required-metadata/baseline- environment checks depend on
+// what the caller expects and are Validate's job.
 //
 // On any failure, Load returns a zero Envelope: it never returns a
 // partially-validated Envelope for a caller to accidentally use.
@@ -170,11 +166,11 @@ func Load(path string) (Envelope, error) {
 	return env, nil
 }
 
-// Validate checks env against the caller's expectations, per design.md
-// section 6's reuse validation and requirements.md 11.6: kind, target
-// identity, and — for a catalog envelope — the catalog-only mandatory
-// fields (RequestedEnvironment, CompilerAPIVersion, InputFactsetIdentity)
-// plus a well-formed CapturedAt timestamp.
+// Validate checks env against the caller's expectations before it is
+// reused: kind, target identity, and, for a catalog envelope, the
+// catalog-only mandatory fields (RequestedEnvironment,
+// CompilerAPIVersion, InputFactsetIdentity) plus a well-formed
+// CapturedAt timestamp.
 //
 // wantTarget is compared against env.Target exactly (case-sensitive; a
 // certname is not case-folded anywhere else in this codebase either).

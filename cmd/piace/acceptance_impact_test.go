@@ -21,9 +21,9 @@ func changedResources() []resourceSpec {
 	}
 }
 
-// TestAcceptance_ImpactEstimateBoundsAndLabelling covers requirements.md
-// 9.2-9.7: the bounded query, the truncation rule, the deterministic
-// sample, the reported PQL, and the mandatory label.
+// TestAcceptance_ImpactEstimateBoundsAndLabelling covers the bounded
+// query, the truncation rule, the deterministic sample, the reported
+// PQL, and the mandatory label.
 func TestAcceptance_ImpactEstimateBoundsAndLabelling(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), changedResources(), baseEdges())
@@ -37,17 +37,17 @@ func TestAcceptance_ImpactEstimateBoundsAndLabelling(t *testing.T) {
 		t.Fatalf("exit = %d, want 0\nstdout:\n%s\nstderr:\n%s", got.code, got.stdout, got.stderr)
 	}
 
-	// requirements.md 9.3: the label, in every format.
+	// The label, in every format.
 	for name, artifact := range got.all() {
 		if !strings.Contains(artifact, report.ImpactEstimateLabel) {
 			t.Errorf("the %s artifact does not label the estimate section %q", name, report.ImpactEstimateLabel)
 		}
 	}
-	// requirements.md 9.3 again: no format may say the nodes will change.
-	// The fixed note is stripped first — it is the one place a report is
-	// allowed to use the phrase, because it says PIACE does *not* claim
-	// it. The HTML-escaped form is stripped as well, since html/template
-	// rewrites the note's apostrophes before it reaches the page.
+	// No format may say the nodes will change. The fixed note is stripped
+	// first: it is the one place a report is allowed to use the phrase,
+	// because it says PIACE does *not* claim it. The HTML-escaped form is
+	// stripped as well, since html/template rewrites the note's apostrophes
+	// before it reaches the page.
 	for name, artifact := range got.all() {
 		scanned := strings.ReplaceAll(artifact, report.ImpactEstimateNote, "")
 		scanned = strings.ReplaceAll(scanned, template.HTMLEscapeString(report.ImpactEstimateNote), "")
@@ -59,12 +59,11 @@ func TestAcceptance_ImpactEstimateBoundsAndLabelling(t *testing.T) {
 		}
 	}
 
-	// requirements.md 9.4: the exact generated PQL is reported. It is
-	// discharged by the JSON report and by the canonical JSON the HTML
-	// artifact embeds; the text report and the HTML reading path omit it
-	// as repeated bulk (see internal/report's doc.go). Asserting it here
-	// against both artifacts is what keeps that trade honest — the
-	// obligation moved, it did not lapse.
+	// The exact generated PQL is reported. It is discharged by the JSON
+	// report and by the canonical JSON the HTML artifact embeds; the text
+	// report and the HTML reading path omit it as repeated bulk (see
+	// internal/report's doc.go). Asserting it here against both artifacts is
+	// what keeps that trade honest: the obligation moved, it did not lapse.
 	wantPQL := `resources[certname] { type = \"Service\" and title = \"nginx\" }`
 	if !strings.Contains(got.json, wantPQL) {
 		t.Errorf("the JSON report does not carry the exact generated PQL:\n%s", got.json)
@@ -76,8 +75,8 @@ func TestAcceptance_ImpactEstimateBoundsAndLabelling(t *testing.T) {
 		t.Errorf("the text report still prints the PQL:\n%s", got.stdout)
 	}
 
-	// requirements.md 9.6: truncation is marked and the sample is the
-	// deterministic, locally sorted prefix.
+	// Truncation is marked and the sample is the deterministic, locally
+	// sorted prefix.
 	if !strings.Contains(got.json, `"truncated":true`) {
 		t.Error("an over-limit estimate was not marked truncated")
 	}
@@ -88,18 +87,17 @@ func TestAcceptance_ImpactEstimateBoundsAndLabelling(t *testing.T) {
 		t.Error("the sample exceeded the configured result limit")
 	}
 
-	// Only the changed identity is estimated: design.md section 8 runs
-	// estimation for resource additions, removals, and parameter changes,
-	// never for an unchanged resource.
+	// Only the changed identity is estimated: estimation runs for resource
+	// additions, removals, and parameter changes, never for an unchanged
+	// resource.
 	if len(h.pdb.impactQueries) != 1 {
 		t.Fatalf("issued %d impact queries, want exactly 1: %+v", len(h.pdb.impactQueries), h.pdb.impactQueries)
 	}
 }
 
-// TestAcceptance_FailedImpactEstimateIsOperational covers design.md
-// section 8's rule that an enabled estimate's failure is requested
-// analysis that was not delivered, and requirements.md 9.7's requirement
-// to report it separately from catalog differences.
+// TestAcceptance_FailedImpactEstimateIsOperational covers the rule that
+// an enabled estimate's failure is requested analysis that was not
+// delivered, and is reported separately from catalog differences.
 func TestAcceptance_FailedImpactEstimateIsOperational(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), changedResources(), baseEdges())
@@ -120,9 +118,8 @@ func TestAcceptance_FailedImpactEstimateIsOperational(t *testing.T) {
 	}
 }
 
-// TestAcceptance_DisabledImpactEstimateIssuesNoQuery covers
-// requirements.md 9.1 and design.md section 8's "disabled estimates
-// produce no request and no failure".
+// TestAcceptance_DisabledImpactEstimateIssuesNoQuery covers the rule
+// that a disabled estimate produces no request and no failure.
 func TestAcceptance_DisabledImpactEstimateIssuesNoQuery(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), changedResources(), baseEdges())
@@ -145,20 +142,21 @@ func TestAcceptance_DisabledImpactEstimateIssuesNoQuery(t *testing.T) {
 // assumptions internal/impact/doc.go documents inspectable rather than
 // buried, and to fail loudly if a future change alters them silently.
 //
-// IMPORTANT — this test does NOT discharge task 12's second acceptance
-// condition. It proves PIACE sends what it says it sends; it cannot prove
-// a deployed PuppetDB *accepts* it. Both assumptions remain outstanding:
+// IMPORTANT: this test proves PIACE sends what it says it sends. It
+// cannot prove a deployed PuppetDB *accepts* it, so two assumptions
+// remain outstanding:
 //
-//  1. design.md section 8's PQL text is sent to the root /pdb/query/v4
-//     endpoint, not to /pdb/query/v4/resources as requirements.md 9.2
-//     names (that endpoint takes AST, not a PQL string naming its own
-//     entity). Whether the root endpoint accepts this exact text against
-//     the deployed PuppetDB version is unconfirmed.
+//  1. The PQL text is sent to the root /pdb/query/v4 endpoint rather than
+//     to /pdb/query/v4/resources, which takes AST rather than a PQL
+//     string naming its own entity. Whether the root endpoint accepts
+//     this exact text against the deployed PuppetDB version is
+//     unconfirmed.
 //  2. `limit` and `order_by` are sent as URL parameters beside `query`.
-//     Whether they are honored there is unconfirmed — and per
+//     Whether they are honored there is unconfirmed, and per
 //     internal/impact/doc.go, an unhonored `order_by` makes a *truncated*
-//     sample non-reproducible, which requirements.md 9.6 assumes it is.
-//     An untruncated sample stays reproducible either way.
+//     sample non-reproducible when a deterministic one is what the
+//     estimate promises. An untruncated sample stays reproducible either
+//     way.
 func TestAcceptance_ImpactQueryWireShape(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), changedResources(), baseEdges())
@@ -182,8 +180,8 @@ func TestAcceptance_ImpactQueryWireShape(t *testing.T) {
 	if q["query"] != `resources[certname] { type = "Service" and title = "nginx" }` {
 		t.Errorf("query = %q", q["query"])
 	}
-	// design.md section 8: limit is result_limit + 1, so truncation is
-	// detected without a second round trip or a true-total request.
+	// The limit is result_limit + 1, so truncation is detected without a
+	// second round trip or a true-total request.
 	if q["limit"] != "3" {
 		t.Errorf("limit = %q, want 3 (result_limit 2 + 1)", q["limit"])
 	}

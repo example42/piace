@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-// TestClientNeverSendsAnAuthorizationHeader guards requirements.md 3.5 at
-// the boundary that enforces it: whatever a caller sets, a compiler or
-// PuppetDB request authenticates by mTLS and carries no bearer token —
-// on the initial request and on an allowed same-authority redirect alike.
+// TestClientNeverSendsAnAuthorizationHeader guards the no-bearer-token
+// rule at the boundary that enforces it: whatever a caller sets, a
+// compiler or PuppetDB request authenticates by mTLS and carries no
+// bearer token, on the initial request and on an allowed same-authority
+// redirect alike.
 //
 // PIACE does send a bearer token to exactly one service: the inference
 // service in internal/inference, which is a separate client with its own

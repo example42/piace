@@ -75,16 +75,16 @@ var recognizedChecksumAlgorithms = map[string]bool{
 // resource sets `checksum_value` but omits `checksum` entirely.
 const defaultChecksumAlgorithm = "sha256"
 
-// ResolveFileContentEvidence implements design.md section 7.2's exact
-// four-step priority order for one File resource's content-bearing
-// parameters, comparing before (baseline) against after (candidate).
-// certname and identity are used only for diagnostic/retrieval context,
-// never echoed back with any parameter value; environment is the
-// candidate environment a compiler-retrieved reference must be resolved
-// within. retriever may be nil, meaning step 3 retrieval is unavailable
-// for this call (see doc.go's reference_changed vs. content_indeterminate
-// rule, which treats a nil retriever as a distinct case from an attempted
-// retrieval that failed).
+// ResolveFileContentEvidence implements the four-step priority order for
+// one File resource's content-bearing parameters, comparing before
+// (baseline) against after (candidate). certname and identity are used
+// only for diagnostic and retrieval context, never echoed back with any
+// parameter value; environment is the candidate environment a
+// compiler-retrieved reference must be resolved within. retriever may be
+// nil, meaning step 3 retrieval is unavailable for this call: see
+// doc.go's reference_changed versus content_indeterminate rule, which
+// treats a nil retriever as a distinct case from an attempted retrieval
+// that failed.
 //
 // See doc.go for the full priority-order writeup and the
 // reference_changed/content_indeterminate distinction; this function is
@@ -177,11 +177,11 @@ func hashLocalContent(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// resolveCompiledChecksum implements design.md section 7.2 step 2: both
-// sides must expose a non-empty checksum_value and agree on a checksum
-// algorithm that is one of the documented checksum_value-compatible
-// types (recognizedChecksumAlgorithms). See doc.go for why mismatched or
-// unrecognized algorithms are never treated as step 2 evidence.
+// resolveCompiledChecksum implements step 2: both sides must expose a
+// non-empty checksum_value and agree on a checksum algorithm that is one
+// of the documented checksum_value-compatible types
+// (recognizedChecksumAlgorithms). See doc.go for why a mismatched or
+// unrecognized algorithm is never treated as step 2 evidence.
 func resolveCompiledChecksum(before, after map[string]model.Value) (model.FileContentEvidence, bool) {
 	beforeValue, beforeOK := getStringParam(before, checksumValueParameter)
 	afterValue, afterOK := getStringParam(after, checksumValueParameter)
@@ -275,7 +275,7 @@ func resolveNonByteComparable(certname string, identity model.ResourceIdentity, 
 
 // sideResolution is the outcome of resolving one side (before or after)
 // of a File resource's content-bearing parameters toward a comparable
-// digest, per design.md section 7.2 step 3.
+// digest, which is step 3.
 type sideResolution struct {
 	digest       DigestEvidence
 	reference    string

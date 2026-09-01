@@ -7,8 +7,8 @@ import (
 
 // TestTargetFile_JSONRoundTrip verifies the versioned target-file schema
 // marshals and unmarshals via encoding/json without field loss. Full YAML
-// decoding, unknown-field rejection, and default resolution are task 2's
-// concern; this only locks the wire shape defined in this task.
+// decoding, unknown-field rejection, and default resolution are internal/config/resolve's
+// concern; this only locks the wire shape this package defines.
 func TestTargetFile_JSONRoundTrip(t *testing.T) {
 	trueVal := true
 	limit := 1000

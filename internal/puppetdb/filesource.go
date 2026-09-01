@@ -12,10 +12,8 @@ import (
 )
 
 // FileSource is the file-backed implementation of FactSource and
-// CatalogSource: the "envelope" adapter named in design.md's Architecture
-// diagram ("fact-source adapter (PuppetDB or envelope)", "baseline-source
-// adapter (PuppetDB or envelope)"), selected by a target whose
-// Facts.Source/Baseline.Source resolves to config.FactSourceFile /
+// CatalogSource: the envelope adapter, selected by a target whose
+// Facts.Source or Baseline.Source resolves to config.FactSourceFile or
 // config.BaselineSourceFile.
 //
 // It lives in this package (rather than in internal/snapshot) so it can
@@ -42,20 +40,19 @@ func NewFileSource() *FileSource { return &FileSource{} }
 // checksum-verifies, and shape-validates the factset envelope at
 // target.Facts.File, then decodes its payload into a Factset.
 //
-// Provenance mapping (documented, since design.md does not spell out the
-// exact field-by-field mapping for a file-backed source): Kind is
-// model.SourceKindFile; Certname/Environment/ProducerTimestamp/Producer/
-// CatalogIdentity are taken from the decoded Factset payload itself
-// (fs.Certname, fs.Environment, fs.ProducerTimestamp, fs.Producer,
-// fs.Hash) rather than from envelope metadata, so a file-backed
-// provenance carries the exact same shape and meaning as the PuppetDB-
-// backed provenance in adapter.go — the only thing that differs between
-// the two sources is Kind and where the bytes came from, not what the
-// fields mean. The envelope's own CapturedAt/Source fields (when the
-// captured factset payload doesn't repeat that information) are
-// available on the Envelope itself for a caller that wants capture
-// provenance specifically (see LoadEnvelope), but are not folded into
-// SourceProvenance, which is a fact/catalog *content* provenance record.
+// Provenance mapping: Kind is model.SourceKindFile, and Certname,
+// Environment, ProducerTimestamp, Producer and CatalogIdentity are taken
+// from the decoded Factset payload itself (fs.Certname, fs.Environment,
+// fs.ProducerTimestamp, fs.Producer, fs.Hash) rather than from envelope
+// metadata. A file-backed provenance therefore carries the exact same
+// shape and meaning as the PuppetDB-backed provenance in adapter.go: the
+// only thing that differs between the two sources is Kind and where the
+// bytes came from, not what the fields mean. The envelope's own
+// CapturedAt and Source fields, for a captured payload that does not
+// repeat that information, stay available on the Envelope for a caller
+// that wants capture provenance specifically (see LoadEnvelope), and are
+// not folded into SourceProvenance, which is a fact or catalog *content*
+// provenance record.
 func (f *FileSource) Load(ctx context.Context, target resolve.Target) (Factset, model.SourceProvenance, *model.Diagnostic) {
 	if target.Facts.Source != config.FactSourceFile {
 		diag := snapshotDiagnostic(model.OperationLoadFacts, target.Certname,
@@ -97,24 +94,15 @@ func (f *FileSource) Load(ctx context.Context, target resolve.Target) (Factset, 
 // envelope at target.Baseline.File, then decodes its payload into a
 // Catalog.
 //
-// Unlike Adapter.LoadBaseline's PuppetDB environment check (which applies
-// unconditionally to a *live* retrieval, per doc.go's discussion of
-// requirements.md 1.3 vs. section 8), this file-backed check is not a
-// judgment call about ambiguous requirement text: requirements.md 11.6 is
-// unconditional ("WHEN a local snapshot is selected as a fact or baseline
-// catalog source, THE CLI SHALL validate its recorded target identity and
-// integrity checksum before comparison") and design.md section 6 states
-// plainly, "A catalog snapshot selected as a baseline must also match the
-// resolved baseline environment." There is no analogous "regardless of
-// its environment" carve-out for a file source anywhere in
-// requirements.md or design.md — section 8's carve-out is stated
-// specifically about baseline.source: puppetdb's retrieval semantics (see
-// adapter.go's doc.go), and a file snapshot's whole purpose per
-// requirements.md Requirement 11's user story is to pin a specific
-// captured environment intentionally. So this check is at least as
-// strict as the PuppetDB adapter's, and arguably has stronger textual
-// grounding: it is requirements.md 11.6 applied literally, not resolved
-// from a perceived tension between two sections.
+// Unlike Adapter.LoadBaseline's PuppetDB environment check (see doc.go),
+// this file-backed check involves no judgment call. A snapshot selected
+// as a fact or baseline source has its recorded target identity and
+// integrity checksum validated before comparison, and a catalog snapshot
+// selected as a baseline must also match the resolved baseline
+// environment. There is no "regardless of its environment" carve-out for
+// a file source: that carve-out is about a live PuppetDB retrieval's
+// semantics, and a file snapshot's whole purpose is to pin one captured
+// environment on purpose.
 func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (Catalog, model.SourceProvenance, *model.Diagnostic) {
 	if target.Baseline.Source != config.BaselineSourceFile {
 		diag := snapshotDiagnostic(model.OperationLoadBaseline, target.Certname,
@@ -146,12 +134,11 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 				target.Baseline.File, cat.Environment, target.Baseline.Environment))
 		return Catalog{}, model.SourceProvenance{}, &diag
 	}
-	// The envelope itself also records requested_environment for a
-	// catalog snapshot (mandatory per requirements.md 11.5); a mismatch
-	// between the payload's own recorded environment and the envelope's
-	// requested_environment would indicate a corrupted or hand-edited
-	// snapshot rather than a normal operator error, so it is checked too,
-	// defensively, with the same diagnostic operation.
+	// The envelope itself also records requested_environment for a catalog
+	// snapshot (mandatory metadata); a mismatch between the payload's own recorded
+	// environment and the envelope's requested_environment would indicate a
+	// corrupted or hand-edited snapshot rather than a normal operator error,
+	// so it is checked too, defensively, with the same diagnostic operation.
 	if env.RequestedEnvironment != "" && env.RequestedEnvironment != cat.Environment {
 		diag := snapshotDiagnostic(model.OperationLoadBaseline, target.Certname,
 			fmt.Sprintf("baseline catalog snapshot %s is inconsistent: envelope requested_environment %q does not match payload environment %q",

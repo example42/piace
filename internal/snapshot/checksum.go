@@ -7,15 +7,15 @@ import (
 	"fmt"
 )
 
-// Checksum computes the SHA-256 payload integrity checksum described by
-// design.md section 6: "SHA-256 over the compact canonical JSON encoding
-// of only payload". payload is decoded with number precision preserved
-// (see decodeAny) before being canonically re-encoded, so the checksum is
-// stable across cosmetic re-serialization (key order, numeric spelling,
-// insignificant whitespace) but sensitive to any actual value change.
+// Checksum computes the SHA-256 payload integrity checksum: SHA-256 over
+// the compact canonical JSON encoding of only payload. payload is
+// decoded with number precision preserved (see decodeAny) before being
+// canonically re-encoded, so the checksum is stable across cosmetic
+// re-serialization (key order, numeric spelling, insignificant
+// whitespace) but sensitive to any actual value change.
 //
 // The returned string is "sha256:<hex>", matching the payload_checksum
-// field's documented format in design.md section 6's example envelope.
+// field's documented format.
 func Checksum(payload json.RawMessage) (string, error) {
 	decoded, err := decodeAny(payload)
 	if err != nil {

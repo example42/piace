@@ -55,10 +55,9 @@ func buildCompilerResourceJSON(id model.ResourceIdentity, paramValue string) str
 // N randomly generated resource identities fed through the compiler's
 // plain-array shape, Catalog must return exactly those identities,
 // case-sensitively, with no loss or corruption, sorted by (Type, Title).
-// This locks design.md section 7.1's identity-construction contract
-// across many random inputs, matching design.md's Property 1
-// (Deterministic results): the same input always normalizes to the same
-// sorted identity set.
+// This locks the identity-construction contract across many random
+// inputs: the same input always normalizes to the same sorted identity
+// set.
 //
 // **Validates: Requirements 5.1**
 func TestProperty_ResourceIdentityRoundTrips(t *testing.T) {
@@ -109,8 +108,8 @@ func TestProperty_ResourceIdentityRoundTrips(t *testing.T) {
 // randomly generated edges (each a random pair of resource identities,
 // direction significant), Catalog's returned edge list is always sorted
 // by the ordered pair (Source, Target) and preserves every edge exactly
-// once, per design.md section 7.1's "A graph edge key is the ordered pair
-// (source identity, target identity); direction is significant."
+// once: a graph edge key is the ordered pair (source identity, target
+// identity), and direction is significant.
 //
 // **Validates: Requirements 5.3**
 func TestProperty_EdgeSortKeyIsOrderedPair(t *testing.T) {
@@ -194,9 +193,8 @@ func TestProperty_EdgeSortKeyIsOrderedPair(t *testing.T) {
 // property-based test: for N randomly generated differently-spelled
 // encodings of the same numeric value (integer, decimal, exponent
 // forms), the resulting model.Number is always identical regardless of
-// spelling, matching design.md's Property 1 (Deterministic results) and
-// this task's requirement to reuse the one canonicalization algorithm
-// already implemented for snapshot payload checksums.
+// spelling, reusing the one canonicalization algorithm already
+// implemented for snapshot payload checksums.
 //
 // **Validates: Requirements 5.2, 8.6**
 func TestProperty_NumberCanonicalizationMatchesSnapshotAlgorithm(t *testing.T) {
@@ -259,9 +257,8 @@ func TestProperty_NumberCanonicalizationMatchesSnapshotAlgorithm(t *testing.T) {
 // values (never a recognized {href, data} object or plain array),
 // Catalog always returns a non-nil model.OperationNormalize diagnostic
 // and a zero NormalizedCatalog, never a partially-populated or silently
-// empty result. This locks this task's brief: "Treat unknown required
-// shapes as reported normalization errors rather than silently
-// discarding them."
+// empty result: an unknown required shape is a reported normalization
+// error, never silently discarded.
 //
 // **Validates: Requirements 10.5**
 func TestProperty_MalformedShapesAlwaysProduceDiagnostic(t *testing.T) {

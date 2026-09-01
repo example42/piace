@@ -16,23 +16,23 @@ import (
 	"github.com/example42/piace/internal/config/resolve"
 )
 
-// DefaultTimeout is the per-request deadline applied when a caller does not
-// supply a smaller one. See doc.go decision 1: neither requirements.md nor
-// design.md names a default, so this value is a documented assumption.
+// DefaultTimeout is the per-request deadline applied when a caller does
+// not supply a smaller one. See doc.go decision 1: nothing else names a
+// default, so this value is a documented assumption.
 const DefaultTimeout = 30 * time.Second
 
 // DefaultMaxResponseBodyBytes bounds a single response body. See doc.go
-// decision 2: neither requirements.md nor design.md names a limit; 64 MiB
-// comfortably covers large Puppet catalog JSON documents while still
-// bounding memory use against a misbehaving or compromised endpoint.
+// decision 2: nothing else names a limit; 64 MiB comfortably covers
+// large Puppet catalog JSON documents while still bounding memory use
+// against a misbehaving or compromised endpoint.
 const DefaultMaxResponseBodyBytes int64 = 64 * 1024 * 1024
 
 // Client is one hardened, independent mTLS HTTP client for a single
 // resolve.Endpoint (compiler or PuppetDB). Two Clients built from two
-// NewClient calls never share a *tls.Config or *http.Transport, even when
-// their resolve.Endpoint values name identical certificate files
-// (requirements.md 3.3) — each call constructs its own tls.Config and
-// http.Transport from scratch.
+// NewClient calls never share a *tls.Config or *http.Transport, even
+// when their resolve.Endpoint values name identical certificate files —
+// each call constructs its own tls.Config and http.Transport from
+// scratch.
 type Client struct {
 	httpClient   *http.Client
 	host         string // authority (host:port) this client is dedicated to
@@ -47,10 +47,10 @@ type Client struct {
 }
 
 // Option customizes a Client at construction time. Callers building the
-// compiler/PuppetDB clients from resolved configuration normally need none
-// of these; they exist so a target's smaller effective deadline
-// (design.md section 3.2 rule 7) or a non-default body limit can be
-// applied without a parallel construction path.
+// compiler/PuppetDB clients from resolved configuration normally need
+// none of these; they exist so a target's smaller effective deadline or
+// a non-default body limit can be applied without a parallel
+// construction path.
 type Option func(*Client)
 
 // WithTimeout overrides DefaultTimeout for both the per-request context
@@ -74,13 +74,12 @@ func WithMaxResponseBodyBytes(n int64) Option {
 }
 
 // NewClient builds one hardened mTLS *Client for ep. This is the first
-// point actual file I/O happens against ep's CA bundle, client certificate,
-// and private-key paths (see doc.go); any read, parse, or PEM-decode
-// failure here is an *Error with Kind KindConfig, an operational error per
-// design.md section 10.
+// point actual file I/O happens against ep's CA bundle, client
+// certificate, and private-key paths (see doc.go); any read, parse, or
+// PEM-decode failure here is an *Error with Kind KindConfig, an
+// operational error.
 //
-// Enforced per client, per design.md section 2.2 and requirements.md 3.1-
-// 3.5:
+// Enforced per client:
 //
 //   - ep.URL.Scheme must be "https" (defense in depth: resolve already
 //     validates this before NewClient is ever reached);
@@ -148,20 +147,19 @@ func NewClient(ep resolve.Endpoint, opts ...Option) (*Client, error) {
 	return c, nil
 }
 
-// checkRedirect implements design.md section 2.2's "no redirects to
-// another authority": it allows a redirect only when the new request's
-// scheme is https and its host (net/http's url.URL.Host, which already
-// includes an explicit port) exactly matches the original request's
-// scheme and host. Any other redirect is rejected, which stops
-// *http.Client from following it and surfaces a *Error with
-// KindRedirectRejected instead.
+// checkRedirect implements the rule that no redirect may reach another
+// authority: it allows a redirect only when the new request's scheme is
+// https and its host (net/http's url.URL.Host, which already includes an
+// explicit port) exactly matches the original request's scheme and host.
+// Any other redirect is rejected, which stops *http.Client from
+// following it and surfaces a *Error with KindRedirectRejected instead.
 //
-// Authorization-header note (requirements.md 3.5): PIACE authenticates
-// exclusively via mTLS and this package never sets an Authorization
-// header on any request it builds. As defense in depth against a future
-// caller adding one, this function strips any Authorization header from
-// the redirected request before net/http would send it, even for an
-// allowed same-authority redirect.
+// Authorization-header note: PIACE authenticates exclusively via mTLS
+// and this package never sets an Authorization header on any request it
+// builds. As defense in depth against a future caller adding one, this
+// function strips any Authorization header from the redirected request
+// before net/http would send it, even for an allowed same-authority
+// redirect.
 func checkRedirect(req *http.Request, via []*http.Request) error {
 	req.Header.Del("Authorization")
 
@@ -183,7 +181,7 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 
 // Response is a fully-read, size-bounded HTTP response. Body is already
 // materialized (never larger than the client's configured maximum), so
-// protocol adapters (tasks 4-6) do not need to manage streaming or
+// protocol adapters do not need to manage streaming or
 // remember to close a body.
 type Response struct {
 	StatusCode int
@@ -226,10 +224,10 @@ func (c *Client) Do(req *http.Request, timeout time.Duration) (*Response, error)
 	defer cancel()
 	req = req.WithContext(ctx)
 
-	// requirements.md 3.5: PIACE authenticates to the compiler and
-	// PuppetDB exclusively via mTLS, so no request this package sends
-	// carries a bearer token — whatever a caller set. checkRedirect
-	// strips it again on an allowed same-authority redirect.
+	// PIACE authenticates to the compiler and PuppetDB exclusively via mTLS,
+	// so no request this package sends carries a bearer token, whatever a
+	// caller set. checkRedirect strips it again on an allowed same-authority
+	// redirect.
 	//
 	// internal/inference is the one scoped exception, and it is a
 	// separate client precisely so this line can stay unconditional. See
@@ -328,10 +326,10 @@ func (c *Client) observe(req *http.Request, requestBody, responseBody []byte, st
 func (c *Client) Host() string { return c.host }
 
 // classifyDoErr maps an error returned by (*http.Client).Do into this
-// package's *Error taxonomy. Every branch here still yields an operational
-// error per design.md section 10 (see doc.go decision 4); Kind only
-// distinguishes the operational sub-category for a caller that wants to
-// present a more specific message.
+// package's *Error taxonomy. Every branch here still yields an
+// operational error (see doc.go decision 4); Kind only distinguishes the
+// operational sub-category for a caller that wants to present a more
+// specific message.
 func classifyDoErr(host string, err error) error {
 	var alreadyClassified *Error
 	if errors.As(err, &alreadyClassified) {
@@ -385,9 +383,9 @@ func classifyDoErr(host string, err error) error {
 }
 
 // IsOperational reports whether err is (or wraps) an *Error produced by
-// this package. Every *Error is design.md section 10's "operational
-// error" class (see doc.go decision 4); this lets a caller branch on that
-// without a direct type assertion.
+// this package. Every *Error is an operational error (see doc.go
+// decision 4); this lets a caller branch on that without a direct type
+// assertion.
 func IsOperational(err error) bool {
 	var te *Error
 	return errors.As(err, &te)

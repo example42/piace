@@ -9,12 +9,12 @@ import (
 )
 
 // applyExclusions implements pass 2 (see doc.go): it removes every
-// resource-added/removed/parameter-changed entry whose Identity matches
-// an exclusion rule, and every edge-added/removed entry whose Source or
-// Target endpoint matches one, per design.md section 7.3 ("Exclusion
-// evaluation then matches resource identities and removes matching
-// resource differences. It also suppresses any edge difference attached
-// to an excluded identity") and requirements.md 6.3-6.4.
+// resource-added, resource-removed or parameter-changed entry whose
+// Identity matches an exclusion rule, and every edge-added or
+// edge-removed entry whose Source or Target endpoint matches one.
+// Exclusion evaluation matches resource identities and removes matching
+// resource differences, and it also suppresses any edge difference
+// attached to an excluded identity.
 //
 // matchedIdentities is every resource identity present in either
 // catalog (not only those with a change) that matches at least one
@@ -23,15 +23,13 @@ import (
 // membership in this set's stringified form rather than re-parsing the
 // edge endpoint.
 //
-// Returned exclusions is sorted by rule order (defaults-then-target
-// append order, as resolve.Target.Exclude already preserves per
-// design.md section 3.2) and always includes every rule that matched at
-// least one difference, with its exact suppressed counts, per
-// requirements.md 6.5. A rule that matched zero differences is omitted
-// rather than reported with all-zero counts, since design.md section
-// 7.3's "deterministic counts by rule and by suppressed kind" is about
-// rules that did something, not every configured rule regardless of
-// effect.
+// Returned exclusions is sorted by rule order, the defaults-then-target
+// append order resolve.Target.Exclude already preserves, and always
+// includes every rule that matched at least one difference, with its
+// exact suppressed counts. A rule that matched zero differences is
+// omitted rather than reported with all-zero counts: deterministic
+// counts by rule and by suppressed kind are about rules that did
+// something, not about every configured rule regardless of effect.
 func applyExclusions(
 	rules []config.ExclusionRule,
 	resourceChanges []model.ResourceChange,
@@ -150,11 +148,10 @@ func ruleIndexForEdgeEndpoint(excludedIdentityRule map[model.ResourceIdentity]in
 	return 0
 }
 
-// matchesExclusionRule implements requirements.md 6.2's exact rule
-// semantics: Type is an exact, case-sensitive match; Title is a
-// case-sensitive path.Match glob, matching
-// internal/config/resolve/validate.go's validation dialect exactly (see
-// design.md section 3.2 rule 3).
+// matchesExclusionRule implements the rule semantics exactly: Type is an
+// exact, case-sensitive match; Title is a case-sensitive path.Match
+// glob, matching internal/config/resolve/validate.go's validation
+// dialect.
 func matchesExclusionRule(rule config.ExclusionRule, identity model.ResourceIdentity) bool {
 	if rule.Type != identity.Type {
 		return false

@@ -4,9 +4,9 @@ package config
 // file.
 const ServicesFileVersion = 1
 
-// ServicesFile is the root document of a `--services` YAML file. It keeps
-// endpoint and mTLS settings out of the reviewable target selection file;
-// see design.md section 2.2 ("Service configuration").
+// ServicesFile is the root document of a `--services` YAML file. It
+// keeps endpoint and mTLS settings out of the reviewable target
+// selection file;2 ("Service configuration").
 type ServicesFile struct {
 	Version  int             `json:"version" yaml:"version"`
 	Compiler ServiceEndpoint `json:"compiler" yaml:"compiler"`
@@ -20,10 +20,10 @@ type ServicesFile struct {
 // ServiceEndpoint describes one independently configured mTLS HTTP
 // service. Endpoint must be an `https` URL, and each of the CA bundle,
 // client certificate and private key must be named exactly once, either
-// as a path in the file or as the name of an environment variable holding
-// one. Both forms carry a file path: PIACE never accepts inline key
-// material or bearer tokens, and never mints or discovers credentials on
-// its own. See design.md section 2.2 and requirements.md 3.1-3.5.
+// as a path in the file or as the name of an environment variable
+// holding one. Both forms carry a file path: PIACE never accepts inline
+// key material or bearer tokens, and never mints or discovers
+// credentials on its own.
 //
 // The `_env` variants exist so a services file committed to a control
 // repository can be read in place, unmodified, by a CI job whose

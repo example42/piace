@@ -7,12 +7,11 @@ import (
 
 // SelectFactSource returns fileSource when target.Facts.Source resolves
 // to config.FactSourceFile, and puppetDB otherwise. This is the small
-// dispatch design.md's Architecture diagram implies with its single
-// "fact-source adapter (PuppetDB or envelope)" box: task 4 and task 5
-// each implement one backend behind the shared FactSource interface, and
-// a caller that must honor "the target's configured fact source" (e.g.
-// requirements.md 2.1, 11.3) picks between them with this function rather
-// than duplicating the switch at each call site.
+// dispatch behind the single fact-source adapter role: the PuppetDB and
+// file backends each implement one side of the shared FactSource
+// interface, and a caller that must honor the target's configured fact
+// source picks between them here rather than duplicating the switch at
+// each call site.
 func SelectFactSource(target resolve.Target, puppetDB, fileSource FactSource) FactSource {
 	if target.Facts.Source == config.FactSourceFile {
 		return fileSource

@@ -5,13 +5,13 @@
 // both services and all three subcommands without any adapter needing a
 // debug field of its own.
 //
-// Redaction boundary (requirements.md 3.5, and this package's Sanitize
-// contract in redact.go): an Event carries only safe metadata by
-// default — method, URL, host, status, duration, body sizes, content
-// type, and the response body's *top-level JSON member names*. Member
-// names, not member values: `{"catalog": {...}}` yields ["catalog"],
-// which is enough to diagnose a wire-shape mismatch without putting one
-// byte of catalog content into a CI log.
+// Redaction boundary (see this package's Sanitize contract in
+// redact.go): an Event carries only safe metadata by default, being
+// method, URL, host, status, duration, body sizes, content type, and the
+// response body's *top-level JSON member names*. Member names, not
+// member values: `{"catalog": {...}}` yields ["catalog"], which is
+// enough to diagnose a wire-shape mismatch without putting one byte of
+// catalog content into a CI log.
 //
 // Raw bodies are carried only when a caller explicitly opts in with
 // WithBodyCapture. That is a deliberate, operator-requested bypass of

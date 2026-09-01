@@ -2,17 +2,17 @@ package report
 
 // htmlSource is the complete HTML document template. It is a package
 // constant, never read from disk and never composed from user input, so
-// design.md section 11's exclusion of "user-controlled template
-// execution" holds by construction.
+// the exclusion of user-controlled template execution holds by
+// construction.
 //
 // It contains one inlined <style> block and no <script>, <link>, <img>,
-// <a>, `url(...)`, or URL of any kind: requirements.md 8.3's "no HTTP
-// server, CDN, network access, or sibling assets" is a property of the
-// document itself rather than of how it is served. That rules out
-// webfonts and image assets too, so the type system is system font stacks
-// with declared fallbacks, and the one piece of iconography — the
-// disclosure triangle — is drawn with CSS borders rather than set in a
-// glyph that may be missing on a reader's machine.
+// <a>, `url(...)`, or URL of any kind: no HTTP server, CDN, network
+// access, or sibling assets is a property of the document itself rather
+// than of how it is served. That rules out webfonts and image assets
+// too, so the type system is system font stacks with declared fallbacks,
+// and the one piece of iconography, the disclosure triangle, is drawn
+// with CSS borders rather than set in a glyph that may be missing on a
+// reader's machine.
 //
 // # The scanning path is one screen; everything else is one click
 //
@@ -29,10 +29,10 @@ package report
 // The one thing that never goes behind a disclosure is a failure. The
 // per-target error banners, the v3 trusted-fact warning, the run
 // diagnostics and every outcome badge sit outside <details> at the level
-// they belong to, because requirements.md 8.5 requires catalog retrieval
-// failure and compilation failure to be visibly marked and a mark a
-// reader has to go looking for is not one. Same for requirement 9.3's
-// label and note above the estimates.
+// they belong to, because catalog retrieval failure and compilation
+// failure have to be visibly marked and a mark a reader has to go
+// looking for is not one. Same for the impact-estimate label and note
+// above the estimates.
 //
 // A target's disclosures are laid out as a wrapping row of chips that
 // expand to full width when opened (.disclosures), which is what keeps a

@@ -226,8 +226,7 @@ func pdbCatalog(certname, environment string, resources []resourceSpec, edges []
 		resourceData = append(resourceData, map[string]any{
 			"certname": certname, "type": r.Type, "title": r.Title,
 			"parameters": nonNilParams(r.Parameters),
-			// Fields requirements.md 5.9 requires dropped from the
-			// semantic diff, served here so the drop is exercised.
+			// Fields the semantic diff drops, served here so the drop is exercised.
 			"tags": []string{"class", strings.ToLower(r.Type)},
 			"file": "/etc/puppetlabs/code/site.pp", "line": 42, "exported": false,
 		})

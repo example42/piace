@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// TestRelease_NoNonStandardDependenciesBeyondYAML discharges
-// requirements.md 12.2 at the level it can be checked mechanically: the
-// binary's transitive dependency set contains only the Go standard
-// library, this module's own packages, and gopkg.in/yaml.v3.
+// TestRelease_NoNonStandardDependenciesBeyondYAML checks mechanically
+// what can be checked mechanically: the binary's transitive dependency
+// set contains only the Go standard library, this module's own packages,
+// and gopkg.in/yaml.v3.
 //
 // requirement 12.2's substance — "no Ruby, Puppet agent, Facter, package
 // manager, or runtime dependency resolution" — follows from that set
@@ -40,15 +40,14 @@ func TestRelease_NoNonStandardDependenciesBeyondYAML(t *testing.T) {
 		if !strings.Contains(first, ".") {
 			continue
 		}
-		t.Errorf("unexpected non-standard dependency %q: requirements.md 12.2 restricts the binary to the standard library plus gopkg.in/yaml.v3", dep)
+		t.Errorf("unexpected non-standard dependency %q: the binary is restricted to the standard library plus gopkg.in/yaml.v3", dep)
 	}
 }
 
-// TestRelease_BuildsWithCGODisabled discharges requirements.md 12.1: the
-// artifact is a CGO-free Go binary. A build that silently required cgo
-// would produce a binary linked against the host's libc and would not be
-// the statically linked, air-gap-installable artifact design.md section
-// 11 describes.
+// TestRelease_BuildsWithCGODisabled asserts the artifact is a CGO-free
+// Go binary. A build that silently required cgo would produce a binary
+// linked against the host's libc, and would not be the statically
+// linked, air-gap-installable artifact PIACE ships.
 func TestRelease_BuildsWithCGODisabled(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping the release build in -short mode")

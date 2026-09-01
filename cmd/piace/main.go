@@ -1,6 +1,6 @@
 // Command piace is the PIACE CLI entry point. It provides five
 // subcommands: `compare`, `capture facts`, `capture catalog`, `explain`
-// and `change-context`. See design.md section 2.1 ("CLI surface").
+// and `change-context`.
 //
 // This file wires argument parsing, transport/adapter construction, and
 // stable exit codes. All domain behavior lives in internal packages:
@@ -47,10 +47,10 @@ import (
 var toolVersion = "dev"
 
 // clock supplies the invocation timestamp recorded in a report and in a
-// snapshot envelope. It is a package variable so the acceptance suite can
-// fix it: a report's timestamp is the one field that would otherwise make
-// two runs over identical inputs differ, and requirements.md 8.6 requires
-// them not to. Production never reassigns it.
+// snapshot envelope. It is a package variable so the acceptance suite
+// can fix it: a report's timestamp is the one field that would otherwise
+// make two runs over identical inputs differ, and they must not.
+// Production never reassigns it.
 var clock = time.Now
 
 // stdin is the stream `explain --json-in -` reads a result document
@@ -258,10 +258,10 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	result := workflow.Run(context.Background(), cfg)
 
 	if err := writeReports(f, result, stdout); err != nil {
-		// A report the operator asked for and did not get must not be
-		// papered over by the comparison's own outcome, however clean:
-		// requirements.md 8.2/8.3 make the artifacts part of the
-		// requested work, so a write failure is an operational error.
+		// A report the operator asked for and did not get must not be papered
+		// over by the comparison's own outcome, however clean: the artifacts are
+		// part of the requested work, so a write failure is an operational
+		// error.
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
 		return exitcode.OperationalError
 	}
@@ -270,13 +270,13 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 }
 
 // newCompareWorkflow builds the compare pipeline from resolved
-// configuration, using the same hardened transports and the same compiler
-// adapter `capture` uses (design.md section 5: "Capture catalog uses the
-// exact same adapter and policy as comparison").
+// configuration, using the same hardened transports and the same
+// compiler adapter `capture` uses. Capture catalog and comparison share
+// one adapter and one policy.
 //
 // The compiler and PuppetDB clients are built independently from their
-// own resolved endpoints, per design.md section 2.2, so neither service's
-// credentials can reach the other.
+// own resolved endpoints so neither service's credentials can reach the
+// other.
 func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*compare.Workflow, error) {
 	puppetDBAdapter, err := newPuppetDBAdapter(cfg, debugOpts)
 	if err != nil {
@@ -311,18 +311,16 @@ func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*comp
 
 // writeReports emits the requested artifacts. Text goes to stdout when
 // --text-out is omitted; JSON and HTML are written only when explicitly
-// requested, per design.md section 2.1 ("Omitting an artifact option
-// writes text to stdout and suppresses that optional artifact").
+// requested.
 //
 // The file artifacts are written before the text report, and the stdout
 // text report last of all. A failed artifact write is an operational
-// error (exit 30), and requirements.md 10.2 makes the text report's
-// stated outcome load-bearing — so emitting `outcome: clean (exit 0)` to
-// a CI log and then exiting 30 because an artifact could not be written
-// would put the log's most-read line in direct contradiction with the
-// process result. Ordering the writes this way means the contradiction
-// cannot occur: whatever reaches stdout is the outcome the process exits
-// with.
+// error (exit 30), and the text report's stated outcome is load-bearing,
+// so emitting `outcome: clean (exit 0)` to a CI log and then exiting 30
+// because an artifact could not be written would put the log's most-read
+// line in direct contradiction with the process result. Ordering the
+// writes this way means the contradiction cannot occur: whatever reaches
+// stdout is the outcome the process exits with.
 //
 // Artifacts are written 0644: unlike a snapshot envelope (0600), a report
 // is a review artifact meant to be read by CI and by humans, and it
@@ -505,8 +503,8 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 }
 
 // newPuppetDBAdapter builds the PuppetDB-backed fact/baseline source
-// adapter (task 4) from cfg's resolved PuppetDB service endpoint, per
-// task 3's hardened mTLS transport construction.
+// adapter (internal/puppetdb) from cfg's resolved PuppetDB service endpoint, per
+// internal/transport's hardened mTLS transport construction.
 func newPuppetDBAdapter(cfg resolve.Config, debugOpts []transport.Option) (*puppetdb.Adapter, error) {
 	client, err := transport.NewClient(cfg.Services.PuppetDB, debugOpts...)
 	if err != nil {
@@ -516,12 +514,10 @@ func newPuppetDBAdapter(cfg resolve.Config, debugOpts []transport.Option) (*pupp
 }
 
 // newCompilerAdapter builds the compiler-backed v3/v4 candidate catalog
-// adapter (task 6) from cfg's resolved compiler service endpoint, per
-// task 3's hardened mTLS transport construction. `capture catalog` and
-// the future `compare` command both build their compiler adapter this
-// way, so they share the exact same request/policy implementation
-// (design.md section 5: "Capture catalog uses the exact same adapter and
-// policy as comparison").
+// adapter from cfg's resolved compiler service endpoint, on the hardened
+// mTLS transport. `capture catalog` and `compare` both build their
+// compiler adapter this way, so they share the exact same request and
+// policy implementation.
 func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*compiler.Adapter, error) {
 	client, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
@@ -531,12 +527,11 @@ func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*comp
 }
 
 // reportCaptureOutcomes prints one line per target outcome and returns
-// the process exit code: OperationalError if any target failed (a
-// capture run that reports a failure for even one target must never
-// exit 0 — mirroring design.md section 10's "no result with an
-// unreported ... failure can be clean" principle applied to capture),
-// Success otherwise. A skipped target (no file-backed destination
-// configured) is reported but does not affect the exit code.
+// the process exit code: OperationalError if any target failed, Success
+// otherwise. A capture run that reports a failure for even one target
+// must never exit 0, mirroring the rule that no result with an
+// unreported failure can be clean. A skipped target (no file-backed
+// destination configured) is reported but does not affect the exit code.
 func reportCaptureOutcomes(stdout, stderr *os.File, label string, outcomes []capture.TargetOutcome) exitcode.Code {
 	failed := false
 	for _, o := range outcomes {

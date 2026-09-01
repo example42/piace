@@ -191,7 +191,7 @@ func TestDiff_EdgeAddedAndRemovedSortedDeterministically(t *testing.T) {
 	}
 }
 
-// Edge direction is significant (design.md section 7.1).
+// Edge direction is significant.
 func TestDiff_EdgeDirectionIsSignificant(t *testing.T) {
 	before := catalog(nil, []model.Edge{{Source: "A[x]", Target: "B[y]"}})
 	after := catalog(nil, []model.Edge{{Source: "B[y]", Target: "A[x]"}})
@@ -851,7 +851,7 @@ func TestDiff_NonFileContentParameterIsAnOrdinaryChange(t *testing.T) {
 	}
 }
 
-// --- determinism (design.md Property 1) ---
+// --- determinism ---
 
 func TestDiff_IsByteIdenticalAcrossRuns(t *testing.T) {
 	before := catalog([]model.Resource{
@@ -910,11 +910,11 @@ func TestDiff_EmptyCatalogsProduceCleanResult(t *testing.T) {
 // Exclusion suppresses differences, never diagnostics. A File whose
 // content resolution failed is resolved in pass 1, before pass 2 can
 // know it is excluded, so the verify_content diagnostic survives even
-// though the change itself does not. Under design.md section 10 that
-// deliberately keeps the run from being reported as clean: an
-// unreported content-verification failure is exactly what that section
-// forbids, and an exclusion rule is a statement about which differences
-// are interesting, not a licence to suppress a failure to look.
+// though the change itself does not. That deliberately keeps the run
+// from being reported as clean: an unreported content-verification
+// failure is exactly what a clean outcome must never hide, and an
+// exclusion rule is a statement about which differences are interesting,
+// not a licence to suppress a failure to look.
 func TestDiff_ExclusionSuppressesDifferencesButNotDiagnostics(t *testing.T) {
 	before := catalog([]model.Resource{
 		resource("File", "/var/cache/x", map[string]model.Value{

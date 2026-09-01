@@ -16,9 +16,9 @@ import (
 // debugFlags holds the two observation options every subcommand accepts.
 //
 // They are deliberately separate because they sit on opposite sides of
-// requirements.md 3.5 ("SHALL NOT log private keys, certificate private
+// the rule that PIACE never logs private keys, certificate private
 // material, request authorization headers, or unredacted sensitive
-// catalog parameter values"):
+// catalog parameter values:
 //
 //   - --debug prints safe metadata only — method, URL, status, timing,
 //     body sizes, content type, and the response body's top-level JSON

@@ -6,12 +6,12 @@
 // docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
 // internal/inference must not import internal/transport.
 //
-// Redaction boundary (requirements.md 3.5): an Event carries only safe
-// metadata by default — method, URL, host, status, duration, body sizes,
-// content type, and the response body's *top-level JSON member names*.
-// Member names, not values: an Anthropic error body yields ["type",
-// "error"], enough to see the shape without putting an account or quota
-// detail into a CI log.
+// Redaction boundary: an Event carries only safe metadata by default —
+// method, URL, host, status, duration, body sizes, content type, and the
+// response body's *top-level JSON member names*. Member names, not
+// values: an Anthropic error body yields ["type", "error"], enough to
+// see the shape without putting an account or quota detail into a CI
+// log.
 //
 // Raw bodies are carried only when a caller opts in with
 // WithBodyCapture. That is a deliberate bypass: the request body is the

@@ -10,11 +10,10 @@ import (
 
 // validateCertname checks the practical path-safety rule shared by
 // certname format validation and template-path safety: a certname must
-// not contain '/', '\', a NUL byte, or the substring ".." (design.md
-// section 3.2 rule 5; this task's brief). Neither design.md nor
-// requirements.md specifies a fuller RFC/DNS-label certname grammar, so
-// this intentionally does not attempt full DNS-label validation — see
-// doc.go and the task brief for this documented assumption.
+// not contain '/', '\\', a NUL byte, or the substring "..". Nothing
+// specifies a fuller RFC or DNS-label certname grammar, so this
+// intentionally does not attempt full DNS-label validation; see doc.go
+// for that documented assumption.
 func validateCertname(certname string) error {
 	if certname == "" {
 		return fmt.Errorf("certname is empty")
@@ -31,11 +30,11 @@ func validateCertname(certname string) error {
 	return nil
 }
 
-// validateGlobSyntax test-compiles a title glob using the same dialect and
-// case-sensitivity as evaluation (Go's path.Match, per design.md section
-// 3.2 rule 3), by matching it against a placeholder string and checking
-// only for a syntax error. path.Match's return value (matched or not) is
-// irrelevant here; only path.ErrBadPattern indicates a malformed pattern.
+// validateGlobSyntax test-compiles a title glob using the same dialect
+// and case-sensitivity as evaluation (Go's path.Match), by
+// matching it against a placeholder string and checking only for a
+// syntax error. path.Match's return value (matched or not) is irrelevant
+// here; only path.ErrBadPattern indicates a malformed pattern.
 func validateGlobSyntax(pattern string) error {
 	if _, err := path.Match(pattern, "x"); err != nil {
 		return fmt.Errorf("invalid title glob %q: %w", pattern, err)
@@ -47,11 +46,11 @@ func validateGlobSyntax(pattern string) error {
 // facts.file/baseline.file configuration value.
 const certnameToken = "{certname}"
 
-// expandCertnameSegment expands certnameToken within a single "/"-
-// separated path component, enforcing design.md section 3.2 rule 5's
-// "may occur only as an entire path component" requirement.
+// expandCertnameSegment expands certnameToken within a single
+// "/"-separated path component, enforcing the rule that the token may
+// occur only as an entire path component.
 //
-// The task's own examples fix the exact rule: `snapshots/catalogs/
+// The documented examples fix the exact rule: `snapshots/catalogs/
 // {certname}.json` is valid (the component's stem is exactly the token,
 // with a file extension suffix permitted) while `snapshots/
 // {certname}-catalog.json` is invalid (extra text directly abuts the
@@ -78,13 +77,13 @@ func expandCertnameSegment(seg, certname string) (string, error) {
 }
 
 // resolveFilePath resolves a `facts.file`/`baseline.file` value against
-// the target-file directory, per design.md section 3.2 rule 5:
+// the target-file directory:
 //
 //   - "{certname}" may occur only as an entire path component (see
 //     expandCertnameSegment for the exact rule, including the permitted
 //     file-extension suffix);
 //   - certname itself is assumed already validated by validateCertname
-//     (this task validates certname format before any path templating,
+//     (certname format is validated before any path templating,
 //     so a certname cannot inject an extra path separator or "..");
 //   - an explicit absolute path is resolved as-is and is exempt from the
 //     "must stay beneath the target-file directory" check;
@@ -111,11 +110,11 @@ func resolveFilePath(raw, targetFileDir, certname string) (string, error) {
 	expandedSlash := strings.Join(segments, "/")
 	nativePath := filepath.FromSlash(expandedSlash)
 
-	// Configuration paths use the "/"-separated convention shown
-	// throughout requirements.md/design.md (e.g.
-	// "snapshots/catalogs/{certname}.json"); absoluteness is judged on
-	// that convention via path.IsAbs rather than the host OS's
-	// filepath.IsAbs, so behavior does not vary by build platform.
+	// Configuration paths use the "/"-separated convention PIACE's own
+	// examples use throughout ("snapshots/catalogs/{certname}.json");
+	// absoluteness is judged on that convention via path.IsAbs rather than
+	// the host OS's filepath.IsAbs, so behavior does not vary by build
+	// platform.
 	if path.IsAbs(expandedSlash) {
 		return filepath.Clean(nativePath), nil
 	}
@@ -138,9 +137,9 @@ func resolveFilePath(raw, targetFileDir, certname string) (string, error) {
 	return joined, nil
 }
 
-// validateHTTPSEndpoint parses raw as a URL and requires an `https` scheme
-// with a non-empty host, per design.md section 2.2 ("The process accepts
-// only https endpoints") and this task's "unsafe endpoint" rejection.
+// validateHTTPSEndpoint parses raw as a URL and requires an `https`
+// scheme with a non-empty host: PIACE accepts only https endpoints, and
+// an unsafe one is rejected rather than normalized.
 func validateHTTPSEndpoint(raw string) (*url.URL, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("endpoint is empty")
@@ -161,7 +160,7 @@ func validateHTTPSEndpoint(raw string) (*url.URL, error) {
 // validateTLSPath checks a CA bundle/client certificate/private key
 // configuration value for syntactic validity only: non-empty and free of
 // NUL bytes (which no filesystem accepts). It intentionally does not
-// check existence or readability — see doc.go: that crosses into task 3's
+// check existence or readability — see doc.go: that crosses into internal/transport's
 // concern once configuration is fully valid and TLS transports are built.
 func validateTLSPath(kind, value string) error {
 	if value == "" {

@@ -83,7 +83,7 @@ func TestEstimate_SendsDesignSection8QueryToTheRootEndpoint(t *testing.T) {
 	}
 }
 
-// design.md section 8: limit = result_limit + 1, plus certname ordering.
+// limit = result_limit + 1, plus certname ordering.
 func TestEstimate_SendsLimitPlusOneAndCertnameOrdering(t *testing.T) {
 	var captured capturedRequest
 	q := serveRows(t, &captured, certnameRows("web-01"))
@@ -252,8 +252,8 @@ func TestEstimate_MalformedResponseIsAFailedEstimate(t *testing.T) {
 	}
 }
 
-// design.md section 8: a per-query deadline is the resolved impact
-// timeout, and exceeding it is a distinct timeout status.
+// A per-query deadline is the resolved impact timeout, and exceeding it
+// is a distinct timeout status.
 func TestEstimate_DeadlineExceededIsATimeoutStatus(t *testing.T) {
 	fixture := newTLSFixture(t, "127.0.0.1")
 	release := make(chan struct{})
@@ -311,8 +311,8 @@ func TestEstimate_UnencodableIdentityFailsWithoutARequest(t *testing.T) {
 	}
 }
 
-// Requirement 9.3 / design.md section 8: the estimate is never phrased or
-// shaped as a prediction, and never carries anything but certnames.
+// The estimate is never phrased or shaped as a prediction, and never
+// carries anything but certnames.
 func TestEstimate_ReportsOnlySafeFields(t *testing.T) {
 	var captured capturedRequest
 	q := serveRows(t, &captured, `[{"certname":"web-01","parameters":{"password":"hunter2"},"file":"/etc/x.pp"}]`)

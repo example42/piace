@@ -190,7 +190,7 @@ puppetdb:
 // the full run() entry point when the compiler cannot satisfy the
 // request. This fixture's fake server only ever returns a PuppetDB
 // factset-shaped body, never a valid v4 catalog response nor a "trusted"
-// fact PIACE could forward, so the target's v4 request fails task 6's
+// fact PIACE could forward, so the target's v4 request fails internal/compiler's
 // trusted-fact policy (internal/compiler) before any catalog is accepted.
 func TestRun_CaptureCatalog_EndToEnd_CompilationFailureReportedNotCrash(t *testing.T) {
 	dir := t.TempDir()

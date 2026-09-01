@@ -221,7 +221,7 @@ func TestBuild_NodeChangeRefsIndexIntoTheRightSlice(t *testing.T) {
 	}
 }
 
-// design.md section 9: groups sorted by kind and canonical identity.
+// Groups are sorted by kind and canonical identity.
 func TestBuild_GroupsSortedByKindThenIdentity(t *testing.T) {
 	diffs := []model.NodeDiff{{
 		Certname: "web-01",

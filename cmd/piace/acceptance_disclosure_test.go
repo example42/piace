@@ -9,10 +9,10 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// TestAcceptance_NoReportDisclosesSecretsOrManagedBytes is task 12's
-// final acceptance condition and design.md's Property 5 checked end to
-// end: "no report contains credentials, private material, managed content
-// bytes, or unredacted sensitive values."
+// TestAcceptance_NoReportDisclosesSecretsOrManagedBytes checks the
+// disclosure property end to end: no report contains credentials,
+// private material, managed content bytes, or unredacted sensitive
+// values.
 //
 // internal/diff tests redaction at the change level. Only this level can
 // show that the values do not reappear through a different door —
@@ -55,8 +55,7 @@ func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	h.compiler.fileContent["modules/app/app.conf"] = managedFileBytes
 	h.compiler.fileContent["modules/app/app.conf.new"] = managedFileBytes + "-changed"
 
-	// A configured selector redacts File content evidence as well, per
-	// requirements.md 8.8 and design.md section 7.2.
+	// A configured selector redacts File content evidence as well.
 	defaults := defaultDefaults + `  redact:
     - type: File
       parameter: content
@@ -105,10 +104,9 @@ func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	}
 }
 
-// TestAcceptance_FileContentEvidenceStates covers requirements.md
-// 5.5-5.8 and design.md section 7.2's priority order: each evidence
-// source produces its documented state, and no state renders content
-// bytes.
+// TestAcceptance_FileContentEvidenceStates covers the file-content
+// evidence priority order: each evidence source produces its documented
+// state, and no state renders content bytes.
 func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	h := newHarness(t)
 
@@ -145,8 +143,7 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))
 	got := h.compare(t)
 
-	// An indeterminate content comparison can never be reported clean
-	// (requirements.md 5.7/10.5, design.md section 7.2).
+	// An indeterminate content comparison can never be reported clean.
 	if got.code != exitcode.OperationalError {
 		t.Fatalf("exit = %d, want 30: an indeterminate File content comparison must not be clean\nstdout:\n%s", got.code, got.stdout)
 	}
@@ -161,7 +158,7 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 			t.Errorf("the report is missing the evidence line %q\n%s", want, got.stdout)
 		}
 	}
-	// requirements.md 5.8: no format renders managed content bytes.
+	// No format renders managed content bytes.
 	for artifactName, artifact := range got.all() {
 		for _, bytes := range []string{"one-bytes", "two-bytes", "before", "after"} {
 			if strings.Contains(artifact, `"`+bytes+`"`) {

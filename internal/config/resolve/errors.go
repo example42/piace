@@ -7,12 +7,12 @@ import (
 )
 
 // ValidationError accumulates every configuration problem found while
-// decoding, resolving, and validating a target or services file. Per
-// design.md section 3.2 ("Invalid configuration is one operational
-// diagnostic and prevents every service call"), Load/ResolveTargets never
-// fail-fast on the first problem: they accumulate every problem they can
-// find into a single ValidationError so a user sees every misconfiguration
-// from one run rather than fixing issues one at a time.
+// decoding, resolving, and validating a target or services file. Invalid
+// configuration is one operational diagnostic and prevents every service
+// call, so Load and ResolveTargets never fail fast on the first problem:
+// they accumulate everything they can find into a single
+// ValidationError, and a user sees every misconfiguration from one run
+// rather than fixing them one at a time.
 //
 // ValidationError implements error; callers that need the underlying list
 // (e.g. to build a single model.Diagnostic message, or to count problems in

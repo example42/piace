@@ -11,10 +11,9 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-// HTML renders r as the static review artifact required by
-// requirements.md 8.3-8.5: a single self-contained document that opens
-// over `file://` with no HTTP server, CDN, network access, or sibling
-// assets.
+// HTML renders r as the static review artifact: a single self-contained
+// document that opens over `file://` with no HTTP server, CDN, network
+// access, or sibling assets.
 //
 // Self-containment is structural, not a review promise: the template is a
 // package constant with one inlined <style> block, no <script>, no <img>,
@@ -29,16 +28,16 @@ import (
 // value to escape into.
 //
 // Unlike the text report, HTML takes no display Options: it shows
-// everything the result document holds — edge changes, an estimate's PQL,
-// request options, and full certname list — and uses disclosure rather
-// than omission to keep the page readable. Every list of rows is closed
-// and its summary carries its count, so a reader scanning for the outcome
-// reads an index of the run rather than paging through it, and a reader
-// who wants a section opens it. What never goes behind a disclosure is a
-// failure: the per-target error banners, the v3 warning, the run
-// diagnostics and the outcome badges stay in the scanning path, because
-// requirements.md 8.5's "visibly mark" is not satisfied by a mark a
-// reader has to go looking for. See doc.go.
+// everything the result document holds, edge changes, an estimate's PQL,
+// request options, and the full certname list, and uses disclosure
+// rather than omission to keep the page readable. Every list of rows is
+// closed and its summary carries its count, so a reader scanning for the
+// outcome reads an index of the run rather than paging through it, and a
+// reader who wants a section opens it. What never goes behind a
+// disclosure is a failure: the per-target error banners, the v3 warning,
+// the run diagnostics and the outcome badges stay in the scanning path,
+// because a mark a reader has to go looking for is not a visible mark.
+// See doc.go.
 //
 // Everything variable is interpolated through html/template, whose
 // contextual escaping is what makes an attacker-shaped resource title or
@@ -74,8 +73,8 @@ type htmlView struct {
 	Targets  []htmlTarget
 	// Aggregate holds the resource-level groups; EdgeAggregate holds the
 	// edge groups, which the page discloses separately rather than
-	// interleaving. Both are shown: requirements.md 7.4 keeps edge
-	// changes a distinct aggregate kind, and this format keeps all of it.
+	// interleaving. Both are shown: edge changes are a distinct aggregate
+	// kind, and this format keeps all of it.
 	Aggregate     []htmlGroup
 	EdgeAggregate []htmlEdgeGroup
 	// EstimateLabel/EstimateNote carry requirement 9.3's wording into the
@@ -212,15 +211,13 @@ type htmlChange struct {
 	HasValues bool
 	// Note carries File-content evidence in place of a value pair: the
 	// comparison state, its evidence source, and the digest pair. Managed
-	// content bytes are never available here to render
-	// (requirements.md 5.8).
+	// content bytes are never available here to render.
 	Note string
 }
 
 // htmlEdge is one dependency-graph edge difference. Direction is
-// significant (design.md section 7.1), so Source and Target are separate
-// fields and the arrow between them is drawn by the page, never
-// normalized away.
+// significant, so Source and Target are separate fields and the arrow
+// between them is drawn by the page, never normalized away.
 type htmlEdge struct {
 	Sign   string
 	Class  string
@@ -229,7 +226,7 @@ type htmlEdge struct {
 }
 
 // htmlGroup and htmlEdgeGroup are aggregate groups: one difference plus
-// the targets exhibiting it (requirements.md 7.2).
+// the targets exhibiting it.
 type htmlGroup struct {
 	htmlChange
 	Targets string
@@ -445,10 +442,9 @@ func buildHTMLTarget(t model.TargetResult) htmlTarget {
 		}
 	}
 
-	// requirements.md 8.5 requires catalog retrieval failure and
-	// compilation failure to be visibly marked, so error diagnostics are
-	// split out of the general list into their own banner rather than
-	// being one row among many.
+	// Catalog retrieval failure and compilation failure have to be visibly
+	// marked, so error diagnostics are split out of the general list into
+	// their own banner rather than being one row among many.
 	for _, d := range t.Diagnostics {
 		entry := htmlDiagnostic{Severity: string(d.Severity), Operation: string(d.Operation), Message: d.Message}
 		if d.Severity == model.SeverityError {

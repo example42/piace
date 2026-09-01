@@ -1,4 +1,4 @@
-// Package normalize's Catalog function is the entry point task 7's brief
+// Package normalize's Catalog function is the entry point internal/normalize's brief
 // describes: constructing a model.NormalizedCatalog from a raw
 // puppetdb.Catalog carrier. See doc.go for the package-level contract.
 package normalize
@@ -12,16 +12,15 @@ import (
 )
 
 // Catalog converts raw into a model.NormalizedCatalog: a resource list
-// keyed by (and sorted on) the exact `Type[title]` identity, and an edge
-// list keyed by (and sorted on) the ordered (source identity, target
-// identity) pair, per design.md section 7.1. It returns a non-nil
-// diagnostic (and a zero NormalizedCatalog) for any unrecognized/
-// malformed resources or edges shape, a resource missing its required
-// type/title, a duplicate resource identity, or an edge endpoint missing
-// its required type/title — never a silently empty or partial catalog,
-// per this task's brief and design.md's Components and Interfaces
-// section ("Unknown or malformed catalog/fact data is an operational
-// normalization failure, never an empty catalog or factset").
+// keyed by, and sorted on, the exact `Type[title]` identity, and an edge
+// list keyed by, and sorted on, the ordered (source identity, target
+// identity) pair. It returns a non-nil diagnostic, and a zero
+// NormalizedCatalog, for any unrecognized or malformed resources or
+// edges shape, a resource missing its required type or title, a
+// duplicate resource identity, or an edge endpoint missing its required
+// type or title. Never a silently empty or partial catalog: unknown or
+// malformed catalog and fact data is an operational normalization
+// failure, never an empty catalog or factset.
 func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) {
 	resourceWires, err := extractResources(raw.Resources)
 	if err != nil {
@@ -90,9 +89,8 @@ func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) 
 }
 
 // resourceLess orders two resource identities by Type then Title, both
-// compared as plain Go strings (byte-wise), with no case folding, per
-// design.md section 7.1: "type and title are strings with no case
-// folding."
+// compared as plain Go strings (byte-wise), with no case folding: "type
+// and title are strings with no case folding."
 func resourceLess(a, b model.ResourceIdentity) bool {
 	if a.Type != b.Type {
 		return a.Type < b.Type
@@ -100,9 +98,9 @@ func resourceLess(a, b model.ResourceIdentity) bool {
 	return a.Title < b.Title
 }
 
-// edgeLess orders two edges by the ordered pair (Source, Target), per
-// design.md section 7.1: "A graph edge key is the ordered pair (source
-// identity, target identity)."
+// edgeLess orders two edges by the ordered pair (Source, Target): "A
+// graph edge key is the ordered pair (source identity, target
+// identity)."
 func edgeLess(a, b model.Edge) bool {
 	if a.Source != b.Source {
 		return a.Source < b.Source
@@ -110,12 +108,11 @@ func edgeLess(a, b model.Edge) bool {
 	return a.Target < b.Target
 }
 
-// normalizeDiagnostic builds a model.Diagnostic classified as design.md
-// section 10's "operational error" sub-category for a normalization
-// failure (model.OperationNormalize). message is always a locally
-// constructed, safe string built from field names/identities only —
-// never raw parameter values — matching design.md's Error Handling
-// section and this task's redaction-readiness requirement.
+// normalizeDiagnostic builds a model.Diagnostic classified as a
+// normalization failure (model.OperationNormalize), one of the
+// operational-error sub-categories. message is always a locally
+// constructed, safe string built from field names and identities only,
+// never raw parameter values.
 func normalizeDiagnostic(certname, message string) model.Diagnostic {
 	return model.Diagnostic{
 		Severity:  model.SeverityError,

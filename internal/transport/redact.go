@@ -1,9 +1,8 @@
-// This file centralizes request/response metadata redaction, per this
-// task's brief and design.md section 11 ("TLS private keys and raw
-// sensitive data have no String/marshal paths") and requirements.md 3.5
-// ("SHALL NOT log private keys, certificate private material, request
-// authorization headers, or unredacted sensitive catalog parameter
-// values").
+// This file centralizes request and response metadata redaction. TLS
+// private keys and raw sensitive data have no String or marshal paths,
+// and PIACE never logs private keys, certificate private material,
+// request authorization headers, or unredacted sensitive catalog
+// parameter values.
 //
 // Tasks 4-6's protocol adapters must build their model.Diagnostic values
 // for a service failure through Describe/SafeMessage in this file rather
@@ -41,7 +40,7 @@ var pemBlockPattern = regexp.MustCompile(`(?s)-----BEGIN [A-Z0-9 ]+-----.*?-----
 // Sanitize never receives, and must never be given, a raw response body:
 // catalog data can contain Puppet Sensitive values, and no regex-based
 // scrub over arbitrary catalog JSON is a substitute for the value-level
-// redaction boundary in design.md section 7.3. Callers must not pass
+// redaction boundary the normalizer applies. Callers must not pass
 // response bodies to this function as a way to "make it safe."
 func Sanitize(s string) string {
 	s = authorizationHeaderPattern.ReplaceAllString(s, "Authorization: <redacted>")
@@ -118,7 +117,7 @@ func SafeMessage(err error) string {
 
 // Diagnostic builds a model.Diagnostic for a service failure using only
 // safe metadata: operation, certname, target host, and a redaction-safe
-// message. It is the single reusable entry point tasks 4-6's adapters
+// message. It is the single reusable entry point the protocol adapters
 // should call to report a compiler/PuppetDB transport failure, rather than
 // formatting request/response details ad hoc at each call site.
 //

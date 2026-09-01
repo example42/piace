@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// TestEnvelope_JSONRoundTrip_Catalog verifies a catalog snapshot envelope
-// (with its mandatory requested_environment/compiler_api/
+// TestEnvelope_JSONRoundTrip_Catalog verifies a catalog snapshot
+// envelope (with its mandatory requested_environment/compiler_api/
 // input_factset_identity fields) marshals and unmarshals via
-// encoding/json without field loss, per design.md section 6.
+// encoding/json without field loss.
 func TestEnvelope_JSONRoundTrip_Catalog(t *testing.T) {
 	original := Envelope{
 		FormatVersion:        FormatVersion,

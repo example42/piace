@@ -8,17 +8,15 @@ import (
 )
 
 // diagnosticOutcome maps a DiagnosticOperation to the outcome class an
-// error-severity diagnostic of that operation contributes, per design.md
-// section 10's error taxonomy.
+// error-severity diagnostic of that operation contributes.
 //
 // Every operation except OperationRequestCandidate is an operational
-// error. OperationRequestCandidate is design.md section 10's
-// "compilation failure": "a compiler request is rejected/fails, candidate
-// identity or environment does not match, or v4 trusted-fact requirements
-// are unmet". Its transport-level sibling
-// OperationRequestCandidateTransport is deliberately separate and stays
-// operational; see that constant's doc comment in diagnostic.go, which
-// records exactly this table as task 11's obligation.
+// error. OperationRequestCandidate is a compilation failure: a compiler
+// request is rejected or fails, candidate identity or environment does
+// not match, or v4 trusted-fact requirements are unmet. Its
+// transport-level sibling OperationRequestCandidateTransport is
+// deliberately separate and stays operational; see that constant's doc
+// comment in diagnostic.go.
 var diagnosticOutcome = map[DiagnosticOperation]exitcode.Outcome{
 	OperationConfigure:                 exitcode.OutcomeOperationalError,
 	OperationLoadFacts:                 exitcode.OutcomeOperationalError,
@@ -34,13 +32,13 @@ var diagnosticOutcome = map[DiagnosticOperation]exitcode.Outcome{
 // OutcomeForDiagnostic returns the outcome class d contributes, and
 // whether it contributes one at all.
 //
-// A SeverityWarning diagnostic contributes nothing: design.md section 10
-// is explicit that "a reported v3 compatibility warning alone does not
-// change exit status; it makes trust semantics explicitly reviewable".
-// An error-severity diagnostic whose operation is not in the table above
-// contributes an operational error rather than nothing, mirroring
-// exitcode.ForOutcome's rule that an unrecognized classification is never
-// silently downgraded to success.
+// A SeverityWarning diagnostic contributes nothing: a reported v3
+// compatibility warning alone does not change exit status, it makes
+// trust semantics explicitly reviewable. An error-severity diagnostic
+// whose operation is not in the table above contributes an operational
+// error rather than nothing, mirroring exitcode.ForOutcome's rule that
+// an unrecognized classification is never silently downgraded to
+// success.
 func OutcomeForDiagnostic(d Diagnostic) (exitcode.Outcome, bool) {
 	if d.Severity != SeverityError {
 		return "", false
@@ -51,19 +49,18 @@ func OutcomeForDiagnostic(d Diagnostic) (exitcode.Outcome, bool) {
 	return exitcode.OutcomeOperationalError, true
 }
 
-// ClassifyOutcome sets t.Outcome from t's own diagnostics, node diff, and
-// resolved policy, per design.md section 10. It is the single place a
-// target's outcome class is decided, so text, JSON, HTML, and the process
-// exit code cannot disagree about one target.
+// ClassifyOutcome sets t.Outcome from t's own diagnostics, node diff,
+// and resolved policy. It is the single place a target's outcome class
+// is decided, so text, JSON, HTML, and the process exit code cannot
+// disagree about one target.
 //
-// The order below is design.md section 10's precedence applied within one
-// target: any error diagnostic outranks any difference verdict, and the
-// most severe error diagnostic wins among several.
+// The order below is the precedence applied within one target: any error
+// diagnostic outranks any difference verdict, and the most severe error
+// diagnostic wins among several.
 //
-// Two cases are non-clean without an error diagnostic of their own, both
-// required by requirements.md 10.5 ("SHALL never report a clean outcome
-// when one or more targets have an unreported retrieval, compilation, or
-// normalization failure") and design.md's Property 6:
+// Two cases are non-clean without an error diagnostic of their own.
+// PIACE must never report a clean outcome when one or more targets have
+// an unreported retrieval, compilation, or normalization failure:
 //
 //   - A nil NodeDiff means this target was never compared. Reaching here
 //     with no diagnostic would mean the pipeline abandoned a target
@@ -72,10 +69,10 @@ func OutcomeForDiagnostic(d Diagnostic) (exitcode.Outcome, bool) {
 //   - A surviving FileContentIndeterminate classification means content
 //     evidence was never established. internal/filecontent always pairs
 //     that state with an error-severity verify_content diagnostic today,
-//     so this branch is redundant with the diagnostic scan above — but it
-//     is the invariant requirements.md 5.7 and design.md section 7.2
-//     actually depend on ("it cannot silently collapse into an unchanged
-//     file"), and it is enforced here rather than left resting on a
+//     so this branch is redundant with the diagnostic scan above. But it
+//     is the invariant everything else depends on, that an indeterminate
+//     comparison cannot silently collapse into an unchanged file, and it
+//     is enforced here rather than left resting on a
 //     cross-package pairing no single package's tests cover.
 func (t *TargetResult) ClassifyOutcome() {
 	worst := exitcode.Outcome("")
@@ -129,7 +126,7 @@ func hasIndeterminateContent(nd NodeDiff) bool {
 
 // Reduce classifies every target, folds in run-level diagnostics, and
 // populates Outcome, ExitCode, and the ordered Reasons list. It is the
-// whole of task 11's "apply outcome precedence" step and the only call a
+// whole of internal/report's "apply outcome precedence" step and the only call a
 // caller needs after populating Targets, Diagnostics, Aggregate, and
 // ImpactEstimates.
 func (r *Result) Reduce() {
@@ -149,16 +146,15 @@ type reason struct {
 	text     string
 }
 
-// buildReasons produces the ordered reason list explaining r.Outcome, per
-// design.md section 9 and requirements.md 10.2. It always returns at least
-// one entry: a clean run still has to be able to say why it is clean.
+// buildReasons produces the ordered reason list explaining r.Outcome. It
+// always returns at least one entry: a clean run still has to be able to
+// say why it is clean.
 //
-// Entries are sorted by outcome precedence (most severe first), then by
+// Entries are sorted by outcome precedence, most severe first, then by
 // certname, then by text. Run-level entries carry an empty certname and
-// therefore sort ahead of target entries within the same rank. Nothing in
-// the ordering depends on target-file order or on map iteration, so the
-// list is byte-identical across runs with identical inputs (design.md
-// Property 1).
+// therefore sort ahead of target entries within the same rank. Nothing
+// in the ordering depends on target-file order or on map iteration, so
+// the list is byte-identical across runs with identical inputs.
 func (r *Result) buildReasons() []string {
 	rank := func(o exitcode.Outcome) int {
 		for i, p := range exitcode.Precedence {
