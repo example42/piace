@@ -1,11 +1,11 @@
-# change-context.yaml — what `piace explain --change` reads.
+# change-context.yaml: what `piace explain --change` reads.
 #
 # PIACE never invokes git. It reads a file you produce, which is what keeps it
-# a client of PuppetDB and a compiler and nothing else — and what lets a CI
+# a client of PuppetDB and a compiler and nothing else, and what lets a CI
 # system with no checkout, or a different VCS entirely, still describe its
 # change. Generate one with:
 #
-#   scripts/change-context.sh main feature/sudo-rework > change-context.yaml
+#   piace change-context --base-ref main > change-context.yaml
 #
 # Everything here is transmitted to the inference service as DATA inside an
 # explicit fence labelled untrusted, never as instruction. A description
@@ -23,7 +23,7 @@ change:
   head_ref: feature/sudo-rework
 
   # Commit SUBJECTS, never bodies. `body` is an unknown field and the file is
-  # refused outright — a commit body is unbounded free text written by whoever
+  # refused outright: a commit body is unbounded free text written by whoever
   # pushed, and it is the part of a repository most likely to carry a customer
   # name, a ticket paste, or a credential someone meant to delete.
   # Capped at 100 commits; each subject at 200 bytes.
@@ -47,7 +47,7 @@ change:
     - data/role/appserver.yaml
     - Puppetfile
 
-  # Usually a pull request's, which git does not have — so the generator
+  # Usually a pull request's, which git does not have, so the generator
   # script leaves both to you. Title is capped at 200 bytes, description at
   # 4000. Over-cap text is truncated and the truncation is recorded and shown,
   # never silently dropped, and never fails the command.

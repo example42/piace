@@ -6,8 +6,7 @@ package config
 // It loads independently of the compiler and puppetdb sections, so a
 // services file containing only this block is valid for `piace explain` —
 // which needs no mTLS identity and constructs no compiler or PuppetDB
-// client. See
-// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+// client. See CONTEXT.md.
 //
 // The token is never written here. TokenEnv names an environment variable
 // and TokenFile names a path, mirroring the discipline that a services

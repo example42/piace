@@ -25,8 +25,7 @@ const maxResponseBodyBytes int64 = 8 << 20
 // and a stolen services file must yield nothing usable. This client is
 // the scoped exception to that rule, and it is a separate package so the
 // exception is visible in the import graph rather than buried in a
-// conditional. See
-// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+// conditional. See CONTEXT.md.
 type Client struct {
 	// HTTPClient is exported so a test can substitute a stub server's
 	// client. Production callers use the one New builds.

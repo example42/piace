@@ -602,8 +602,8 @@ puppetdb:
 // as data — inside its fence, labelled untrusted — rather than as
 // instruction.
 //
-// PIACE never invokes git. The change context is a file the caller
-// produces; see scripts/change-context.sh.
+// compare and explain never invoke git. The change context is a file
+// the caller produces, by hand or with `piace change-context`.
 func TestAcceptance_ExplainSendsTheChangeContextAsFencedData(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))

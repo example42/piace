@@ -56,8 +56,8 @@
 //
 // HTML and Text take a second input `piace explain` supplies and `piace
 // compare` never does: an advisory change assessment (internal/assess).
-// It is a parameter rather than a field of a model.Result on purpose —
-// see docs/adr/0002 — and a nil one renders nothing at all, not an empty
+// It is a parameter rather than a field of a model.Result on purpose,
+// keeping it out of the result document, and a nil one renders nothing at all, not an empty
 // section and not a stray newline, so a report rendered without one is
 // byte-identical to what v0.1.0 produced. That identity is asserted
 // against a checked-in golden captured before the parameter existed.

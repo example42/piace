@@ -13,7 +13,7 @@
 // `compare` already wrote. It is the only subcommand that contacts an
 // inference service, and the only one that does not contact a compiler
 // or PuppetDB: the two halves share nothing but a file on disk. See
-// docs/adr/0002-keep-the-change-assessment-out-of-the-result-document.md.
+// CONTEXT.md for why the assessment stays out of the result document.
 package main
 
 import (

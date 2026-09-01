@@ -2,8 +2,7 @@
 // the one service internal/transport does not carry: the inference
 // endpoint. It is deliberately a parallel implementation rather than a
 // reuse of internal/transport's seam, for the same reason this whole
-// package is separate — see the Client doc comment and
-// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+// package is separate: see the Client doc comment and CONTEXT.md.
 // internal/inference must not import internal/transport.
 //
 // Redaction boundary: an Event carries only safe metadata by default —

@@ -1,0 +1,47 @@
+# ci/piace/services.yaml: the services file a CI job reads in place.
+#
+# Committed, and used verbatim. Nothing renders it, nothing copies it, and no
+# job rewrites it. That is what `*_env` buys: the file names an environment
+# variable holding the path to each credential, and the per-job credential
+# directory does not have to exist when the file is written.
+#
+# The variable carries a PATH, never key material, and the path has to be
+# absolute. On GitLab, a **file type** CI/CD variable is exactly this: GitLab
+# writes the value to a temporary file outside the checkout and puts that
+# file's absolute path in the variable. On GitHub and Azure, write the secret
+# to a 0600 file in a 0700 directory under the runner's temp dir and export
+# its path.
+#
+# Commit this file. It names endpoints and variable names, neither of which is
+# a secret, and both belong in a review diff when they change. What the
+# variables point at is the catalog-reader identity, which is never committed
+# and never written into the checkout.
+#
+# One file for both jobs. `compare` reads compiler: and puppetdb: and never
+# looks at inference:; `explain` reads inference: and builds no compiler or
+# PuppetDB client. What keeps the two apart is that the comparison job is
+# granted the three PEM variables and not the token, and the assessment job
+# the token and not the PEMs.
+
+version: 1
+
+compiler:
+  endpoint: https://puppet.ops.example.com:8140
+  ca_bundle_env:   PIACE_CA_BUNDLE
+  client_cert_env: PIACE_CLIENT_CERT
+  private_key_env: PIACE_PRIVATE_KEY
+
+puppetdb:
+  endpoint: https://puppetdb.ops.example.com:8081
+  ca_bundle_env:   PIACE_CA_BUNDLE
+  client_cert_env: PIACE_CLIENT_CERT
+  private_key_env: PIACE_PRIVATE_KEY
+
+inference:
+  endpoint: https://api.anthropic.com/v1/chat/completions
+  model: claude-sonnet-5
+  # Named, never inlined. The comparison job is not granted this variable.
+  token_env: PIACE_INFERENCE_TOKEN
+  # Relative to this file, like every path in a config file. Drop the line if
+  # you have no site policy to hand the model.
+  policy_notes_file: policy-notes.md

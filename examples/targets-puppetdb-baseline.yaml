@@ -1,4 +1,4 @@
-# targets-puppetdb-baseline.yaml — the supported path.
+# targets-puppetdb-baseline.yaml: the supported path.
 #
 # Usage pattern 1: compare each node's stored production catalog against a
 # catalog compiled for the feature environment CI just deployed. Nothing is
@@ -25,7 +25,7 @@ defaults:
     # rewrites it. With the flag this line may be omitted entirely.
     # See docs/ci.md.
     environment: feature-1287
-    catalog_api: v4                 # v4 | v3 — no default; see the README
+    catalog_api: v4                 # v4 or v3; no default, see the README
     # allow_v3_fallback: false      # v4 only; opt-in, never implicit
     # trusted_facts_compiler_lookup: false
     #   v4 only. Set true ONLY if the compiler is configured to fetch the
@@ -54,7 +54,7 @@ defaults:
 
   # Mask parameter values in every output format. Redaction runs after
   # comparison, so masking never turns a real difference into a
-  # non-difference. Puppet Sensitive wrappers are detected automatically —
+  # non-difference. Puppet Sensitive wrappers are detected automatically,
   # these selectors are for values Puppet does not mark.
   redact:
     - type: File

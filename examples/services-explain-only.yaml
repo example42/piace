@@ -1,4 +1,4 @@
-# services-explain-only.yaml — assessment without Puppet infrastructure.
+# services-explain-only.yaml: a services file carries only what a command needs.
 #
 # `explain` reads a stored result document and contacts one inference
 # service. It never touches a compiler or PuppetDB, so it needs neither
@@ -6,7 +6,7 @@
 # `inference:` is valid for it.
 #
 # This is the shape to use when the assessment runs somewhere the Puppet mTLS
-# material is deliberately absent — a review job, a separate runner, or a
+# material is deliberately absent: a review job, a separate runner, or a
 # workstation reading a report someone else produced.
 #
 #   export OPENAI_API_KEY=...

@@ -4,9 +4,8 @@
 // This package owns the disclosure boundary for the change-assessment
 // feature: it decides what may leave the process. internal/inference only
 // knows how to send what this package hands it, and deliberately knows
-// nothing about catalogs. See
-// docs/plans/v0.2.0-change-assessment.md and
-// docs/adr/0002-keep-the-change-assessment-out-of-the-result-document.md.
+// nothing about catalogs. See CONTEXT.md for why the assessment stays
+// out of the result document.
 package assess
 
 import (
@@ -47,8 +46,9 @@ type Commit struct {
 }
 
 // ChangeContext is the caller-supplied description of the repository
-// change under test. PIACE reads it and never invokes git; see
-// docs/plans/v0.2.0-change-assessment.md for why the caller builds it.
+// change under test. `explain` reads it and never invokes git, so a
+// repository under any VCS can describe its change; `piace
+// change-context` writes one from a git checkout.
 //
 // Every free-text field is untrusted data written by whoever opened the
 // change, and is fenced and labelled as such when it reaches a request.

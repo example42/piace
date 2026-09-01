@@ -6,7 +6,7 @@
 //
 // It is also the one place in PIACE that sets an Authorization header;
 // internal/transport strips that header from every request it makes. See
-// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+// CONTEXT.md for the scope of that exception.
 package inference
 
 // Message is one chat message. Role is "system" or "user".

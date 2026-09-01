@@ -231,7 +231,7 @@ func (c *Client) Do(req *http.Request, timeout time.Duration) (*Response, error)
 	//
 	// internal/inference is the one scoped exception, and it is a
 	// separate client precisely so this line can stay unconditional. See
-	// docs/adr/0003-authenticate-the-inference-service-with-a-bearer-token.md.
+	// CONTEXT.md for the scope of that exception.
 	req.Header.Del("Authorization")
 
 	// The request body is snapshotted before the request is sent, while

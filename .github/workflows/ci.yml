@@ -8,7 +8,7 @@ name: CI
 # Hub and GHCR.
 #
 # All four live in one workflow so `needs:` can gate each stage on the
-# one before it — a cross-workflow dependency would need `workflow_run`,
+# one before it. A cross-workflow dependency would need `workflow_run`,
 # which reports its status against the wrong commit and is easy to
 # misread. That gating is the point on a tag: a release is published only
 # from a commit whose tests passed on every matrix leg.
@@ -160,7 +160,7 @@ jobs:
       # Ties the artifact back to the tag. -X main.toolVersion is what
       # `piace version` prints and what every result document records as
       # its invocation metadata, so a mis-stamped binary would misreport
-      # itself in every report it ever produced — and the checksum
+      # itself in every report it ever produced, and the checksum
       # manifest would happily certify it.
       - name: Confirm the binary reports the version it was stamped with
         env:
@@ -308,13 +308,13 @@ jobs:
 
       # gh resolves the repository from GH_REPO, so this job needs no
       # checkout: the only inputs are the downloaded artifacts and the
-      # notes composed above. The tag already exists — pushing it is what
-      # triggered the run — so gh attaches the release to it rather than
+      # notes composed above. The tag already exists, since pushing it is what
+      # triggered the run, so gh attaches the release to it rather than
       # creating one.
       #
       # Re-running this job after a release already exists fails, and is
-      # meant to. The alternative — falling back to `gh release upload
-      # --clobber` — would quietly overwrite the assets of a release
+      # meant to. The alternative, falling back to `gh release upload
+      # --clobber`, would quietly overwrite the assets of a release
       # people may already have downloaded, to rescue a case (a partial
       # publish) that is rarer than the case it endangers. Delete the
       # incomplete release and re-run if that happens.

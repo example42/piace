@@ -8,8 +8,7 @@ import (
 // AISchemaVersion is the change assessment artifact's own version. It is
 // independent of model.ResultSchemaVersion by design: the assessment is
 // quarantined out of the result document so that document's determinism
-// guarantee is not weakened to accommodate it. See
-// docs/adr/0002-keep-the-change-assessment-out-of-the-result-document.md.
+// guarantee is not weakened to accommodate it. See CONTEXT.md.
 const AISchemaVersion = 1
 
 // DiagnosticSeverity mirrors the result document's two severities without

@@ -39,8 +39,6 @@ func numericResult() model.Result {
 // later use of a stored result document rests on: reading a JSON report
 // back and re-rendering it reproduces the report byte for byte. Nothing in
 // v0.1.0 ever read a report back, so nothing established it.
-//
-// See docs/plans/v0.2.0-change-assessment.md, increment 0.
 func TestResultDocumentRoundTripsThroughItsJSONReport(t *testing.T) {
 	first, err := JSON(numericResult())
 	if err != nil {
@@ -66,8 +64,6 @@ func TestResultDocumentRoundTripsThroughItsJSONReport(t *testing.T) {
 // `piace explain` rests on: re-rendering from a stored JSON report
 // reproduces what the run that wrote it rendered. Without it, an
 // assessment section could only be added by re-running a comparison.
-//
-// See docs/plans/v0.2.0-change-assessment.md, increment 0.
 func TestRenderedReportsAreUnchangedByADecodedResultDocument(t *testing.T) {
 	original := numericResult()
 
