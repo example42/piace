@@ -162,6 +162,7 @@ func TestAcceptance_ChangeContextUsageErrors(t *testing.T) {
 	repo := changeContextRepo(t)
 	t.Setenv("PR_TITLE", "a title")
 	t.Setenv("BASE", "main")
+	t.Setenv("HOSTILE_BASE", "--output=/tmp/piace-should-not-exist")
 
 	tests := []struct {
 		name    string
@@ -192,6 +193,26 @@ func TestAcceptance_ChangeContextUsageErrors(t *testing.T) {
 			name:    "unknown ref",
 			args:    []string{"--base-ref", "no-such-branch"},
 			wantMsg: "git merge-base",
+		},
+		// A ref reaches git as a positional argument, so one beginning
+		// with "-" is read as an option rather than a branch name. On a
+		// fork pull request the head ref is a branch name whoever opened
+		// the change chose, which is exactly why the refs take an `-env`
+		// form in the first place. Refused before any git command runs.
+		{
+			name:    "base ref looks like an option",
+			args:    []string{"--base-ref", "--output=/tmp/piace-should-not-exist"},
+			wantMsg: `a ref may not begin with "-"`,
+		},
+		{
+			name:    "head ref looks like an option",
+			args:    []string{"--base-ref", "main", "--head-ref", "--output=/tmp/piace-should-not-exist"},
+			wantMsg: `a ref may not begin with "-"`,
+		},
+		{
+			name:    "base ref from the environment looks like an option",
+			args:    []string{"--base-ref-env", "HOSTILE_BASE"},
+			wantMsg: `a ref may not begin with "-"`,
 		},
 	}
 	for _, tc := range tests {

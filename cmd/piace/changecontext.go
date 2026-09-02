@@ -113,12 +113,18 @@ func runChangeContext(args []string, stdout, stderr *os.File) exitcode.Code {
 func changeContextFromGit(baseRef, headRef string) (assess.ChangeContext, error) {
 	cc := assess.ChangeContext{Present: true, BaseRef: baseRef}
 
-	mergeBase, err := gitOutput("merge-base", baseRef, headRef)
+	mergeBase, err := gitOutput("merge-base", endOfOptions, baseRef, headRef)
 	if err != nil {
 		return cc, err
 	}
 	mergeBase = strings.TrimSpace(mergeBase)
 
+	// The one call with no endOfOptions marker: `git rev-parse` echoes
+	// arguments it cannot interpret, and the marker itself is one of them,
+	// so passing it here puts a literal "--end-of-options" line above the
+	// branch name in the output this reads. validateRef, which refuses a
+	// leading "-" before any git command runs, is the control that covers
+	// this call.
 	name, err := gitOutput("rev-parse", "--abbrev-ref", headRef)
 	if err != nil {
 		return cc, err
@@ -128,7 +134,7 @@ func changeContextFromGit(baseRef, headRef string) (assess.ChangeContext, error)
 	// -z so records are NUL-separated and \x1f between fields: a commit
 	// subject may legally contain a tab or a newline, and splitting on
 	// either would invent commits that do not exist.
-	log, err := gitOutput("log", "-z", "--format=%H%x1f%s%x1f%an", mergeBase+".."+headRef)
+	log, err := gitOutput("log", "-z", "--format=%H%x1f%s%x1f%an", endOfOptions, mergeBase+".."+headRef)
 	if err != nil {
 		return cc, err
 	}
@@ -142,7 +148,7 @@ func changeContextFromGit(baseRef, headRef string) (assess.ChangeContext, error)
 
 	// -z again, for the same reason: a path may contain a newline, and
 	// without it git would quote and escape such a path instead.
-	paths, err := gitOutput("diff", "--name-only", "-z", mergeBase, headRef)
+	paths, err := gitOutput("diff", "--name-only", "-z", endOfOptions, mergeBase, headRef)
 	if err != nil {
 		return cc, err
 	}
@@ -150,6 +156,28 @@ func changeContextFromGit(baseRef, headRef string) (assess.ChangeContext, error)
 
 	return cc, nil
 }
+
+// endOfOptions is passed to the git invocations above that accept it,
+// immediately before the first ref. It tells git's revision parser that nothing
+// after it is an option, however it is spelled.
+//
+// The refs here are attacker-supplied in the case this command exists
+// for: on a fork pull request the base and head refs are branch names
+// whoever opened the change chose. A ref of `--output=<path>` reaching
+// `git diff` as a positional argument is an arbitrary file write on the
+// runner that holds the catalog-reader identity. As it happens the
+// `merge-base` call runs first and rejects an unknown option, so that
+// particular value dead-ends before `diff` is reached, but a chain that
+// depends on the argument order of the first of four commands is not a
+// control. validateRef refuses a leading "-" outright and this refuses
+// what a future reordering might otherwise let through.
+//
+// It requires git 2.24 (November 2019). A `piace change-context` run
+// against anything older fails with git's own "unknown option" text
+// rather than silently dropping the guard, which is the right way round:
+// `explain --change` reads a file produced by any means, so a site on an
+// older git writes the same YAML without this subcommand.
+const endOfOptions = "--end-of-options"
 
 func splitNUL(s string) []string {
 	var out []string
@@ -181,7 +209,8 @@ func gitOutput(args ...string) (string, error) {
 }
 
 // readRef reads a ref from exactly one of the two references the caller
-// may give, the same rule the services file follows for a credential.
+// may give, the same rule the services file follows for a credential,
+// and validates it before it can become a git argument.
 func readRef(flagName, value, env string) (string, error) {
 	switch {
 	case value != "" && value != "HEAD" && env != "":
@@ -191,10 +220,38 @@ func readRef(flagName, value, env string) (string, error) {
 		if v == "" {
 			return "", fmt.Errorf("--%s-env: environment variable %s is unset or empty", flagName, env)
 		}
-		return v, nil
+		return v, validateRef(flagName, v)
 	default:
-		return value, nil
+		return value, validateRef(flagName, value)
 	}
+}
+
+// validateRef refuses the ref shapes that would be read as something
+// other than a ref by the git commands changeContextFromGit runs.
+//
+// A leading "-" is the whole point: a ref is passed to git as a
+// positional argument, and git's option parser does not care that the
+// caller meant a branch name. Git itself forbids a ref name beginning
+// with "-", so nothing legitimate is refused here.
+//
+// A NUL byte is refused because exec would fail on it anyway, with a
+// message that says nothing about which flag was wrong. Everything else
+// a branch name may legally contain, semicolons, dollar signs and
+// backticks among it, is passed through untouched: this command never
+// builds a shell string, which is why those characters are safe here and
+// are exactly what makes a `--title` flag unsafe (see the doc comment on
+// runChangeContext).
+func validateRef(flagName, ref string) error {
+	if ref == "" {
+		return nil
+	}
+	if strings.HasPrefix(ref, "-") {
+		return fmt.Errorf("--%s: a ref may not begin with \"-\"", flagName)
+	}
+	if strings.ContainsRune(ref, 0) {
+		return fmt.Errorf("--%s: a ref may not contain a NUL byte", flagName)
+	}
+	return nil
 }
 
 // readCallerText reads one untrusted free-text field by reference. An

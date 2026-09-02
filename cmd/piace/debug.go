@@ -136,6 +136,20 @@ func (s *debugSink) observe(ev transport.Event) {
 // dump writes one body to a 0600 file. A dump failure is reported to
 // stderr but never fails the run: observation must not change a
 // comparison's or capture's outcome.
+//
+// Unlink first, then create exclusively, rather than os.WriteFile,
+// because these bodies are the unredacted ones. os.WriteFile opens an
+// existing path for writing: it follows a symlink already sitting there
+// and leaves whatever mode that file already had, applying 0600 only to
+// a file it creates itself. A dump directory is often /tmp or a CI
+// workspace, and neither is somewhere to take that on trust with raw
+// catalog values.
+//
+// os.Remove unlinks a symlink rather than its target, so the create that
+// follows always makes a fresh 0600 regular file. Removing first rather
+// than only creating exclusively keeps a second run against the same
+// dump directory working the way the first one did; the sequence numbers
+// restart at 001 each run, so O_EXCL alone would refuse every file.
 func (s *debugSink) dump(base string, body []byte) {
 	if len(body) == 0 {
 		return
@@ -145,7 +159,18 @@ func (s *debugSink) dump(base string, body []byte) {
 		name = base + ".json"
 	}
 	path := filepath.Join(s.dumpDir, name)
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	// A path that does not exist is the ordinary case; any other failure
+	// surfaces from the create below, with the message that names it.
+	_ = os.Remove(path)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		fmt.Fprintf(s.stderr, "piace %s: debug: writing %s: %v\n", s.label, path, err)
+		return
+	}
+	if _, err := f.Write(body); err != nil {
+		fmt.Fprintf(s.stderr, "piace %s: debug: writing %s: %v\n", s.label, path, err)
+	}
+	if err := f.Close(); err != nil {
 		fmt.Fprintf(s.stderr, "piace %s: debug: writing %s: %v\n", s.label, path, err)
 	}
 }

@@ -2,6 +2,7 @@ package filecontent
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,23 +12,72 @@ func TestParsePuppetSourceURI(t *testing.T) {
 	cases := []struct {
 		reference string
 		wantPath  string
-		wantOK    bool
+		wantErr   error
 	}{
-		{"puppet:///modules/example/data.txt", "modules/example/data.txt", true},
-		{"puppet://compiler.example.test/modules/example/data.txt", "modules/example/data.txt", true},
-		{"puppet:///modules/example/nested/dir/data.txt", "modules/example/nested/dir/data.txt", true},
-		{"puppet:///", "", false},
-		{"file:///etc/motd", "", false},
-		{"https://example.test/data.txt", "", false},
-		{"/etc/motd", "", false},
-		{"", "", false},
+		{"puppet:///modules/example/data.txt", "modules/example/data.txt", nil},
+		{"puppet://compiler.example.test/modules/example/data.txt", "modules/example/data.txt", nil},
+		{"puppet:///modules/example/nested/dir/data.txt", "modules/example/nested/dir/data.txt", nil},
+		{"puppet:///", "", errUnsupportedSourceScheme},
+		{"file:///etc/motd", "", errUnsupportedSourceScheme},
+		{"https://example.test/data.txt", "", errUnsupportedSourceScheme},
+		{"/etc/motd", "", errUnsupportedSourceScheme},
+		{"", "", errUnsupportedSourceScheme},
+
+		// A `source` value is a parameter of a File resource in the
+		// candidate catalog, compiled from the change under review, so
+		// these are the shapes that must not become a request path. Each
+		// one, left alone, would leave the file_content endpoint and reach
+		// another path on the compiler under PIACE's catalog-reader
+		// identity: net/url does not remove dot segments from a path it is
+		// handed, and net/http sends the request line as written.
+		{"puppet:///../../pdb/query/v4/catalogs/victim.example.test", "", errUnsafeSourcePath},
+		{"puppet:///modules/../../../puppet/v3/environments", "", errUnsafeSourcePath},
+		{"puppet://compiler.example.test/../../status/v1/services", "", errUnsafeSourcePath},
+		{"puppet:///modules/./example/data.txt", "", errUnsafeSourcePath},
+		{"puppet:///modules//example/data.txt", "", errUnsafeSourcePath},
+		{"puppet:///modules/example/data.txt\x00.png", "", errUnsafeSourcePath},
+
+		// A ".." inside a segment is an ordinary, if odd, file name and
+		// stays retrievable: only a whole segment of ".." traverses.
+		{"puppet:///modules/example/..data.txt", "modules/example/..data.txt", nil},
 	}
 	for _, tc := range cases {
-		gotPath, gotOK := parsePuppetSourceURI(tc.reference)
-		if gotOK != tc.wantOK || gotPath != tc.wantPath {
+		gotPath, gotErr := parsePuppetSourceURI(tc.reference)
+		if !errors.Is(gotErr, tc.wantErr) || gotPath != tc.wantPath {
 			t.Errorf("parsePuppetSourceURI(%q) = (%q, %v), want (%q, %v)",
-				tc.reference, gotPath, gotOK, tc.wantPath, tc.wantOK)
+				tc.reference, gotPath, gotErr, tc.wantPath, tc.wantErr)
 		}
+	}
+}
+
+// TestCompilerContentResolver_Digest_RefusesTraversal is the end-to-end
+// half of the case above: a traversing `source` must never reach the
+// wire at all, so the assertion is that the server's handler is not
+// entered, not merely that Digest returned an error.
+func TestCompilerContentResolver_Digest_RefusesTraversal(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	requested := false
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		requested = true
+		w.WriteHeader(http.StatusOK)
+	})
+	resolver := newResolver(t, fixture, srv)
+	_, err := resolver.Digest(context.Background(),
+		"puppet:///../../pdb/query/v4/catalogs/victim.example.test",
+		RetrievalContext{Certname: "node.example.test", Environment: "production"})
+	if err == nil {
+		t.Fatal("Digest accepted a traversing source reference, want an error")
+	}
+	if !errors.Is(err, errUnsafeSourcePath) {
+		t.Errorf("Digest error = %v, want errUnsafeSourcePath", err)
+	}
+	if requested {
+		t.Error("a traversing source reference reached the compiler; it must be refused before any request is issued")
+	}
+	// The reference itself must not be echoed back: it is catalog data and
+	// this error becomes a diagnostic that reaches CI logs and reports.
+	if strings.Contains(err.Error(), "victim.example.test") {
+		t.Errorf("Digest error quotes the source reference: %v", err)
 	}
 }
 

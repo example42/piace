@@ -48,7 +48,7 @@ func (s *stubService) client(t *testing.T, token string) *Client {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	c.HTTPClient = s.server.Client()
+	c.SetHTTPClient(s.server.Client())
 	return c
 }
 
@@ -206,7 +206,7 @@ func TestClientHonoursItsTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	c.HTTPClient = slow.Client()
+	c.SetHTTPClient(slow.Client())
 
 	if _, err := c.Complete(context.Background(), sampleRequest()); err == nil {
 		t.Error("Complete returned before its deadline elapsed")
@@ -228,7 +228,7 @@ func TestClientObserverSeesStatusAndShapeButNotValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	c.HTTPClient = s.server.Client()
+	c.SetHTTPClient(s.server.Client())
 
 	if _, err := c.Complete(context.Background(), sampleRequest()); err == nil {
 		t.Fatal("Complete accepted a 400")
@@ -265,7 +265,7 @@ func TestClientObserverCapturesRawBodiesWhenAsked(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	c.HTTPClient = s.server.Client()
+	c.SetHTTPClient(s.server.Client())
 
 	if _, err := c.Complete(context.Background(), sampleRequest()); err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -275,5 +275,85 @@ func TestClientObserverCapturesRawBodiesWhenAsked(t *testing.T) {
 	}
 	if string(ev.ResponseBody) != s.body {
 		t.Errorf("Event.ResponseBody = %s", ev.ResponseBody)
+	}
+}
+
+// TestComplete_RefusesRedirectOffHTTPS is the regression test for the
+// one way the bearer token could leave this process in cleartext.
+//
+// net/http keeps an Authorization header across a redirect whenever the
+// target host is the original host or a subdomain of it, judged on the
+// host alone, so an endpoint that answers with `302 Location:
+// http://<same host>/...` would otherwise get the token over plain HTTP.
+// The stand-in for "same host, no TLS" here is a second httptest server
+// on 127.0.0.1, which is the same host as the TLS one and a different
+// port, exactly the shape net/http would follow.
+func TestComplete_RefusesRedirectOffHTTPS(t *testing.T) {
+	var plainAuth string
+	var plainReached bool
+	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainReached = true
+		plainAuth = r.Header.Get("Authorization")
+		io.WriteString(w, `{"choices":[{"message":{"content":"{}"}}]}`)
+	}))
+	defer plain.Close()
+
+	redirector := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, plain.URL+"/v1/chat/completions", http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	u, err := url.Parse(redirector.URL)
+	if err != nil {
+		t.Fatalf("parsing stub URL: %v", err)
+	}
+	c, err := New(u, "secret-token", 5*time.Second)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c.SetHTTPClient(redirector.Client())
+
+	_, err = c.Complete(context.Background(), sampleRequest())
+	if err == nil {
+		t.Fatal("Complete followed a redirect off https, want an error")
+	}
+	if plainReached {
+		t.Error("the redirect was followed to a plain-http endpoint")
+	}
+	if plainAuth != "" {
+		t.Errorf("the bearer token reached a plain-http endpoint: %q", plainAuth)
+	}
+	if strings.Contains(err.Error(), "secret-token") {
+		t.Errorf("the error text carries the token: %v", err)
+	}
+}
+
+// TestComplete_RefusesRedirectToAnotherAuthority covers the other half
+// of the policy: a redirect that stays on https but changes authority is
+// still a redirect to a service the operator did not configure, and the
+// request body is the catalog-derived payload.
+func TestComplete_RefusesRedirectToAnotherAuthority(t *testing.T) {
+	elsewhere := newStubService(t)
+
+	redirector := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.server.URL+"/v1/chat/completions", http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	u, err := url.Parse(redirector.URL)
+	if err != nil {
+		t.Fatalf("parsing stub URL: %v", err)
+	}
+	c, err := New(u, "secret-token", 5*time.Second)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	c.SetHTTPClient(redirector.Client())
+
+	if _, err := c.Complete(context.Background(), sampleRequest()); err == nil {
+		t.Fatal("Complete followed a redirect to another authority, want an error")
+	}
+	if elsewhere.lastAuth != "" {
+		t.Errorf("the bearer token reached another authority: %q", elsewhere.lastAuth)
 	}
 }

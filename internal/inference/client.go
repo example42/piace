@@ -27,9 +27,10 @@ const maxResponseBodyBytes int64 = 8 << 20
 // exception is visible in the import graph rather than buried in a
 // conditional. See CONTEXT.md.
 type Client struct {
-	// HTTPClient is exported so a test can substitute a stub server's
-	// client. Production callers use the one New builds.
-	HTTPClient *http.Client
+	// httpClient is the transport New built, or the one SetHTTPClient
+	// substituted. It is unexported so the redirect policy below cannot be
+	// dropped by assignment: see SetHTTPClient.
+	httpClient *http.Client
 
 	url     *url.URL
 	token   string
@@ -65,7 +66,7 @@ func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Clie
 		return nil, fmt.Errorf("inference: timeout must be positive")
 	}
 	c := &Client{
-		HTTPClient: &http.Client{Timeout: timeout},
+		httpClient: &http.Client{Timeout: timeout, CheckRedirect: checkRedirect},
 		url:        u,
 		token:      token,
 		timeout:    timeout,
@@ -74,6 +75,57 @@ func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Clie
 		opt(c)
 	}
 	return c, nil
+}
+
+// checkRedirect is this package's counterpart to internal/transport's
+// rule that no redirect may reach another authority, and it exists for a
+// sharper reason than symmetry: this is the one client in PIACE that
+// carries a bearer token, and net/http's own redirect policy is not
+// enough to keep it.
+//
+// net/http drops Authorization only when the redirect target is neither
+// the original host nor a subdomain of it, and it judges that on the
+// host alone. A 302 from https://<endpoint> to http://<same host> is
+// therefore followed with the token attached, in cleartext; so is one to
+// a sibling subdomain of the provider's domain. Neither is a redirect a
+// chat-completions endpoint has any reason to issue, so both are refused
+// here rather than left to a rule written for browsers.
+//
+// The header is deleted as well as the redirect refused. Returning an
+// error already stops the request, but the deletion means a future
+// caller who relaxes this policy does not silently reintroduce the leak.
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	req.Header.Del("Authorization")
+
+	if len(via) == 0 {
+		return nil
+	}
+	orig := via[0].URL
+	if req.URL.Scheme != "https" || req.URL.Host != orig.Host {
+		return fmt.Errorf("inference: refused a redirect from %s://%s to %s://%s: an inference endpoint may not redirect to another authority or off https",
+			orig.Scheme, orig.Host, req.URL.Scheme, req.URL.Host)
+	}
+	return nil
+}
+
+// SetHTTPClient substitutes the HTTP client requests are issued through
+// and reapplies the redirect policy to it, so a substituted client can
+// never be one that carries the bearer token off https or to another
+// authority.
+//
+// It exists so a test can reach a stub server over TLS with a generated
+// certificate. It is a method rather than an exported field because the
+// field was the footgun: assigning a plain *http.Client dropped
+// checkRedirect silently, and the one client in PIACE that holds a
+// credential is the worst place for a policy that can be lost by
+// assignment. A nil h is ignored, so a caller can pass one through
+// unconditionally.
+func (c *Client) SetHTTPClient(h *http.Client) {
+	if h == nil {
+		return
+	}
+	h.CheckRedirect = checkRedirect
+	c.httpClient = h
 }
 
 // Authority is the endpoint's host, safe to record in an artifact so a
@@ -116,7 +168,7 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 	httpReq.Header.Set("Authorization", "Bearer "+c.token)
 
 	start := time.Now()
-	resp, err := c.HTTPClient.Do(httpReq)
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		// url.Error stringifies to include the request URL but never a
 		// header, so the token cannot appear here.
@@ -129,7 +181,17 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
+	// Read one byte past the limit, as internal/transport does, so a body
+	// that exactly reaches it succeeds and one that exceeds it is
+	// detected rather than silently truncated. Without the extra byte an
+	// oversized response comes back as a JSON fragment and is reported as
+	// "not a chat completion", which sends an operator looking at the
+	// wrong thing.
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes+1))
+	tooLarge := int64(len(raw)) > maxResponseBodyBytes
+	if tooLarge {
+		raw = raw[:maxResponseBodyBytes]
+	}
 
 	shape, keys, keysTruncated := describeBody(raw)
 	c.emit(Event{
@@ -147,6 +209,9 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 
 	if readErr != nil {
 		return nil, fmt.Errorf("inference: reading response from %s: %w", c.url.Host, readErr)
+	}
+	if tooLarge {
+		return nil, fmt.Errorf("inference: %s returned a response body exceeding the %d byte limit", c.url.Host, maxResponseBodyBytes)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		// Status only: a failed inference response body routinely carries
