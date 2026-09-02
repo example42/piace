@@ -9,6 +9,76 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
+// textf writes one line of the text report, with every control character
+// an interpolated value carried replaced by a printable escape.
+//
+// This format is the one PIACE writes to a terminal: `compare` sends it
+// to stdout whenever --text-out is omitted, which is how a CI log gets
+// it. Almost everything it interpolates is untrusted. A resource type
+// and title, a parameter value and a File `source` come from the
+// candidate catalog, which was compiled from the very change under
+// review; a change assessment's summary and rationale are free text a
+// model wrote. An ESC in any of them is an ANSI control sequence in a
+// terminal, and the sequences that clear the screen and reposition the
+// cursor are enough to make a run that exits 30 read as `outcome: clean
+// (exit 0)`. A bare CR does the same thing more crudely, and a newline
+// forges a whole line. The most-read line of the report is the one worth
+// forging, so none of them is passed through.
+//
+// Only the newlines the format string itself contributes, always a
+// leading or trailing run and never an interior one, survive. Everything
+// between them is a value, and a value has no business carrying a
+// control character.
+//
+// The JSON and HTML reports are deliberately not treated this way. JSON
+// escaping already makes a control character inert and the document's
+// canonical checksum is what `explain` ties an assessment to, so
+// rewriting bytes there would change a document PIACE promises is
+// reproducible; html/template's contextual escaping covers the HTML, and
+// a terminal control character is not a control character in a browser.
+func textf(b *bytes.Buffer, format string, args ...any) {
+	s := fmt.Sprintf(format, args...)
+	lead := len(s) - len(strings.TrimLeft(s, "\n"))
+	trail := len(s) - len(strings.TrimRight(s, "\n"))
+	b.WriteString(s[:lead])
+	b.WriteString(sanitizeControl(s[lead : len(s)-trail]))
+	b.WriteString(s[len(s)-trail:])
+}
+
+// sanitizeControl replaces every C0 control character, DEL, and C1
+// control character in s with a `\xNN`/`\uNNNN` escape, and returns s
+// unchanged when it holds none, which is every ordinary line.
+//
+// Escaped rather than dropped: a reader who sees `\x1b` in a resource
+// title learns that something put an escape sequence there, which is
+// worth knowing, where silent removal would show a title that looks
+// merely odd.
+func sanitizeControl(s string) string {
+	if !strings.ContainsFunc(s, isControlRune) {
+		return s
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case !isControlRune(r):
+			out.WriteRune(r)
+		case r < 0x100:
+			fmt.Fprintf(&out, `\x%02x`, r)
+		default:
+			fmt.Fprintf(&out, `\u%04x`, r)
+		}
+	}
+	return out.String()
+}
+
+// isControlRune reports whether r is a C0 control character, DEL, or a
+// C1 control character. C1 is included because a terminal decoding UTF-8
+// treats U+009B as CSI, the same introducer `ESC [` produces.
+func isControlRune(r rune) bool {
+	return r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f)
+}
+
 // Text renders r as the concise CI log report, in a fixed section order:
 // final outcome first, then per-target status, node changes, warnings
 // and errors, aggregate summary, and impact summary.
@@ -27,13 +97,13 @@ import (
 func Text(r model.Result, a *assess.Assessment, opts Options) ([]byte, error) {
 	var b bytes.Buffer
 
-	fmt.Fprintf(&b, "PIACE %s (%s)\n", r.Invocation.ToolVersion, r.Invocation.TimestampUTC)
+	textf(&b, "PIACE %s (%s)\n", r.Invocation.ToolVersion, r.Invocation.TimestampUTC)
 	if s := r.Invocation.Services; s != nil {
-		fmt.Fprintf(&b, "services: compiler=%s puppetdb=%s\n", s.Compiler, s.PuppetDB)
+		textf(&b, "services: compiler=%s puppetdb=%s\n", s.Compiler, s.PuppetDB)
 	}
-	fmt.Fprintf(&b, "outcome: %s (exit %d)\n", r.Outcome, r.ExitCode)
+	textf(&b, "outcome: %s (exit %d)\n", r.Outcome, r.ExitCode)
 	for _, reason := range r.Reasons {
-		fmt.Fprintf(&b, "  reason: %s\n", reason)
+		textf(&b, "  reason: %s\n", reason)
 	}
 
 	writeTextTargets(&b, r.Targets)
@@ -59,47 +129,47 @@ func writeTextAssessment(b *bytes.Buffer, a *assess.Assessment) {
 	if a == nil {
 		return
 	}
-	fmt.Fprintf(b, "\n%s:\n", AssessmentLabel)
-	fmt.Fprintf(b, "  %s\n", AssessmentNote)
+	textf(b, "\n%s:\n", AssessmentLabel)
+	textf(b, "  %s\n", AssessmentNote)
 	if a.ModelID != "" {
-		fmt.Fprintf(b, "  model: %s\n", a.ModelID)
+		textf(b, "  model: %s\n", a.ModelID)
 	}
-	fmt.Fprintf(b, "  risk: %s\n", a.Run.Risk)
+	textf(b, "  risk: %s\n", a.Run.Risk)
 	if a.Run.Summary != "" {
-		fmt.Fprintf(b, "  summary: %s\n", a.Run.Summary)
+		textf(b, "  summary: %s\n", a.Run.Summary)
 	}
 	for _, f := range a.Run.ReviewFocus {
-		fmt.Fprintf(b, "  review focus: %s\n", f)
+		textf(b, "  review focus: %s\n", f)
 	}
 	if a.GroupsTruncated {
-		fmt.Fprintf(b, "  assessed %d of %d resource-change groups\n", a.GroupsAssessed, a.GroupsTotal)
+		textf(b, "  assessed %d of %d resource-change groups\n", a.GroupsAssessed, a.GroupsTotal)
 	}
 	if a.InputPartial {
-		fmt.Fprintf(b, "  input partial: the result document records diagnostics\n")
+		textf(b, "  input partial: the result document records diagnostics\n")
 	}
 	for _, d := range a.Diagnostics {
-		fmt.Fprintf(b, "  %s: %s\n", strings.ToUpper(string(d.Severity)), d.Message)
+		textf(b, "  %s: %s\n", strings.ToUpper(string(d.Severity)), d.Message)
 	}
 }
 
 func writeTextTargets(b *bytes.Buffer, targets []model.TargetResult) {
-	fmt.Fprintf(b, "\ntargets (%d):\n", len(targets))
+	textf(b, "\ntargets (%d):\n", len(targets))
 	for _, t := range targets {
-		fmt.Fprintf(b, "  %s: %s\n", t.Certname, t.Outcome)
+		textf(b, "  %s: %s\n", t.Certname, t.Outcome)
 		writeTextProvenance(b, t)
 
 		// The v3 trusted-fact warning is emitted before the change list, not
 		// buried after it: the warning is owed prominently in every output
 		// format, and a reader who stops at the changes must still have seen it.
 		if t.Candidate != nil && t.Candidate.V3Warning != "" {
-			fmt.Fprintf(b, "    WARNING: %s\n", t.Candidate.V3Warning)
+			textf(b, "    WARNING: %s\n", t.Candidate.V3Warning)
 		}
 
 		if t.NodeDiff != nil {
 			writeTextNodeDiff(b, *t.NodeDiff)
 		}
 		for _, d := range t.Diagnostics {
-			fmt.Fprintf(b, "    %s [%s]: %s\n", strings.ToUpper(string(d.Severity)), d.Operation, d.Message)
+			textf(b, "    %s [%s]: %s\n", strings.ToUpper(string(d.Severity)), d.Operation, d.Message)
 		}
 	}
 }
@@ -110,13 +180,13 @@ func writeTextTargets(b *bytes.Buffer, targets []model.TargetResult) {
 // informative about where a failed target stopped.
 func writeTextProvenance(b *bytes.Buffer, t model.TargetResult) {
 	if t.Baseline != nil {
-		fmt.Fprintf(b, "    baseline:  %s\n", sourceProvenanceLine(*t.Baseline))
+		textf(b, "    baseline:  %s\n", sourceProvenanceLine(*t.Baseline))
 	}
 	if t.Facts != nil {
-		fmt.Fprintf(b, "    facts:     %s\n", sourceProvenanceLine(*t.Facts))
+		textf(b, "    facts:     %s\n", sourceProvenanceLine(*t.Facts))
 	}
 	if t.Candidate != nil {
-		fmt.Fprintf(b, "    candidate: %s\n", candidateProvenanceLine(*t.Candidate))
+		textf(b, "    candidate: %s\n", candidateProvenanceLine(*t.Candidate))
 	}
 }
 
@@ -168,17 +238,17 @@ func candidateProvenanceLine(p model.CandidateProvenance) string {
 func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
 	switch {
 	case !nd.HasDifference:
-		fmt.Fprintf(b, "    changes: none\n")
+		textf(b, "    changes: none\n")
 	case len(nd.ResourceChanges) == 0:
-		fmt.Fprintf(b, "    changes: %d dependency-edge difference(s) only, not shown in the text report\n", len(nd.EdgeChanges))
+		textf(b, "    changes: %d dependency-edge difference(s) only, not shown in the text report\n", len(nd.EdgeChanges))
 	default:
-		fmt.Fprintf(b, "    changes (%d):\n", len(nd.ResourceChanges))
+		textf(b, "    changes (%d):\n", len(nd.ResourceChanges))
 		for _, c := range nd.ResourceChanges {
-			fmt.Fprintf(b, "      %s\n", changeSummary(c))
+			textf(b, "      %s\n", changeSummary(c))
 		}
 	}
 	for _, e := range nd.Exclusions {
-		fmt.Fprintf(b, "    excluded: %s\n", exclusionSummary(e))
+		textf(b, "    excluded: %s\n", exclusionSummary(e))
 	}
 }
 
@@ -192,9 +262,9 @@ func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
 // the estate.
 func writeTextAggregate(b *bytes.Buffer, agg model.AggregateDiff) {
 	groups := displayedGroups(agg.Groups)
-	fmt.Fprintf(b, "\naggregate diff (%d):\n", len(groups))
+	textf(b, "\naggregate diff (%d):\n", len(groups))
 	for _, g := range groups {
-		fmt.Fprintf(b, "  %s: %s\n", aggregateGroupLabel(g), targetCountList(g.Certnames))
+		textf(b, "  %s: %s\n", aggregateGroupLabel(g), targetCountList(g.Certnames))
 	}
 }
 
@@ -208,10 +278,10 @@ func writeTextImpact(b *bytes.Buffer, estimates []model.ImpactEstimate, opts Opt
 	if len(estimates) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "\n%s (%d):\n", ImpactEstimateLabel, len(estimates))
-	fmt.Fprintf(b, "  %s\n", ImpactEstimateNote)
+	textf(b, "\n%s (%d):\n", ImpactEstimateLabel, len(estimates))
+	textf(b, "  %s\n", ImpactEstimateNote)
 	for _, e := range estimates {
-		fmt.Fprintf(b, "  %s: %s\n", e.Identity, estimateSummary(e, opts.ImpactNodes))
+		textf(b, "  %s: %s\n", e.Identity, estimateSummary(e, opts.ImpactNodes))
 	}
 }
 
@@ -219,8 +289,8 @@ func writeTextRunDiagnostics(b *bytes.Buffer, diagnostics []model.Diagnostic) {
 	if len(diagnostics) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "\nrun diagnostics (%d):\n", len(diagnostics))
+	textf(b, "\nrun diagnostics (%d):\n", len(diagnostics))
 	for _, d := range diagnostics {
-		fmt.Fprintf(b, "  %s [%s]: %s\n", strings.ToUpper(string(d.Severity)), d.Operation, d.Message)
+		textf(b, "  %s [%s]: %s\n", strings.ToUpper(string(d.Severity)), d.Operation, d.Message)
 	}
 }

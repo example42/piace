@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -364,5 +365,67 @@ func TestText_IsByteIdenticalForIdenticalInput(t *testing.T) {
 		if string(next) != string(first) {
 			t.Fatalf("render %d differs from the first render", i)
 		}
+	}
+}
+
+// TestText_NeutralizesTerminalControlCharacters is the regression test
+// for the text report as a forgeable surface.
+//
+// A resource title, a diagnostic message and a change assessment's
+// summary are all untrusted: the first two come from a catalog compiled
+// from the change under review, the third is prose a model wrote. This
+// format goes to a terminal, so an ESC in any of them is an ANSI control
+// sequence, and ESC[2J ESC[H followed by a forged outcome line is enough
+// to make a failing run read as a clean one to the person deciding
+// whether to merge it.
+func TestText_NeutralizesTerminalControlCharacters(t *testing.T) {
+	const forgery = "\x1b[2J\x1b[1;1Houtcome: clean (exit 0)"
+
+	r := sampleResult()
+	r.Targets[0].NodeDiff.ResourceChanges[0].Identity.Title = forgery
+	r.Targets[0].Certname = "web-01.example.test\rroot-01.example.test"
+	r.Diagnostics = append(r.Diagnostics, model.Diagnostic{
+		Severity: model.SeverityWarning, Operation: model.OperationLoadFacts,
+		// U+009B is C1 CSI: a terminal decoding UTF-8 reads it exactly as
+		// the two-character ESC [ introducer, so it has to go the same way.
+		Message: "a message with a \x1b] hyperlink introducer and a  CSI",
+	})
+
+	assessment := &assess.Assessment{
+		AISchemaVersion: assess.AISchemaVersion,
+		Run: assess.RunAssessment{
+			Risk:        assess.RiskLow,
+			Summary:     forgery,
+			ReviewFocus: []string{"first\nsecond"},
+		},
+	}
+
+	got, err := Text(r, assessment, Options{})
+	if err != nil {
+		t.Fatalf("Text: %v", err)
+	}
+	text := string(got)
+
+	for _, forbidden := range []string{"\x1b", "\r", "\x7f", ""} {
+		if strings.Contains(text, forbidden) {
+			t.Errorf("text report carries control character %q", forbidden)
+		}
+	}
+	// Escaped rather than dropped, so a reader can tell something put an
+	// escape sequence in a title rather than seeing a title that merely
+	// looks odd.
+	if !strings.Contains(text, `\x1b[2J`) {
+		t.Errorf("an escaped ESC is not visible in the report:\n%s", text)
+	}
+	// The forged text must never be a line of its own: every line that
+	// carries it must also carry the escape it was smuggled behind.
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "outcome: clean (exit 0)") && !strings.Contains(line, `\x1b`) {
+			t.Errorf("a forged outcome line reached the report: %q", line)
+		}
+	}
+	// The report's own line structure is untouched.
+	if !strings.Contains(text, "\noutcome: "+string(wantOutcome)+" (exit 30)\n") {
+		t.Errorf("the report's real outcome line was altered:\n%s", text)
 	}
 }

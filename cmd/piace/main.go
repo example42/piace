@@ -652,9 +652,7 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 		fmt.Fprintf(stderr, "piace explain: %s\n", err)
 		return exitcode.OperationalError
 	}
-	if inferenceHTTPClient != nil {
-		client.HTTPClient = inferenceHTTPClient
-	}
+	client.SetHTTPClient(inferenceHTTPClient)
 
 	assessment, diagnostics := assess.Produce(context.Background(), client, result, changeContext, in.Assess, assess.Meta{
 		GeneratedAt:          clock().UTC().Format(time.RFC3339),

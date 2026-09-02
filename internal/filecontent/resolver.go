@@ -51,9 +51,9 @@ const fileContentAcceptHeader = "application/octet-stream"
 // at all (see doc.go); Digest returns a descriptive-but-safe error for
 // that case rather than attempting an unsupported request.
 func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, rc RetrievalContext) (DigestEvidence, error) {
-	mountPath, ok := parsePuppetSourceURI(reference)
-	if !ok {
-		return DigestEvidence{}, fmt.Errorf("filecontent: source reference does not use a supported puppet:// scheme for compiler-mediated retrieval")
+	mountPath, err := parsePuppetSourceURI(reference)
+	if err != nil {
+		return DigestEvidence{}, err
 	}
 
 	u := *r.baseURL
@@ -106,10 +106,27 @@ func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, 
 // through its own configured compiler endpoint regardless of any server
 // name embedded in the reference, so an authority component (if present)
 // is accepted but ignored rather than rejected.
-func parsePuppetSourceURI(reference string) (mountPath string, ok bool) {
+//
+// The returned path is the one value in this package that a caller
+// concatenates onto a request path, and a `source` value is not operator
+// configuration: it is a parameter of a File resource in the candidate
+// catalog, which was compiled from the very change under review. So the
+// path is checked here rather than trusted. A "." or ".." segment is
+// refused outright: net/url neither removes nor escapes dot segments in
+// a URL it is handed a path for, and net/http sends the request line as
+// written, so `puppet:///../../pdb/query/v4/catalogs/<node>` would
+// otherwise leave the file_content endpoint entirely and reach another
+// path on the compiler under PIACE's own catalog-reader identity. An
+// empty segment (a `//` run) is refused for the same reason: it changes
+// which path the compiler resolves while looking like a typo.
+//
+// A NUL byte is refused as well, since it terminates a path for anything
+// downstream written in C and has no business in a Puppet file
+// reference.
+func parsePuppetSourceURI(reference string) (mountPath string, err error) {
 	const scheme = "puppet://"
 	if !strings.HasPrefix(reference, scheme) {
-		return "", false
+		return "", errUnsupportedSourceScheme
 	}
 	rest := reference[len(scheme):]
 	// rest is "<authority><path>" where authority is empty for the
@@ -119,13 +136,26 @@ func parsePuppetSourceURI(reference string) (mountPath string, ok bool) {
 	// empty) authority.
 	idx := strings.IndexByte(rest, '/')
 	if idx < 0 {
-		return "", false
+		return "", errUnsupportedSourceScheme
 	}
 	path := strings.TrimPrefix(rest[idx:], "/")
 	if path == "" {
-		return "", false
+		return "", errUnsupportedSourceScheme
 	}
-	return path, true
+	if strings.ContainsRune(path, 0) {
+		return "", errUnsafeSourcePath
+	}
+	// A trailing "/" is a directory reference the endpoint serves nothing
+	// for, but it is already handled upstream (see doc.go's "Sources that
+	// are not byte-comparable") and reaching here it is only an empty
+	// final segment, so the split drops it rather than refusing the whole
+	// reference for a reason the reader would not recognize.
+	for _, seg := range strings.Split(strings.TrimSuffix(path, "/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return "", errUnsafeSourcePath
+		}
+	}
+	return path, nil
 }
 
 var _ ContentRetriever = (*CompilerContentResolver)(nil)
