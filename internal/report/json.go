@@ -25,7 +25,7 @@ import (
 // file for CI tooling; it is outside the JSON value and does not affect
 // parsing.
 func JSON(r model.Result) ([]byte, error) {
-	// The result has to be labelled a **potential impact estimate**; the
+	// The result has to be labelled a **Potential impact estimate**; the
 	// JSON report is one of the three formats that obligation covers, and a
 	// bare `impact_estimates` key carries no such label. The label and note
 	// are stamped onto a copy here rather than upstream so the pipeline

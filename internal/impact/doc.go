@@ -12,7 +12,7 @@
 // discharged structurally rather than by assertion, exactly as
 // internal/puppetdb's doc.go discharges the no-mutation prohibition.
 //
-// Every estimate is a **potential impact estimate**: it reports which
+// Every estimate is a **Potential impact estimate**: it reports which
 // nodes' latest stored catalog contains the exact resource, never that
 // those nodes would change. This package emits no wording to the
 // contrary and returns no field that could be read as a prediction.

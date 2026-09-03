@@ -45,6 +45,17 @@ const (
 // radius" or "affected nodes": an impact estimate reports only that a
 // node's latest stored catalog contains an exact resource identity, and
 // those phrases turn that estimate into a claim it cannot support.
+//
+// It states the response shape unconditionally, not only when
+// Config.StructuredOutput is set. A provider that ignores
+// `response_format` rather than rejecting it, which Anthropic's
+// OpenAI-compatible endpoint documents itself as doing, leaves a request
+// that asked for nothing at all; a prompt that names the shape is the
+// only part of the ask that every service honours. It is the same
+// reasoning that makes Interpret's validation unconditional. The shape
+// stated here is responseDoc, never Assessment: every other member of an
+// assessment is stamped locally and must not be a model's to supply.
+// TestTaskPromptStatesTheResponseSchema holds it to ResponseSchema.
 const TaskPrompt = `You are reviewing a Puppet catalog comparison for an infrastructure engineer.
 
 PIACE compiled a candidate catalog for each target node and compared it against that node's baseline catalog. It grouped equivalent changes across nodes into aggregate groups. Your job is to judge those groups and help the reviewer decide what to look at first.
@@ -61,7 +72,27 @@ Rules you must follow:
 - Do not state a number of nodes that will change. You were not given the evidence to know that.
 - "review_focus" is a reading order: what the reviewer should look at first, most important first. It is not a list of actions to perform.
 - Ground every claim in the evidence provided. If the data is truncated, say what you could not see rather than guessing at it.
-- Be brief. A rationale is one or two sentences.`
+- Be brief. A rationale is one or two sentences.
+
+Return one JSON object and nothing else. No prose before or after it, no explanation, no Markdown code fence. Its shape is exactly:
+
+{
+  "run": {
+    "risk": "low",
+    "summary": "What this change does, for a reviewer who has not read the diff.",
+    "review_focus": ["What to read first.", "Then this."]
+  },
+  "groups": [
+    {
+      "id": "g001",
+      "risk": "medium",
+      "rationale": "One or two sentences grounded in the evidence.",
+      "review_focus": ["What to check about this group."]
+    }
+  ]
+}
+
+Every member shown is required, including "review_focus": send an empty array when there is nothing to put in it, never omit it. Send one "groups" entry for every group you were given. Add no member that is not shown above; anything else is discarded.`
 
 // Config is the resolved inference policy for one change assessment.
 type Config struct {

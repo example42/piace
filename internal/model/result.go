@@ -58,14 +58,14 @@ type Result struct {
 	Invocation    Invocation     `json:"invocation"`
 	Targets       []TargetResult `json:"targets"`
 	Aggregate     AggregateDiff  `json:"aggregate"`
-	// ImpactEstimates holds the run's potential impact estimates. They live
+	// ImpactEstimates holds the run's Potential impact estimates. They live
 	// at document level, not on a TargetResult, because impact.EstimateAll
 	// deduplicates them run-wide by exact `Type[title]` and resolves each
 	// one's limits from the first *enabling* target in target-file order: an
 	// estimate is therefore structurally not attributable to a single
 	// target.
 	//
-	// Renderers must label this section a **potential impact estimate**.
+	// Renderers must label this section a **Potential impact estimate**.
 	// model.ImpactEstimate carries state, not prose; see internal/impact's
 	// doc.go.
 	ImpactEstimates []ImpactEstimate `json:"impact_estimates,omitempty"`

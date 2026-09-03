@@ -52,6 +52,62 @@ func TestInterpretReadsAWellFormedResponse(t *testing.T) {
 	}
 }
 
+// a response wrapped in a Markdown code fence is read anyway, and
+// the wrapper is recorded: the alternative is discarding a complete
+// assessment over its packaging.
+func TestInterpretUnwrapsACodeFence(t *testing.T) {
+	planned, p := plannedFixture(t)
+	raw := "```json\n" + `{"run":{"risk":"low","summary":"Routine.","review_focus":[]},
+      "groups":[{"id":"g001","risk":"low","rationale":"A service ensure flip.","review_focus":[]}]}` + "\n```"
+
+	a, diags := Interpret([]byte(raw), planned, p)
+	if a.Run.Risk != RiskLow {
+		t.Errorf("Run.Risk = %q, want the fenced response to have been read", a.Run.Risk)
+	}
+	if a.Groups[0].Risk != RiskLow {
+		t.Errorf("Groups[0].Risk = %q", a.Groups[0].Risk)
+	}
+	for _, d := range diags {
+		if d.Severity == SeverityError {
+			t.Errorf("unexpected error diagnostic: %q", d.Message)
+		}
+	}
+	var noted bool
+	for _, d := range diags {
+		if strings.Contains(d.Message, "code fence") {
+			noted = true
+		}
+	}
+	if !noted {
+		t.Errorf("the code fence was unwrapped without a diagnostic: %+v", diags)
+	}
+}
+
+// an unfenced response is passed through untouched, backticks in a
+// rationale included. Only a fence wrapping the whole response is a
+// wrapper; a backtick anywhere else is content.
+func TestInterpretLeavesBackticksInsideAResponseAlone(t *testing.T) {
+	planned, p := plannedFixture(t)
+	raw := "{\"run\":{\"risk\":\"low\",\"summary\":\"Adds `Package[openssh-server]`.\",\"review_focus\":[]}," +
+		"\"groups\":[{\"id\":\"g001\",\"risk\":\"low\",\"rationale\":\"```\",\"review_focus\":[]}]}"
+
+	a, diags := Interpret([]byte(raw), planned, p)
+	for _, d := range diags {
+		if d.Severity == SeverityError {
+			t.Fatalf("unexpected error diagnostic: %q", d.Message)
+		}
+		if strings.Contains(d.Message, "code fence") {
+			t.Errorf("an unfenced response was reported as fenced: %q", d.Message)
+		}
+	}
+	if !strings.Contains(a.Run.Summary, "`Package[openssh-server]`") {
+		t.Errorf("Run.Summary = %q, want its backticks kept", a.Run.Summary)
+	}
+	if a.Groups[0].Rationale != "```" {
+		t.Errorf("Groups[0].Rationale = %q, want it untouched", a.Groups[0].Rationale)
+	}
+}
+
 // an id that was never sent is a hallucinated anchor. It is
 // dropped and recorded, which is the check per-group assessment exists to
 // make possible.

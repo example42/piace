@@ -11,7 +11,7 @@ const (
 
 // ImpactEstimate is a single potential-impact-estimate result for one
 // exact `Type[title]` resource identity. It is always labeled a
-// **potential impact estimate**: it identifies nodes whose latest stored
+// **Potential impact estimate**: it identifies nodes whose latest stored
 // catalog contains the changed resource, never proof that those nodes
 // would change.
 type ImpactEstimate struct {
