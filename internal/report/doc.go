@@ -112,7 +112,7 @@
 //
 // # The impact-estimate label
 //
-// The result has to be labelled a **potential impact estimate**, and
+// The result has to be labelled a **Potential impact estimate**, and
 // must never state that selected nodes will change. internal/impact
 // deliberately emits no such wording, since model.ImpactEstimate carries
 // state rather than prose, so the obligation is discharged here, in
@@ -149,7 +149,7 @@ package report
 
 // ImpactEstimateLabel is the exact visible label the impact-estimate
 // section carries in every output format.
-const ImpactEstimateLabel = "potential impact estimate"
+const ImpactEstimateLabel = "Potential impact estimate"
 
 // ImpactEstimateNote is the fixed explanatory sentence shown beside
 // ImpactEstimateLabel in every format. It states what the estimate does

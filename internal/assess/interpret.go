@@ -1,6 +1,7 @@
 package assess
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -118,6 +119,14 @@ func Interpret(raw []byte, planned []PlannedGroup, p Pseudonyms) (Assessment, []
 			append(diags, Diagnostic{Severity: SeverityError, Message: fmt.Sprintf(format, args...)})
 	}
 
+	raw, fenced := unwrapCodeFence(raw)
+	if fenced {
+		diags = append(diags, Diagnostic{
+			Severity: SeverityWarning,
+			Message:  "inference service wrapped its response in a Markdown code fence, which the prompt asks it not to; unwrapped",
+		})
+	}
+
 	var doc *responseDoc
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return fail("inference service returned a response that is not the requested JSON: %v", err)
@@ -174,6 +183,39 @@ func Interpret(raw []byte, planned []PlannedGroup, p Pseudonyms) (Assessment, []
 	}
 
 	return a, diags
+}
+
+// codeFence is the Markdown fence a model reaches for when asked for
+// JSON, whatever the prompt says.
+const codeFence = "```"
+
+// unwrapCodeFence returns the bytes inside a code fence that wraps the
+// whole response, and reports whether it removed one.
+//
+// A fence is not the requested shape: TaskPrompt asks for one JSON object
+// and nothing else. It is tolerated here because the alternative observed
+// in practice is discarding a complete, correctly keyed assessment over
+// its wrapper, and because the tolerance can be made narrow enough to
+// cost nothing: only a fence that both opens and closes the trimmed
+// response is removed. Backticks anywhere else are left alone, which
+// they must be, since a rationale routinely names a resource title or a
+// path in them.
+//
+// Everything after the opening fence up to the first newline is the
+// fence's info string ("json") and goes with it, unless that first line
+// is where the object already begins.
+func unwrapCodeFence(raw []byte) ([]byte, bool) {
+	t := bytes.TrimSpace(raw)
+	if len(t) < 2*len(codeFence) || !bytes.HasPrefix(t, []byte(codeFence)) || !bytes.HasSuffix(t, []byte(codeFence)) {
+		return raw, false
+	}
+	inner := t[len(codeFence) : len(t)-len(codeFence)]
+	if nl := bytes.IndexByte(inner, '\n'); nl >= 0 {
+		if first := bytes.TrimSpace(inner[:nl]); len(first) == 0 || first[0] != '{' {
+			inner = inner[nl+1:]
+		}
+	}
+	return inner, true
 }
 
 // validRisk accepts one of the four risk indications and turns anything

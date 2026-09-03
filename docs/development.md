@@ -34,7 +34,11 @@ skipped test carrying its confirmation procedure in
   OpenAI-compatible provider accepts `response_format: {type: json_schema, …}`
   and honours `strict`. The least load-bearing of the three: structured output
   is a latency optimisation, never a trust boundary, and every reply is
-  validated locally whether or not it was requested.
+  validated locally whether or not it was requested. Anthropic's
+  OpenAI-compatible endpoint is a known exception, documented as ignoring
+  `response_format` rather than rejecting it, which is why the task prompt
+  states the response shape unconditionally and `Interpret` tolerates a reply
+  wrapped in a code fence.
 
 ## Continuous integration
 

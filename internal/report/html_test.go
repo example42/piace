@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/example42/piace/internal/assess"
+	"github.com/example42/piace/internal/exitcode"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -297,6 +298,43 @@ func TestHTML_EdgeOnlyTargetShowsItsEdges(t *testing.T) {
 	}
 	if !strings.Contains(visible, `Dependency-graph edges <span class="count">1</span>`) {
 		t.Errorf("the target's edge changes are not shown\n---\n%s", visible)
+	}
+}
+
+// TestHTML_ColorsASuccessfulAllowedRunGreen is the visual half of the
+// exit-code contract. differences_allowed shares exit 0 with clean, so
+// both badges use the green `clean` class. Yellow is the advisory
+// medium-risk colour, not the colour of a run that succeeded.
+func TestHTML_ColorsASuccessfulAllowedRunGreen(t *testing.T) {
+	r := model.NewResult("test", "2026-08-25T12:00:00Z")
+	r.Targets = []model.TargetResult{{
+		Certname: "web-01.example.test",
+		Config:   &model.ConfigProvenance{},
+		NodeDiff: &model.NodeDiff{
+			Certname:      "web-01.example.test",
+			HasDifference: true,
+			ResourceChanges: []model.ResourceChange{{
+				Kind:     model.ChangeResourceAdded,
+				Identity: model.ResourceIdentity{Type: "Notify", Title: "n"},
+			}},
+		},
+	}}
+	r.Reduce()
+	if r.Outcome != exitcode.OutcomeDifferencesAllowed || r.ExitCode != 0 {
+		t.Fatalf("Outcome/ExitCode = %q/%d, want differences_allowed/0", r.Outcome, r.ExitCode)
+	}
+
+	data, err := HTML(r, nil)
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	visible := string(data)[:strings.Index(string(data), "<h2>Result document</h2>")]
+
+	if !strings.Contains(visible, `<span class="badge clean">differences_allowed</span>`) {
+		t.Errorf("differences_allowed badge is not green\n---\n%s", visible)
+	}
+	if strings.Contains(visible, `class="badge allowed"`) {
+		t.Errorf("differences_allowed badge is still yellow\n---\n%s", visible)
 	}
 }
 

@@ -3,6 +3,7 @@ package assess
 import (
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -274,6 +275,47 @@ func TestTaskPromptIsFixed(t *testing.T) {
 			t.Errorf("the task prompt uses %q, which CONTEXT.md bans", banned)
 		}
 	}
+}
+
+// the prompt's statement of the response shape and the schema
+// ResponseSchema asks for do not drift apart. The prompt is the only
+// statement of that contract a service which ignores response_format
+// ever sees, so a member present in one and absent from the other is a
+// field PIACE believes it requested and never did.
+func TestTaskPromptStatesTheResponseSchema(t *testing.T) {
+	for _, name := range schemaPropertyNames(ResponseSchema()) {
+		if !strings.Contains(TaskPrompt, `"`+name+`"`) {
+			t.Errorf("ResponseSchema has a property %q the task prompt never shows", name)
+		}
+	}
+	for _, r := range []Risk{RiskLow, RiskMedium, RiskHigh, RiskUnknown} {
+		if !strings.Contains(TaskPrompt, `"`+string(r)+`"`) {
+			t.Errorf("the task prompt never names the risk indication %q", r)
+		}
+	}
+}
+
+// schemaPropertyNames collects every property name in a JSON Schema,
+// including those nested under an array's items.
+func schemaPropertyNames(schema map[string]any) []string {
+	var names []string
+	var walk func(map[string]any)
+	walk = func(m map[string]any) {
+		if props, ok := m["properties"].(map[string]any); ok {
+			for name, sub := range props {
+				names = append(names, name)
+				if s, ok := sub.(map[string]any); ok {
+					walk(s)
+				}
+			}
+		}
+		if items, ok := m["items"].(map[string]any); ok {
+			walk(items)
+		}
+	}
+	walk(schema)
+	sort.Strings(names)
+	return names
 }
 
 // the disclosure boundary, at the seam that decides it.

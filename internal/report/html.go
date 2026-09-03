@@ -626,12 +626,15 @@ func plural(n int, one, many string) string {
 // An unrecognized outcome gets the most severe styling, mirroring
 // exitcode.ForOutcome's rule that an unknown classification is never
 // presented as success.
+//
+// Both success outcomes, clean and differences_allowed, share the green
+// `clean` class: they share exit 0, and a yellow badge on a run that
+// succeeded would read as a warning. Yellow (`allowed`) is reserved for
+// the advisory medium-risk indication, which is not an outcome.
 func outcomeClass(o exitcode.Outcome) string {
 	switch o {
-	case exitcode.OutcomeClean:
+	case exitcode.OutcomeClean, exitcode.OutcomeDifferencesAllowed:
 		return "clean"
-	case exitcode.OutcomeDifferencesAllowed:
-		return "allowed"
 	case exitcode.OutcomePolicyDisallowedDifference:
 		return "policy"
 	case exitcode.OutcomeCompilationFailure:
