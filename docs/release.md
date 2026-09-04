@@ -149,22 +149,10 @@ services file, and trust nothing else). Assembling it from the built
 artifacts rather than from a `golang` builder stage is what makes the
 binary inside the image the same bytes `SHA256SUMS` certifies.
 
-It runs as uid 65532, which cannot write to a bind mount owned by
-someone else, and writing a report into the mounted workspace is the
-common case, so pass the invoking user:
-
-```sh
-docker run --rm \
-  --user "$(id -u):$(id -g)" \
-  --volume "$PWD:/work" \
-  ghcr.io/example42/piace:1.0.0 \
-  compare --targets targets.yaml --services services.yaml --html-out report.html
-```
-
-The working directory is `/work`. Every path in `targets.yaml` and
-`services.yaml` (CA bundle, client certificate, key, snapshots, output
-files) is resolved inside the container, so they have to be reachable
-under that mount.
+Running `piace:1.0.0` is the same as running the published image: mount your
+workspace at `/work` and pass your own uid, since the image runs as uid 65532
+and cannot otherwise write a report into the mount. See the
+[README](../README.md#install).
 
 The image deliberately carries the binary and nothing else, which decides
 where it fits. `piace change-context` runs there like any other subcommand but

@@ -94,9 +94,9 @@
 // and exit code. HTML renders those edges, so nothing is needed there;
 // the text report prints a note instead of an empty change list, because
 // a report that showed nothing would read as "no changes" on a run that
-// exits non-zero, contradicting its own stated outcome and brushing
-// 10.5. For the same reason every section header in both formats counts
-// what it actually displays rather than what the document holds.
+// exits non-zero, contradicting its own stated outcome. For the same
+// reason every section header in both formats counts what it actually
+// displays rather than what the document holds.
 //
 // # A light page, and nothing to fetch
 //
@@ -145,6 +145,19 @@
 // html/template, whose contextual escaping is the mechanism that makes a
 // title containing `</script>` or `<img onerror=...>` inert. No renderer
 // here concatenates HTML by hand.
+//
+// # Text safety
+//
+// The same values are untrusted in a terminal, where the threat is not
+// markup but the ANSI control sequences a CI log viewer executes: an ESC
+// in a resource title followed by a forged outcome line makes a run that
+// exits 30 read as clean to whoever is deciding whether to merge it.
+// Every line of the text report goes through textf (text.go), which
+// replaces C0, DEL and C1 in each interpolated value with a printable
+// escape and preserves only the newlines the format string itself
+// contributes. JSON needs no equivalent, since JSON escaping already
+// makes a control character inert and that document's canonical checksum
+// is what `explain` ties an assessment to.
 package report
 
 // ImpactEstimateLabel is the exact visible label the impact-estimate

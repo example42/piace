@@ -104,8 +104,8 @@ it is the part of a repository most likely to carry a customer name, a ticket
 paste, or a credential someone meant to delete.
 
 Untrusted text is taken by variable name or file path, never on the command
-line, because every CI system substitutes into script text before a shell runs.
-There is deliberately no `--title` or `--description` flag. See
+line: there is deliberately no `--title` or `--description` flag. Why, and what
+that looks like per CI system, is in
 [docs/ci.md](ci.md#untrusted-text-is-named-never-passed).
 
 Everything in the file is transmitted as data inside a fence, not as

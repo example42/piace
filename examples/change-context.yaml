@@ -47,10 +47,12 @@ change:
     - data/role/appserver.yaml
     - Puppetfile
 
-  # Usually a pull request's, which git does not have, so the generator
-  # script leaves both to you. Title is capped at 200 bytes, description at
-  # 4000. Over-cap text is truncated and the truncation is recorded and shown,
-  # never silently dropped, and never fails the command.
+  # Usually a pull request's, which git does not have, so `change-context`
+  # takes them from the CI system: --title-env / --description-env name a
+  # variable, --title-file / --description-file a path. Never on the command
+  # line. Title is capped at 200 bytes, description at 4000. Over-cap text is
+  # truncated and the truncation is recorded and shown, never silently
+  # dropped, and never fails the command.
   title: "Rework sudo management: fragments instead of a monolithic sudoers"
 
   description: |

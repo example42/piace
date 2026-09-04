@@ -128,14 +128,14 @@ func TestText_RequiredContent(t *testing.T) {
 	out := string(data)
 
 	for _, want := range []string{
-		"reason:",                   // 10.2
-		model.V3TrustedFactWarning,  // 2.5
-		"Package[*]: 2 resource(s)", // 6.5
-		ImpactEstimateLabel,         // 9.3
-		ImpactEstimateNote,          // 9.3
-		"truncated",                 // 9.6
-		"result_limit 2",            // 9.6: the bound is named, not just the state
-		"ERROR [load_baseline]",     // 8.2/10.5
+		"reason:",                   // what drove the outcome
+		model.V3TrustedFactWarning,  // the non-suppressible v3 warning
+		"Package[*]: 2 resource(s)", // an exclusion and what it suppressed
+		ImpactEstimateLabel,         // the estimate's fixed label
+		ImpactEstimateNote,          // and the note that qualifies it
+		"truncated",                 // an over-limit estimate says so
+		"result_limit 2",            // and names the bound, not just the state
+		"ERROR [load_baseline]",     // a retrieval failure, with its operation
 		`~ Service[nginx] ensure: "stopped" -> "running"`,
 		"~ File[/etc/motd] content: changed (via inline_content) sha256 aaaa -> bbbb",
 	} {
@@ -259,14 +259,14 @@ func TestJSON_KeepsWhatTextAndHTMLOmit(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	if len(decoded.Targets[0].NodeDiff.EdgeChanges) != 1 { // 5.3
+	if len(decoded.Targets[0].NodeDiff.EdgeChanges) != 1 {
 		t.Errorf("edge changes did not survive into the JSON report")
 	}
-	if decoded.Targets[0].NodeDiff.Exclusions[0].SuppressedEdges != 1 { // 6.5
+	if decoded.Targets[0].NodeDiff.Exclusions[0].SuppressedEdges != 1 {
 		t.Errorf("the suppressed-edge count did not survive into the JSON report")
 	}
 	var edgeGroups int
-	for _, g := range decoded.Aggregate.Groups { // 7.4
+	for _, g := range decoded.Aggregate.Groups {
 		if g.Key.Kind == model.ChangeEdgeAdded || g.Key.Kind == model.ChangeEdgeRemoved {
 			edgeGroups++
 		}
@@ -274,10 +274,10 @@ func TestJSON_KeepsWhatTextAndHTMLOmit(t *testing.T) {
 	if edgeGroups != 1 {
 		t.Errorf("aggregate edge groups = %d, want 1", edgeGroups)
 	}
-	if decoded.ImpactEstimates[0].PQL == "" { // 9.4
+	if decoded.ImpactEstimates[0].PQL == "" {
 		t.Errorf("the generated PQL did not survive into the JSON report")
 	}
-	if decoded.ImpactEstimates[0].Request.Path == "" || decoded.ImpactEstimates[0].Request.OrderBy == "" { // 9.7
+	if decoded.ImpactEstimates[0].Request.Path == "" || decoded.ImpactEstimates[0].Request.OrderBy == "" {
 		t.Errorf("the request options did not survive into the JSON report")
 	}
 }

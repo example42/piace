@@ -131,18 +131,16 @@ _Avoid_: anonymized, masked, redacted
 ### One path rule
 
 Every relative path named in a config file resolves against the directory of
-the file that names it. `facts.file` and `baseline.file` resolve against the
-target file; the TLS paths, `token_file` and `policy_notes_file` resolve
-against the services file. An absolute path is taken as written, and nothing
-resolves against the process working directory, so moving a file takes its
-paths with it.
+the file that names it, never against the process working directory, so moving
+a config file takes its paths with it. The [README](README.md#configuration)
+lists which key resolves against which file.
 
-A credential may instead be named rather than located: `ca_bundle_env`,
+A credential may be named rather than located: `ca_bundle_env`,
 `client_cert_env`, `private_key_env` and `token_env` each name an environment
-variable holding a path, which must be absolute. Naming both forms of one
-credential is an error rather than a precedence rule nobody remembers. This is
-what lets a services file be committed and read in place by a CI job whose
-credential directory did not exist when the file was written.
+variable holding an absolute path. Naming both forms of one credential is an
+error rather than a precedence rule nobody remembers. Together the two rules
+are what let a services file be committed and read in place, unmodified, by a
+CI job whose credential directory did not exist when the file was written.
 
 ### Candidate catalogs come from an existing compiler
 

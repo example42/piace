@@ -18,10 +18,10 @@
 # With `baseline.source: puppetdb`, PIACE reads the baseline, then compiles
 # the candidate, and the candidate compilation OVERWRITES THE BASELINE, for
 # the next target in the same run, and for every later run. PIACE does not
-# currently refuse that combination (requirements.md 1.8 says it should;
-# config validation does not yet enforce it). The configuration loads, the
-# first comparison looks normal, and the run corrupts the baseline it just
-# read. Nothing will stop you. Set `file` below and leave it there.
+# currently refuse that combination: it should, and config validation does not
+# yet enforce it. The configuration loads, the first comparison looks normal,
+# and the run corrupts the baseline it just read. Nothing will stop you. Set
+# `file` below and leave it there.
 #
 # Prefer examples/targets-puppetdb-baseline.yaml wherever the compiler
 # supports v4. This file exists for estates that cannot yet upgrade.
