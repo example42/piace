@@ -36,7 +36,7 @@ pr:
 
 variables:
 - name: PIACE_VERSION
-  value: '0.3.0'
+  value: '0.4.0'
 
 jobs:
 - job: compare

@@ -49,7 +49,7 @@ on every run has made your pipeline a client of whatever is published
 tomorrow.
 
 ```sh
-version=0.3.0
+version=0.4.0
 base="https://github.com/example42/piace/releases/download/v${version}"
 wget -q -O "piace-${version}-linux-amd64" "$base/piace-${version}-linux-amd64"
 wget -q -O SHA256SUMS "$base/SHA256SUMS"
@@ -95,7 +95,7 @@ docker run --rm \
   --user "$(id -u):$(id -g)" \
   --volume "$PWD:/work" \
   --volume "$PIACE_RUN:/run/piace:ro" \
-  ghcr.io/example42/piace:0.3.0 \
+  ghcr.io/example42/piace:0.4.0 \
   compare --targets ci/piace/targets.yaml --services ci/piace/services.yaml \
           --json-out report.json --html-out report.html
 ```
@@ -195,11 +195,9 @@ piace change-context \
 ```
 
 It emits `base_ref`, `head_ref`, commit subjects and changed paths, plus the
-title and description if you name them. Commit *bodies* are never emitted and
-there is no flag to ask for them: a body is unbounded free text written by
-whoever pushed, and it is the part of a repository most likely to carry a
-customer name, a ticket paste, or a credential someone meant to delete.
-`explain` refuses a `body` key outright, so this holds at both ends.
+title and description if you name them. Commit *bodies* are never emitted, and
+there is no flag to ask for them; the reasoning is in
+[change-assessment.md](change-assessment.md#change-context).
 
 Two things it needs from the CI system:
 
@@ -310,7 +308,7 @@ opened for it stays open for the rest of the job.
 | `0` | No differences, or all allowed by policy | Pass |
 | `10` | A `fail_on_diff` target had a non-excluded difference | Block the merge, or warn and let a human read the report |
 | `20` | A candidate did not compile, or its identity or environment did not verify | Fail. The change does not build |
-| `30` | Config, TLS, retrieval, snapshot or normalization failure | Fail. The run did not complete, so `0` would be a lie |
+| `30` | Config, TLS, retrieval, snapshot, normalization, content-verification or enabled-impact-estimate failure | Fail. The run did not complete, so `0` would be a lie |
 
 To review differences without blocking, set `fail_on_diff: false` in
 `targets.yaml` rather than swallowing the exit code in the job script: the

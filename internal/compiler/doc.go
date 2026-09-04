@@ -61,7 +61,7 @@
 //     master_core.clj), the v3 catalog endpoint dispatches into the
 //     compiler's embedded Ruby Puppet request handler, whose
 //     Puppet::Network::HTTP::Request#response_formatters_for raises
-//     "Missing required Accept header" when the header is absent, the
+//     "Missing required Accept header" when the header is absent, so the
 //     request is rejected before any compilation happens. Verified
 //     against a deployed OpenVox server (2026-08-25): the same POST,
 //     with real PuppetDB-sourced facts, returns

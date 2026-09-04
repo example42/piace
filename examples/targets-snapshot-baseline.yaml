@@ -36,8 +36,8 @@ defaults:
     source: file
     environment: production
 
-    # Snapshot paths resolve against THIS FILE's directory (unlike the TLS
-    # paths in services.yaml, which resolve against the working directory).
+    # Snapshot paths resolve against THIS FILE's directory, as every
+    # relative path resolves against the file that names it.
     # `{certname}` may appear only as a whole path component.
     file: snapshots/catalogs/{certname}.json
 

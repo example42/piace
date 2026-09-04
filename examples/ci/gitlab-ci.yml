@@ -23,7 +23,7 @@
 # distroless: no shell, and its entrypoint is the binary itself.
 
 variables:
-  PIACE_VERSION: "0.3.0"
+  PIACE_VERSION: "0.4.0"
   # `piace change-context` takes a merge base. GitLab clones shallow by
   # default, and a shallow clone does not have one.
   GIT_DEPTH: "0"

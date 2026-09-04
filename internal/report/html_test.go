@@ -103,14 +103,14 @@ func TestHTML_VisiblyMarksRequiredStates(t *testing.T) {
 	visible := out[:strings.Index(out, "<h2>Result document</h2>")]
 
 	for _, want := range []string{
-		"operational_error",              // 10.2 final outcome
-		"web-01.example.test",            // 8.4 per-target
-		"Service[nginx]",                 // 8.4 node diff content
-		"Aggregate diff",                 // 8.4
-		"Trusted-fact compatibility",     // 8.5 v3 warning
-		"load_baseline failed",           // 8.5 retrieval failure
-		"Excluded differences",           // 8.5
-		ImpactEstimateLabel,              // 9.3
+		"operational_error",              // the run's final outcome
+		"web-01.example.test",            // one row per target
+		"Service[nginx]",                 // that target's node diff
+		"Aggregate diff",                 // the cross-target view
+		"Trusted-fact compatibility",     // the non-suppressible v3 warning
+		"load_baseline failed",           // a retrieval failure
+		"Excluded differences",           // what policy suppressed
+		ImpactEstimateLabel,              // the estimate's fixed label
 		"no baseline catalog stored for", // the failure's reason
 	} {
 		if !strings.Contains(visible, want) {

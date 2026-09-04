@@ -4,6 +4,56 @@ All notable changes to PIACE are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-04
+
+### Changed
+
+- The impact-estimate section is labelled **Potential impact estimate** with a
+  capital P in every output format.
+- A `differences_allowed` run is coloured green in the HTML report. It shares
+  exit `0` with `clean`, and yellow is reserved for the advisory medium-risk
+  indication rather than for a run that succeeded.
+
+### Fixed
+
+- **The task prompt states the response shape unconditionally.** Anthropic's
+  OpenAI-compatible endpoint documents itself as ignoring `response_format`
+  rather than rejecting it, so a request relying on structured output alone
+  asked for nothing. `Interpret` also unwraps a Markdown code fence around a
+  whole reply, recording a warning, rather than discarding a complete
+  assessment over its packaging.
+- **An oversized inference response is reported as oversized** rather than as
+  "not a chat completion", which sent an operator looking at the wrong thing.
+
+### Security
+
+- **A File `source` value can no longer steer the file-content request.** A
+  `source` reached the compiler's `file_content` endpoint as an unescaped path
+  concatenation, so `puppet:///../../pdb/query/v4/catalogs/<node>` was
+  attacker-shaped input, compiled from the change under review, aiming an
+  mTLS-authenticated GET at another path on a host PIACE is already authorized
+  against. `parsePuppetSourceURI` now refuses an empty, `.` or `..` segment and
+  a NUL byte.
+- **The inference client has a redirect policy.** `net/http` keeps an
+  `Authorization` header across a redirect to the same host, so an endpoint
+  answering `302 Location: http://<same host>` received the bearer token in
+  cleartext. Redirects that leave `https` or change authority are now refused,
+  matching what `internal/transport` already enforced for the credential-free
+  clients.
+- **The text report escapes control characters** in every interpolated value.
+  A resource title or diagnostic message carrying `ESC[2K\r` followed by a
+  forged outcome line could make a run that exits `30` read as clean in a CI
+  log. C0, DEL and C1 are replaced with a printable escape; the JSON and HTML
+  reports are unchanged, since JSON escaping already makes a control character
+  inert and `html/template` covers the HTML.
+- **Refs reaching git are validated.** `change-context` refuses a ref beginning
+  with `-` before any git command runs and passes `--end-of-options`, so a base
+  or head ref chosen by whoever opened a fork pull request cannot become an
+  option to `git diff`.
+- **`--debug-dump-dir` no longer writes through a symlink** already sitting at
+  a dump path, and applies `0600` to the file it writes rather than only to one
+  it creates.
+
 ## [0.3.0] - 2026-09-01
 
 ### Added
@@ -41,8 +91,6 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Hub, from the same build. An anonymous Docker Hub pull from a shared CI
   runner IP is exactly what Docker Hub rate-limits, and a pipeline failing for
   that reason fails for a reason unrelated to this project.
-
-
 - **`piace compare --candidate-environment ENVIRONMENT`**: compiles every
   target's candidate catalog from ENVIRONMENT, overriding
   `candidate.environment` in both the `defaults:` block and any per-target
@@ -55,7 +103,6 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `candidate.environment` entirely. `capture catalog --environment` is
   unchanged and unrelated: it names the environment to snapshot, not the
   candidate environment under test.
-
 - **`piace explain --debug` / `--debug-dump-dir DIR`**: the two observation
   options `compare` and `capture` already accept now work on `explain` too, so
   a rejected inference request can be diagnosed without guessing. `--debug`
@@ -67,14 +114,12 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   4xx is where a provider names the field it rejected. Neither the returned
   error nor any log line ever carries a response-body value, and the bearer
   token is a header so it reaches no dump file.
-
 - **`services.inference.token_limit_param`**: selects the request field that
   carries the output-token bound, `max_tokens` (the default) or
   `max_completion_tokens`. OpenAI's GPT-5 family rejects `max_tokens` outright
   and requires `max_completion_tokens`; OpenAI-compatible servers other than
   current OpenAI (Ollama, vLLM, llama.cpp) only understand `max_tokens`. The
   value in `max_tokens` is unchanged; only the wire field name differs.
-
 - **`services.inference.temperature`**: optional sampling temperature, sent
   only when set.
 
@@ -105,7 +150,6 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   it, reasoning models reject it), so the `seed` field is gone. Pinning them
   never made a model-generated assessment reproducible in the first place: a
   provider-side model revision still moves the bytes.
-
 - **`piace explain`**: dependency-graph edge groups are no longer sent to the
   inference service. An edge change is a consequence of the resource changes
   around it, carries no before/after pair to reason about, and a run's edges
@@ -295,14 +339,14 @@ than what changed.
 ### Known limitations
 
 - **`catalog_api: v3` with `baseline.source: puppetdb` is not rejected.**
-  requirements.md 1.8 requires a v3 target to use a file baseline, but config
-  validation does not yet enforce it. The configuration loads and the run
-  overwrites the baseline it just read; the symptom on the next run is a
+  A v3 target is required to use a file baseline, but config validation does
+  not yet enforce it. The configuration loads and the run overwrites the
+  baseline it just read; the symptom on the next run is a
   baseline-environment mismatch naming the candidate environment. Set
   `baseline.source: file` yourself. See the README's
   "If you must use v3, compare against a captured file".
 - **Two PuppetDB impact-endpoint behaviours are unconfirmed against a
-  deployment**: that design §8's PQL text is accepted at the root
+  deployment**: that the impact PQL text is accepted at the root
   `/pdb/query/v4`, and that `limit`/`order_by` are honoured there. If
   `order_by` is not honoured, a *truncated* impact sample is not reproducible.
 - **The Puppet `Sensitive` wire shape** (`{"__ptype":"Sensitive","__pvalue":…}`)
@@ -313,6 +357,7 @@ than what changed.
 The last two are recorded as skipped tests carrying their confirmation
 procedures in `cmd/piace/acceptance_assumptions_test.go`.
 
+[0.4.0]: https://github.com/example42/piace/releases/tag/v0.4.0
 [0.3.0]: https://github.com/example42/piace/releases/tag/v0.3.0
 [0.2.1]: https://github.com/example42/piace/releases/tag/v0.2.1
 [0.2.0]: https://github.com/example42/piace/releases/tag/v0.2.0

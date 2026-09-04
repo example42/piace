@@ -9,15 +9,13 @@
 // internal/normalize): it does not diff resources, does not decide
 // *whether* a File resource's content-bearing parameter changed, and does
 // not walk a NormalizedCatalog. internal/diff is its only caller: when it
-// detects that a File
-// resource's content-bearing parameter (content, source, checksum, or
-// checksum_value) differs between a target's baseline and candidate
-// catalogs, it calls ResolveFileContentEvidence once for that resource
-// and attaches the returned model.FileContentEvidence to the
-// corresponding model.ResourceChange.FileContent field. This package is
-// deliberately independent of internal/diff so it can be tested and
-// reviewed on its own: it is a standalone, reusable File-content-evidence
-// resolver.
+// detects that a File resource's content-bearing parameter (content,
+// source, checksum, or checksum_value) differs between a target's
+// baseline and candidate catalogs, it calls ResolveFileContentEvidence
+// once for that resource and attaches the returned
+// model.FileContentEvidence to the corresponding
+// model.ResourceChange.FileContent field. The dependency runs one way
+// only, so this package can be tested and reviewed on its own.
 //
 // # The exact priority order
 //
@@ -43,11 +41,11 @@
 //     retrieved. Retrieval only happens for a side that has a `source`
 //     reference and no literal content. EvidenceSource:
 //     FileContentEvidenceCompilerRetrieval.
-//  4. If step 3 cannot establish comparable bytes for both sides, with no
-//     ContentResolver was supplied at all, a side has neither literal
-//     content nor a resolvable reference, or retrieval itself failed
-//     (network, timeout, not-found, unsupported source scheme), this
-//     package reports FileContentReferenceChanged or
+//  4. If step 3 cannot establish comparable bytes for both sides, because
+//     no ContentResolver was supplied at all, because a side has neither
+//     literal content nor a resolvable reference, or because retrieval
+//     itself failed (network, timeout, not-found, unsupported source
+//     scheme), this package reports FileContentReferenceChanged or
 //     FileContentIndeterminate rather than State: changed/unchanged, and
 //     always returns a non-nil *model.Diagnostic
 //     (model.OperationVerifyContent) alongside it. See "Step 4:
@@ -144,7 +142,7 @@
 //     from collapsing into a clean run.
 //
 // This widens the reference_changed state beyond the "no ContentResolver
-// was supplied" rule stated below: reference_changed now also covers a
+// was supplied" rule stated above: reference_changed also covers a
 // reference that changed and *cannot* be byte-compared by any resolver,
 // not only one that changed with no resolver available to try. Both
 // readings share the same meaning -- "the reference changed and no
@@ -243,8 +241,8 @@
 //     header is mandatory. Every /puppet/v3/ route is served by the
 //     compiler's embedded Ruby Puppet request handler, whose
 //     Puppet::Network::HTTP::Request#response_formatters_for raises
-//     "Missing required Accept header" when no Accept header is present
-//     the request is rejected before any file is served. Verified
+//     "Missing required Accept header" when no Accept header is present,
+//     so the request is rejected before any file is served. Verified
 //     against a deployed OpenVox server (2026-08-25) on this exact
 //     endpoint: no Accept header returns HTTP 400
 //     "Bad Request: Missing required Accept header", and
@@ -263,16 +261,23 @@
 //     onto the file_content endpoint's path: the URI's path component,
 //     with its leading slash trimmed, is exactly the endpoint's
 //     `<mount-point>/<name>` path segment; see parsePuppetSourceURI in
-//     resolver.go.
+//     resolver.go. That path is checked rather than trusted: a `source`
+//     is a parameter of the candidate catalog, so it is compiled from
+//     the change under review, and it is attacker-shaped input steering
+//     an mTLS-authenticated GET. parsePuppetSourceURI rejects an empty,
+//     "." or ".." path segment and a NUL byte, so
+//     `puppet:///../../pdb/query/v4/catalogs/<node>` produces no request
+//     at all. Nothing downstream would have caught it: net/url neither
+//     removes nor escapes dot segments in a path it is handed, and
+//     net/http sends the request line as written.
 //   - Documented-only, not exercised: a `source` value using any other
 //     URI scheme (a bare local filesystem path, a `file:` URI, or an
-//     `http(s):` URI) is not retrievable through this endpoint at all,
-//     Puppet's own File type
-//     documentation describes those as resolved directly by the agent,
-//     not proxied through the compiler's file-serving API. This package
-//     reports that case as a retrieval failure (step 4b:
-//     content_indeterminate), not step 4a, since there is no
-//     compiler-mediated way to establish whether such a reference
+//     `http(s):` URI) is not retrievable through this endpoint at all.
+//     Puppet's own File type documentation describes those as resolved
+//     directly by the agent, not proxied through the compiler's
+//     file-serving API. This package reports that case as a retrieval
+//     failure (step 4b: content_indeterminate), not step 4a, since there
+//     is no compiler-mediated way to establish whether such a reference
 //     changed either. Retrieving content for those source schemes,
 //     including via any other request path, is out of scope here and is
 //     not implemented.

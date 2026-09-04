@@ -50,6 +50,7 @@ request, on every push to `main`, and on every `v*` tag.
 | `test` | | `gofmt`, `go vet`, `go build`, `go test -race -count=1` on Linux (the `go.mod` Go version and current stable) and macOS (current stable) |
 | `build` | `test` | Cross-compiles the full platform matrix, verifies `SHA256SUMS` the way [release.md](release.md) tells a consumer to, confirms the Linux binaries are statically linked, and checks each binary reports its stamped version |
 | `release` | `build` | Tags only. Publishes a GitHub Release from the artifacts `build` produced. The only job granted `contents: write` |
+| `image` | `build`, `release` | Tags only. Packages the same binaries into one multi-platform image and pushes it to Docker Hub and GHCR. See [release.md](release.md#the-container-image) |
 
 Both platforms are covered because snapshot writes (atomic rename, `fsync`,
 `0600`) and the release script's `sha256sum`/`shasum` branch are where they
@@ -65,13 +66,14 @@ so it is attached by hand afterwards. See [release.md](release.md) and
 ## Package layout
 
 ```
-cmd/piace/            CLI entry point; the acceptance suite (task 12)
+cmd/piace/            CLI entry point and the acceptance suite
 internal/config/      Target and service file schemas
 internal/config/resolve/  Defaults, overrides, validation, safe provenance
 internal/transport/   Hardened, independent mTLS clients; redaction
 internal/puppetdb/    Fact and baseline-catalog sources (PuppetDB and file)
 internal/snapshot/    Envelopes, canonical JSON, checksums, atomic writes
 internal/compiler/    v3/v4 candidate requests, trusted-fact and fallback policy
+internal/capture/     The capture pipeline for fact and catalog snapshots
 internal/normalize/   Catalogs into the deterministic semantic graph
 internal/filecontent/ File-content evidence without content disclosure
 internal/diff/        Node diffing, exclusions, redaction (fixed ordering)
@@ -80,12 +82,14 @@ internal/impact/      Bounded PQL estimates
 internal/compare/     The compare pipeline
 internal/report/      Text, JSON, and HTML renderers; reading a report back
 internal/model/       Shared result document and the outcome reducer
+internal/exitcode/    The stable exit codes and the outcome precedence order
 internal/assess/      Change assessment: what may leave, and what came back
 internal/inference/   One hardened client for one OpenAI-compatible endpoint
 ```
 
-Each package's `doc.go` records the decisions it owns and the assumptions it
-still rests on.
+Every package's package comment records the decisions it owns and the
+assumptions it still rests on, in a `doc.go` where those notes are long enough
+to want their own file.
 
 ### The assess/inference boundary
 

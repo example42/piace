@@ -66,8 +66,8 @@ puppetdb:
 
 # ---------------------------------------------------------------------------
 # Optional, advisory, and the only part of PIACE that talks to something
-# other than your compiler and PuppetDB. Read the README's "What leaves the
-# building" before enabling it. `compare` never contacts it.
+# other than your compiler and PuppetDB. Read docs/change-assessment.md's
+# "What leaves the building" before enabling it. `compare` never contacts it.
 # ---------------------------------------------------------------------------
 inference:
   # Any OpenAI-compatible chat-completions endpoint. https only.

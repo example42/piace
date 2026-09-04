@@ -124,18 +124,13 @@ piace change-context (--base-ref REF | --base-ref-env VAR) \
 | `--debug` | compare, capture, explain | One metadata line per service request to stderr |
 | `--debug-dump-dir` | compare, capture, explain | Also write raw bodies to `0600` files in DIR |
 
-`compare --candidate-environment ENV` compiles every target against `ENV`,
-overriding `candidate.environment` in both the `defaults:` block and any
-per-target `candidate:` block. The environment CI deployed is a per-pipeline
-value, so passing it at the invocation keeps the target file reviewable policy
-that no job has to rewrite; with the flag, the file may omit
-`candidate.environment` entirely.
-
-`capture catalog --environment ENV` is a different flag with a different
-meaning: it requests the catalog for `ENV`, typically the production or default
-environment, captured after merge so development-branch runs baseline against a
-frozen catalog rather than a later one from another environment. It never
-overrides `candidate.environment`.
+The two environment flags are not the same flag.
+`compare --candidate-environment` names the environment CI deployed and
+overrides `candidate.environment` for every target, so the target file may omit
+the field entirely; see
+[docs/ci.md](docs/ci.md#why-the-targets-file-is-not-a-template).
+`capture catalog --environment` names the environment to *snapshot*, typically
+the production baseline, and never overrides `candidate.environment`.
 
 ### Reports
 
@@ -478,10 +473,8 @@ is diffed.
 
 Optional and advisory. It reads a JSON report `compare` already wrote, sends
 **one** request to a configured **inference service**, and writes a separately
-versioned assessment artifact plus a re-rendered HTML report. It never
-re-compiles anything, never contacts a compiler or PuppetDB, and never rewrites
-the result document. `compare`, for its part, never contacts an inference
-service, and nothing the assessment says can change an outcome or an exit code.
+versioned assessment artifact plus a re-rendered HTML report, never rewriting
+the result document. Nothing it says can change an outcome or an exit code.
 
 ```sh
 piace change-context --base-ref origin/main \
