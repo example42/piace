@@ -64,6 +64,58 @@ inference:
 #   structured_output: false
 #   policy_notes_file: policy-notes.md
 
+# Microsoft: Azure OpenAI in Microsoft Foundry
+#
+# GitHub Copilot itself has no endpoint PIACE can use. It publishes no
+# OpenAI-compatible chat-completions REST API, and the internal endpoint
+# editors call expects headers (Copilot-Integration-Id, Editor-Version)
+# that PIACE deliberately does not send: this client sets Authorization
+# and nothing else. GitHub Models, which did expose a compatible endpoint
+# authenticated by a bearer PAT, was fully retired on 30 July 2026. Azure
+# OpenAI is the Microsoft path that works, and the one GitHub's own
+# retirement notice points at.
+#
+# The endpoint is the resource's v1 surface with /chat/completions
+# appended. An explicit ?api-version= query is accepted (PIACE sends the
+# endpoint verbatim, query included) but unnecessary: v1 is the default,
+# and a pinned preview version rots.
+#
+# `model` is the DEPLOYMENT name chosen when the model was deployed, not a
+# model id. Every other block in this file names a model; this one does
+# not. A 404 here usually means the deployment name is wrong, or that the
+# path is missing its /openai/v1 prefix.
+#
+# The resource key is sent as a bearer token, which is what the OpenAI
+# SDKs do against this surface:
+#
+#   export AZURE_OPENAI_API_KEY=...
+#
+# A Microsoft Entra ID token goes in the same field, if you would rather
+# not hold a static key:
+#
+#   export AZURE_OPENAI_API_KEY=$(az account get-access-token \
+#     --resource https://cognitiveservices.azure.com \
+#     --query accessToken -o tsv)
+#
+# It expires in about an hour, so it suits a one-shot `explain` rather
+# than a scheduled job.
+#
+# token_limit_param is set for the same reason as the OpenAI block above:
+# a GPT-5-family deployment rejects `max_tokens`. Set structured_output to
+# false if the deployed model version does not honour response_format.
+#
+# inference:
+#   endpoint: https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1/chat/completions
+#   model: your-gpt-5-mini-deployment
+#   token_env: AZURE_OPENAI_API_KEY
+#   timeout: 60s
+#   max_tokens: 4000
+#   token_limit_param: max_completion_tokens
+#   max_groups: 200
+#   pseudonymize: true
+#   structured_output: true
+#   policy_notes_file: policy-notes.md
+
 # Local Ollama, using a local model
 #
 # Ollama listens on http://localhost:11434 by default, but PIACE accepts only
