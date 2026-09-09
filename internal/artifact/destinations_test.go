@@ -9,8 +9,7 @@ import (
 
 func TestValidate_AcceptsDistinctDestinations(t *testing.T) {
 	dir := t.TempDir()
-	err := Validate(
-		[]File{{Role: "--targets", Path: filepath.Join(dir, "targets.yaml")}},
+	err := ValidateDestinations([]File{{Role: "--targets", Path: filepath.Join(dir, "targets.yaml")}},
 		[]File{
 			{Role: "--json-out", Path: filepath.Join(dir, "report.json")},
 			{Role: "--html-out", Path: filepath.Join(dir, "report.html")},
@@ -22,7 +21,7 @@ func TestValidate_AcceptsDistinctDestinations(t *testing.T) {
 
 func TestValidate_RejectsTwoOutputsNamingOneFile(t *testing.T) {
 	dir := t.TempDir()
-	err := Validate(nil, []File{
+	err := ValidateDestinations(nil, []File{
 		{Role: "--json-out", Path: filepath.Join(dir, "report.json")},
 		{Role: "--html-out", Path: filepath.Join(dir, "sub", "..", "report.json")},
 	})
@@ -39,8 +38,7 @@ func TestValidate_RejectsTwoOutputsNamingOneFile(t *testing.T) {
 func TestValidate_RejectsAnOutputOverAnInput(t *testing.T) {
 	dir := t.TempDir()
 	report := filepath.Join(dir, "report.json")
-	err := Validate(
-		[]File{{Role: "--json-in", Path: report}},
+	err := ValidateDestinations([]File{{Role: "--json-in", Path: report}},
 		[]File{{Role: "--ai-out", Path: report}})
 	if err == nil {
 		t.Fatal("accepted an artifact overwriting the document the run reads")
@@ -71,8 +69,7 @@ func TestValidate_RejectsAliasesOfAnInput(t *testing.T) {
 
 	for name, alias := range map[string]string{"symlink": symlink, "hard link": hardlink} {
 		t.Run(name, func(t *testing.T) {
-			err := Validate(
-				[]File{{Role: "--json-in", Path: report}},
+			err := ValidateDestinations([]File{{Role: "--json-in", Path: report}},
 				[]File{{Role: "--ai-out", Path: alias}})
 			if err == nil {
 				t.Fatalf("accepted an output that is a %s to the input", name)
@@ -95,7 +92,7 @@ func TestValidate_RelativeAndAbsoluteFormsOfOnePath(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(wd) })
 
-	err = Validate(nil, []File{
+	err = ValidateDestinations(nil, []File{
 		{Role: "--json-out", Path: "report.json"},
 		{Role: "--text-out", Path: filepath.Join(dir, "report.json")},
 	})
@@ -105,8 +102,7 @@ func TestValidate_RelativeAndAbsoluteFormsOfOnePath(t *testing.T) {
 }
 
 func TestValidate_SkipsUnrequestedAndStreamPaths(t *testing.T) {
-	if err := Validate(
-		[]File{{Role: "--json-in", Path: "-"}},
+	if err := ValidateDestinations([]File{{Role: "--json-in", Path: "-"}},
 		[]File{
 			{Role: "--json-out", Path: ""},
 			{Role: "--html-out", Path: ""},
@@ -119,7 +115,7 @@ func TestValidate_SkipsUnrequestedAndStreamPaths(t *testing.T) {
 func TestValidate_TwoInputsMayNameOneFile(t *testing.T) {
 	dir := t.TempDir()
 	shared := filepath.Join(dir, "config.yaml")
-	if err := Validate([]File{
+	if err := ValidateDestinations([]File{
 		{Role: "--targets", Path: shared},
 		{Role: "--services", Path: shared},
 	}, nil); err != nil {
@@ -130,8 +126,7 @@ func TestValidate_TwoInputsMayNameOneFile(t *testing.T) {
 func TestValidate_ReportsEveryConflictAtOnce(t *testing.T) {
 	dir := t.TempDir()
 	report := filepath.Join(dir, "report.json")
-	err := Validate(
-		[]File{{Role: "--json-in", Path: report}},
+	err := ValidateDestinations([]File{{Role: "--json-in", Path: report}},
 		[]File{
 			{Role: "--json-out", Path: report},
 			{Role: "--html-out", Path: report},

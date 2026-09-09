@@ -249,7 +249,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
 		return exitcode.OperationalError
 	}
-	if err := artifact.Validate(comparisonInputs(f, cfg), []artifact.File{
+	if err := artifact.ValidateDestinations(comparisonInputs(f, cfg), []artifact.File{
 		{Role: "--json-out", Path: f.jsonOut},
 		{Role: "--html-out", Path: f.htmlOut},
 		{Role: "--text-out", Path: f.textOut},
@@ -551,7 +551,7 @@ func runCaptureFacts(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	if err := artifact.Validate([]artifact.File{
+	if err := artifact.ValidateDestinations([]artifact.File{
 		{Role: "--targets", Path: f.targets},
 		{Role: "--services", Path: f.services},
 	}, captureDestinations(cfg.Targets, false)); err != nil {
@@ -618,7 +618,7 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 				artifact.File{Role: "the factset snapshot of " + target.Certname, Path: target.Facts.File})
 		}
 	}
-	if err := artifact.Validate(captureInputs, captureDestinations(cfg.Targets, true)); err != nil {
+	if err := artifact.ValidateDestinations(captureInputs, captureDestinations(cfg.Targets, true)); err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
 	}
@@ -771,7 +771,7 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	if err := artifact.Validate([]artifact.File{
+	if err := artifact.ValidateDestinations([]artifact.File{
 		{Role: "--json-in", Path: f.jsonIn},
 		{Role: "--services", Path: f.services},
 	}, []artifact.File{
@@ -861,16 +861,26 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 // pipe `compare --json-out /dev/stdout` straight into `explain` without
 // an intermediate file.
 func readResultDocument(path string) ([]byte, error) {
-	if path == "-" {
-		raw, err := io.ReadAll(stdin)
+	source, name := io.Reader(stdin), "stdin"
+	if path != "-" {
+		f, err := os.Open(path)
 		if err != nil {
-			return nil, fmt.Errorf("reading the result document from stdin: %w", err)
+			return nil, fmt.Errorf("reading the result document: %w", err)
 		}
-		return raw, nil
+		defer f.Close()
+		source, name = f, path
 	}
-	raw, err := os.ReadFile(path)
+
+	// One byte past the limit, so an oversized document is refused after
+	// reading the limit rather than after reading all of it: report's own
+	// check would otherwise reject a 4 GB file only once it was in memory.
+	raw, err := io.ReadAll(io.LimitReader(source, report.MaxDocumentBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("reading the result document: %w", err)
+		return nil, fmt.Errorf("reading the result document from %s: %w", name, err)
+	}
+	if len(raw) > report.MaxDocumentBytes {
+		return nil, fmt.Errorf("reading the result document from %s: it exceeds the %d-byte limit",
+			name, report.MaxDocumentBytes)
 	}
 	return raw, nil
 }

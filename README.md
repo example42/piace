@@ -623,6 +623,17 @@ piace explain --json-in report.json --services services.yaml \
   --change change.yaml --ai-out assessment.json --html-out report.html
 ```
 
+The stored report is validated before anything is sent. Decoding is bounded and
+strict, and the document must describe one coherent comparison: an outcome that
+matches what its own targets reduce to, aggregate groups referring to changes
+that exist, failures that are actually recorded, and no published value carrying
+a sensitivity wrapper or a File content-bearing parameter. A partial comparison
+stays valid and explainable; a contradictory one is refused rather than repaired,
+because repairing it would mean choosing which half to believe. Configuration
+files get the equivalent guarantee: bounded, strict, and exactly one YAML
+document, so a file whose real content sits after a `---` cannot be read as
+whatever preceded it.
+
 It is the only part of PIACE that talks to something other than your compiler
 and PuppetDB. Read [docs/change-assessment.md](docs/change-assessment.md)
 before enabling it: what leaves the building, what a risk indication is and is

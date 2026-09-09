@@ -48,7 +48,17 @@ import (
 // `json:"-"` and never enters a report by design. A consumer of a stored
 // result document therefore reads the aggregate groups the run already
 // built and must not attempt to re-derive them.
+//
+// Decoding is bounded (MaxDocumentBytes) and followed by Validate, so a
+// document that decodes but describes no coherent comparison is refused
+// here rather than by whichever consumer happens to trip over the
+// inconsistency first.
 func DecodeJSON(data []byte) (model.Result, error) {
+	if len(data) > MaxDocumentBytes {
+		return model.Result{}, fmt.Errorf("decoding result document: %d bytes exceeds the %d-byte limit",
+			len(data), MaxDocumentBytes)
+	}
+
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.UseNumber()
 	dec.DisallowUnknownFields()
@@ -60,5 +70,17 @@ func DecodeJSON(data []byte) (model.Result, error) {
 	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
 		return model.Result{}, fmt.Errorf("decoding result document: unexpected content after the document")
 	}
+	if err := Validate(r); err != nil {
+		return model.Result{}, err
+	}
 	return r, nil
 }
+
+// MaxDocumentBytes bounds a stored result document. A comparison of a
+// large infrastructure produces a large report, so the limit is
+// generous; what it rules out is an unbounded allocation driven by a
+// file whose size nothing checked. It matches
+// transport.DefaultMaxResponseBodyBytes deliberately: a document PIACE
+// would refuse to receive over the network is not one it should read
+// from disk either.
+const MaxDocumentBytes = 64 * 1024 * 1024

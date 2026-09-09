@@ -17,7 +17,7 @@ type File struct {
 	Path string
 }
 
-// Validate rejects a set of destinations that cannot all be honored:
+// ValidateDestinations rejects a set of destinations that cannot all be honored:
 // two outputs naming one file, or an output naming a file the same run
 // reads. It is meant to be called before any service request, so a run
 // that was always going to lose an artifact, or destroy its own input,
@@ -37,7 +37,7 @@ type File struct {
 //
 // A path of "-" is the stdin/stdout convention and is skipped, as is an
 // empty path, which means the caller was not asked for that artifact.
-func Validate(inputs, outputs []File) error {
+func ValidateDestinations(inputs, outputs []File) error {
 	type resolved struct {
 		File
 		canonical string
