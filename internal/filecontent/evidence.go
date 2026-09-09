@@ -26,6 +26,39 @@ func NeedsEvidence(r model.Resource) bool {
 		r.Parameters["checksum_value"] != nil || r.StaticContent != nil || r.CapturedContent != nil || r.RecursiveContent)
 }
 
+// Membership evidence describes only the catalog side that exists. Removing a
+// resource from a catalog does not assert that Puppet will delete its file.
+func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.ChangeKind, side Side, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
+	digest, source, err := ResolveSide(ctx, certname, side, retriever)
+	s := &model.FileSideEvidence{Context: side.Context, Source: source, Verified: err == nil}
+	e := model.FileContentEvidence{EvidenceSource: source}
+	if kind == model.ChangeResourceAdded {
+		e.State, e.After = model.FileContentAdded, s
+	} else {
+		e.State, e.Before = model.FileContentRemoved, s
+	}
+	if err != nil {
+		e.State = model.FileContentIndeterminate
+		reason := "resource membership changed; content evidence for the existing catalog side could not be verified"
+		if errors.Is(err, ErrNonByteComparable) {
+			reason = "resource membership changed; directory, recursive or non-file byte evidence is unsupported"
+		} else if errors.Is(err, errHistoricalEvidence) {
+			reason = "resource membership changed; historical catalog has no retained content digest"
+		} else if errors.Is(err, errInvalidChecksum) {
+			reason = "resource membership changed; invalid content checksum"
+		}
+		d := verifyContentDiagnostic(model.SeverityError, certname, side.Resource.Identity, reason)
+		return e, &d
+	}
+	e.Algorithm = digest.Algorithm
+	if kind == model.ChangeResourceAdded {
+		e.AfterDigest = digest.Digest
+	} else {
+		e.BeforeDigest = digest.Digest
+	}
+	return e, nil
+}
+
 func ResolveFileContentEvidence(ctx context.Context, certname string, identity model.ResourceIdentity, before, after Side, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
 	bp, ap := parameters(before.Resource), parameters(after.Resource)
 	referenceChanged := !reflect.DeepEqual(bp["source"], ap["source"])

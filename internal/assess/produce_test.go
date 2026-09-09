@@ -33,7 +33,8 @@ func (f *fakeService) Complete(_ context.Context, req inference.Request) ([]byte
 func goodReply() string {
 	return `{"run":{"risk":"medium","summary":"ok","review_focus":[]},
 	         "groups":[{"id":"g001","risk":"low","rationale":"fine","review_focus":[]},
-	                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]}]}`
+	                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]},
+                       {"id":"g003","risk":"low","rationale":"fine","review_focus":[]}]}`
 }
 
 func testMeta() Meta {
@@ -55,7 +56,7 @@ func TestProduceReturnsAnAssessmentAndCallsTheServiceOnce(t *testing.T) {
 	if hasError(diags) {
 		t.Errorf("diagnostics = %+v", diags)
 	}
-	if a.Run.Risk != RiskMedium || len(a.Groups) != 2 {
+	if a.Run.Risk != RiskMedium || len(a.Groups) != 3 {
 		t.Errorf("assessment = %+v", a)
 	}
 	if a.ModelID != "test-model" || a.EndpointAuthority != "api.example.com" || a.SourceReportChecksum != "sha256:abc" {
@@ -64,7 +65,7 @@ func TestProduceReturnsAnAssessmentAndCallsTheServiceOnce(t *testing.T) {
 	if a.AISchemaVersion != AISchemaVersion {
 		t.Errorf("AISchemaVersion = %d", a.AISchemaVersion)
 	}
-	if a.GroupsTotal != 2 || a.GroupsAssessed != 2 || a.GroupsTruncated {
+	if a.GroupsTotal != 3 || a.GroupsAssessed != 3 || a.GroupsTruncated {
 		t.Errorf("group accounting = %d/%d truncated=%v", a.GroupsAssessed, a.GroupsTotal, a.GroupsTruncated)
 	}
 }
@@ -81,7 +82,7 @@ func TestProduceStillProducesAnArtifactWhenTheServiceFails(t *testing.T) {
 	if a.Run.Risk != RiskUnknown {
 		t.Errorf("Run.Risk = %q, want unknown", a.Run.Risk)
 	}
-	if len(a.Groups) != 2 {
+	if len(a.Groups) != 3 {
 		t.Fatalf("Groups = %d, want every planned group accounted for", len(a.Groups))
 	}
 	for _, g := range a.Groups {
@@ -128,7 +129,7 @@ func TestProduceGivesUpAfterOneRetry(t *testing.T) {
 	if !hasError(diags) {
 		t.Error("giving up produced no error diagnostic")
 	}
-	if a.Run.Risk != RiskUnknown || len(a.Groups) != 2 {
+	if a.Run.Risk != RiskUnknown || len(a.Groups) != 3 {
 		t.Errorf("assessment = %+v", a)
 	}
 }
@@ -158,7 +159,7 @@ func TestProduceCarriesTruncationIntoTheArtifact(t *testing.T) {
 	    "groups":[{"id":"g001","risk":"low","rationale":"","review_focus":[]}]}`}}
 
 	a, _ := Produce(context.Background(), f, assessableResult(), ChangeContext{}, cfg, testMeta())
-	if !a.GroupsTruncated || a.GroupsTotal != 2 || a.GroupsAssessed != 1 {
+	if !a.GroupsTruncated || a.GroupsTotal != 3 || a.GroupsAssessed != 1 {
 		t.Errorf("group accounting = %d/%d truncated=%v", a.GroupsAssessed, a.GroupsTotal, a.GroupsTruncated)
 	}
 }
@@ -205,7 +206,8 @@ func TestPseudonymizationOptOutProducesAnIdenticalArtifact(t *testing.T) {
 	replyNaming := func(node string) string {
 		return `{"run":{"risk":"medium","summary":"` + node + ` changes first","review_focus":["` + node + `"]},
 		         "groups":[{"id":"g001","risk":"low","rationale":"` + node + ` only","review_focus":[]},
-		                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]}]}`
+		                   {"id":"g002","risk":"low","rationale":"fine","review_focus":[]},
+                       {"id":"g003","risk":"low","rationale":"fine","review_focus":[]}]}`
 	}
 
 	cfg := testConfig()

@@ -48,6 +48,11 @@
 // edges, but requested retrieval failures remain diagnostics and affect outcome.
 // Disclosure policy remains in diff's publication pass: sensitivity or a
 // content selector suppresses both digests without changing comparison state.
+// Added and removed resources resolve only the existing catalog side. Verified
+// evidence uses resource_added/resource_removed states; these describe catalog
+// membership, not filesystem creation or deletion. Missing historical digests,
+// failed retrievals and unsupported byte evidence remain indeterminate errors,
+// including when an exclusion later suppresses the resource change.
 //
 // Wire provenance: compiler/testdata/static-catalog.json is reduced from
 // Puppet's published static catalog example, not a live capture. Source-array

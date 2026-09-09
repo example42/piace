@@ -22,7 +22,8 @@ func TestInterpretReadsAWellFormedResponse(t *testing.T) {
       "run": {"risk":"medium","summary":"Restarting nginx on ` + alias + ` is routine.","review_focus":["` + alias + `"]},
       "groups": [
         {"id":"g001","risk":"low","rationale":"A service ensure flip.","review_focus":[]},
-        {"id":"g002","risk":"high","rationale":"Touches ` + alias + `.","review_focus":["g002"]}
+        {"id":"g002","risk":"high","rationale":"Touches ` + alias + `.","review_focus":["g002"]},
+        {"id":"g003","risk":"low","rationale":"File evidence.","review_focus":[]}
       ]}`
 
 	a, diags := Interpret([]byte(raw), planned, p)
@@ -38,8 +39,8 @@ func TestInterpretReadsAWellFormedResponse(t *testing.T) {
 	if len(a.Run.ReviewFocus) != 1 || a.Run.ReviewFocus[0] != realCertname {
 		t.Errorf("Run.ReviewFocus = %v", a.Run.ReviewFocus)
 	}
-	if len(a.Groups) != 2 {
-		t.Fatalf("Groups = %d, want 2", len(a.Groups))
+	if len(a.Groups) != 3 {
+		t.Fatalf("Groups = %d, want 3", len(a.Groups))
 	}
 	if a.Groups[0].Identity != "Service[nginx]" || a.Groups[0].Risk != RiskLow {
 		t.Errorf("Groups[0] = %+v", a.Groups[0])

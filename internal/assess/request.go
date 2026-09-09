@@ -72,6 +72,7 @@ Rules you must follow:
 - Do not state a number of nodes that will change. You were not given the evidence to know that.
 - "review_focus" is a reading order: what the reviewer should look at first, most important first. It is not a list of actions to perform.
 - Ground every claim in the evidence provided. If the data is truncated, say what you could not see rather than guessing at it.
+- File content marked content_indeterminate is unverified; reference_changed establishes a reference change only. File resource_added/resource_removed evidence describes the existing catalog side, not filesystem creation or deletion. Edge groups describe directed dependency-graph changes and can occur without resource changes.
 - Be brief. A rationale is one or two sentences.
 
 Return one JSON object and nothing else. No prose before or after it, no explanation, no Markdown code fence. Its shape is exactly:
@@ -241,14 +242,16 @@ type targetPayload struct {
 }
 
 type groupPayload struct {
-	ID        string   `json:"id"`
-	Kind      string   `json:"kind"`
-	Identity  string   `json:"identity"`
-	Parameter string   `json:"parameter,omitempty"`
-	Before    any      `json:"before,omitempty"`
-	After     any      `json:"after,omitempty"`
-	NodeCount int      `json:"node_count"`
-	Nodes     []string `json:"nodes,omitempty"`
+	Edge        *model.Edge               `json:"edge,omitempty"`
+	FileContent *model.FileContentSummary `json:"file_content,omitempty"`
+	ID          string                    `json:"id"`
+	Kind        string                    `json:"kind"`
+	Identity    string                    `json:"identity"`
+	Parameter   string                    `json:"parameter,omitempty"`
+	Before      any                       `json:"before,omitempty"`
+	After       any                       `json:"after,omitempty"`
+	NodeCount   int                       `json:"node_count"`
+	Nodes       []string                  `json:"nodes,omitempty"`
 }
 
 // impactPayload deliberately carries no certname list. The count is the
@@ -291,13 +294,15 @@ func buildPayload(r model.Result, p Pseudonyms, maxGroups int) ([]byte, error) {
 
 	for _, g := range planned {
 		gp := groupPayload{
-			ID:        g.ID,
-			Kind:      string(g.Key.Kind),
-			Identity:  g.Identity,
-			Parameter: g.Key.Parameter,
-			Before:    g.Before,
-			After:     g.After,
-			NodeCount: len(g.Certnames),
+			Edge:        g.Key.Edge,
+			FileContent: g.FileContent,
+			ID:          g.ID,
+			Kind:        string(g.Key.Kind),
+			Identity:    g.Identity,
+			Parameter:   g.Key.Parameter,
+			Before:      g.Before,
+			After:       g.After,
+			NodeCount:   len(g.Certnames),
 		}
 		nodes := g.Certnames
 		if len(nodes) > maxGroupNodes {
@@ -332,12 +337,13 @@ func GroupID(index int) string { return fmt.Sprintf("g%03d", index+1) }
 // group behind that id. It carries real certnames, because a plan never
 // leaves the process; only the payload built from it does.
 type PlannedGroup struct {
-	ID        string
-	Key       model.AggregateChangeKey
-	Identity  string
-	Before    any
-	After     any
-	Certnames []string
+	FileContent *model.FileContentSummary
+	ID          string
+	Key         model.AggregateChangeKey
+	Identity    string
+	Before      any
+	After       any
+	Certnames   []string
 }
 
 // PlanGroups ranks, bounds, and assigns an id to every aggregate group a
@@ -346,27 +352,14 @@ type PlannedGroup struct {
 // and Interpret resolves returned ids against it, so the two cannot
 // disagree about which id means which group.
 //
-// Edge groups are dropped before ranking. A dependency-graph edge change
-// is a consequence of the resource changes around it, carries no value
-// pair for a model to reason about, and a run's edges routinely outnumber
-// its resource changes: sending them spends the group budget and returns
-// a wall of "unknown" that tells a reader nothing. The deterministic
-// report still lists every edge group in its own section, so nothing is
-// hidden, only kept out of the inference request. groups_total counts
-// what was eligible for assessment, so truncation accounting stays
-// consistent.
+// Resource and edge groups share the same ranking and budget. groups_total
+// counts all groups, including graph-only changes, so omitted evidence is
+// reflected by groups_assessed and groups_truncated.
 func PlanGroups(r model.Result, maxGroups int) (planned []PlannedGroup, total int, truncated bool) {
 	if maxGroups <= 0 {
 		maxGroups = DefaultMaxGroups
 	}
-	assessable := make([]model.AggregateGroup, 0, len(r.Aggregate.Groups))
-	for _, g := range r.Aggregate.Groups {
-		if g.Key.Edge != nil {
-			continue
-		}
-		assessable = append(assessable, g)
-	}
-	ranked := rankGroups(assessable)
+	ranked := rankGroups(r.Aggregate.Groups)
 	total = len(ranked)
 	if len(ranked) > maxGroups {
 		ranked = ranked[:maxGroups]
@@ -374,12 +367,13 @@ func PlanGroups(r model.Result, maxGroups int) (planned []PlannedGroup, total in
 	}
 	for i, g := range ranked {
 		planned = append(planned, PlannedGroup{
-			ID:        GroupID(i),
-			Key:       g.Key,
-			Identity:  identityLabel(g.Key),
-			Before:    g.Before,
-			After:     g.After,
-			Certnames: g.Certnames,
+			FileContent: g.FileContent,
+			ID:          GroupID(i),
+			Key:         g.Key,
+			Identity:    identityLabel(g.Key),
+			Before:      g.Before,
+			After:       g.After,
+			Certnames:   g.Certnames,
 		})
 	}
 	return planned, total, truncated

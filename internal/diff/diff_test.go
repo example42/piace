@@ -136,10 +136,8 @@ func TestDiff_ResourceAddedRemovedAndParameterChanged(t *testing.T) {
 	}
 }
 
-// Added and removed resources are identified by identity only. Their
-// parameters, which for a File resource would be the managed content
-// bytes themselves, must never reach the projection.
-func TestDiff_AddedResourceCarriesNoParameterProjection(t *testing.T) {
+// File additions preserve settings while withholding content bytes.
+func TestDiff_AddedResourceCarriesSafeParameterProjection(t *testing.T) {
 	after := catalog([]model.Resource{
 		resource("File", "/etc/secret.conf", map[string]model.Value{
 			"content": "top-secret-managed-bytes",
@@ -155,8 +153,8 @@ func TestDiff_AddedResourceCarriesNoParameterProjection(t *testing.T) {
 	if change.Kind != model.ChangeResourceAdded {
 		t.Fatalf("kind = %s, want resource_added", change.Kind)
 	}
-	if change.Before != nil || change.After != nil {
-		t.Errorf("added resource carries a value projection: before=%v after=%v", change.Before, change.After)
+	if change.Before != nil || change.After.(map[string]any)["owner"] != "root" || change.After.(map[string]any)["content"] != model.RedactedValue {
+		t.Errorf("incorrect added resource projection: before=%v after=%v", change.Before, change.After)
 	}
 	encoded, err := json.Marshal(nd)
 	if err != nil {

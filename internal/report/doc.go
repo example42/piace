@@ -189,9 +189,6 @@ const AssessmentLabel = "Change assessment"
 // deterministic outcome without saying which is which is misleading
 // whatever the model got right.
 //
-// The last sentence is the one omission a reader could otherwise mistake
-// for a judgement: the assessment covers resource-change groups only, and
-// a run's dependency-graph edge groups (a consequence of those changes,
-// with no value pair to reason about) are never sent. The deterministic
-// sections above list every one of them.
-const AssessmentNote = "Advisory and model-generated: not deterministic, not part of the result document, and never able to affect the outcome or exit code above. Two runs over the same report may say different things. It covers resource-change groups only: dependency-graph edge changes are left to the deterministic sections above."
+// Resource and edge groups share the assessment budget; the artifact records
+// the total, assessed count and whether any groups were omitted.
+const AssessmentNote = "Advisory and model-generated: not deterministic, not part of the result document, and never able to affect the outcome or exit code above. Two runs over the same report may say different things. Resource and dependency-graph edge groups share the assessment limit; omitted groups are recorded as truncation."

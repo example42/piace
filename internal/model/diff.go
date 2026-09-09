@@ -4,9 +4,9 @@ package model
 // `Sensitive`-wrapped value or a value matched by a configured
 // config.RedactionSelector, in every output format: "Configured
 // selectors replace matched values with the constant `"<redacted>"`."
-// The differ (internal/diff) is the only writer of this constant
-// into a ResourceChange.Before/After or FileContentEvidence; this
-// package only defines the shared literal so every consumer
+// The differ writes this marker into ResourceChange.Before/After or
+// FileContentEvidence; aggregation combines member markers in its projection.
+// This package defines the shared literal so every consumer
 // (JSON/text/HTML renderers, aggregate builder) recognizes exactly one
 // marker value.
 const RedactedValue = "<redacted>"
@@ -36,8 +36,9 @@ type ResourceChange struct {
 	// upstream of this type;
 	Before any `json:"before,omitempty"`
 	After  any `json:"after,omitempty"`
-	// FileContent is populated only for a ParameterChanged entry on a File
-	// resource's content-bearing parameter.
+	// For additions/removals, Before/After holds the existing side's parameter
+	// map. File content-bearing parameters carry markers, never bytes or digests.
+	// FileContent also describes one-sided evidence for File additions/removals.
 	FileContent *FileContentEvidence `json:"file_content,omitempty"`
 	// Fingerprint is a stable, equality-preserving digest of this change's
 	// *unredacted* canonical comparison evidence, computed by the differ
@@ -123,12 +124,14 @@ type AggregateChangeKey struct {
 }
 
 // AggregateGroup groups equivalent non-excluded node changes across
-// targets.
+// targets. Before/After apply the most restrictive member disclosure at each
+// subtree, independently of the raw-evidence equality used for grouping.
 type AggregateGroup struct {
-	Key       AggregateChangeKey `json:"key"`
-	Before    any                `json:"before,omitempty"`
-	After     any                `json:"after,omitempty"`
-	Certnames []string           `json:"certnames"`
+	Key         AggregateChangeKey  `json:"key"`
+	FileContent *FileContentSummary `json:"file_content,omitempty"`
+	Before      any                 `json:"before,omitempty"`
+	After       any                 `json:"after,omitempty"`
+	Certnames   []string            `json:"certnames"`
 	// NodeChangeRefs links this group to the underlying per-target
 	// ResourceChange/EdgeChange entries it was built from.
 	NodeChangeRefs []NodeChangeRef `json:"node_change_refs"`

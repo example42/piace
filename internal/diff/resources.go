@@ -58,15 +58,17 @@ func diffResources(
 
 		switch {
 		case inBefore && !inAfter:
-			changes = append(changes, rawResourceChange{
-				Kind:     model.ChangeResourceRemoved,
-				Identity: identity,
-			})
+			change, diag := membershipChange(ctx, certname, model.ChangeResourceRemoved, filecontent.Side{Resource: beforeRes, Context: beforeContext}, retriever)
+			changes = append(changes, change)
+			if diag != nil {
+				diagnostics = append(diagnostics, *diag)
+			}
 		case !inBefore && inAfter:
-			changes = append(changes, rawResourceChange{
-				Kind:     model.ChangeResourceAdded,
-				Identity: identity,
-			})
+			change, diag := membershipChange(ctx, certname, model.ChangeResourceAdded, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever)
+			changes = append(changes, change)
+			if diag != nil {
+				diagnostics = append(diagnostics, *diag)
+			}
 		default:
 			paramChanges, diags := diffParameters(ctx, certname, identity,
 				filecontent.Side{Resource: beforeRes, Context: beforeContext}, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever)
@@ -76,6 +78,21 @@ func diffResources(
 	}
 
 	return changes, diagnostics
+}
+
+func membershipChange(ctx context.Context, certname string, kind model.ChangeKind, side filecontent.Side, retriever filecontent.ContentRetriever) (rawResourceChange, *model.Diagnostic) {
+	change := rawResourceChange{Kind: kind, Identity: side.Resource.Identity}
+	if kind == model.ChangeResourceAdded {
+		change.After = side.Resource.Parameters
+	} else {
+		change.Before = side.Resource.Parameters
+	}
+	if !filecontent.NeedsEvidence(side.Resource) {
+		return change, nil
+	}
+	evidence, diag := filecontent.ResolveMembershipEvidence(ctx, certname, kind, side, retriever)
+	change.FileContent = &evidence
+	return change, diag
 }
 
 // diffParameters compares one resource's before/after canonical

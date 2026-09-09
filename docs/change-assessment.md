@@ -22,8 +22,14 @@ key by key in [`examples/services.yaml`](../examples/services.yaml).
 
 One HTTPS request per run, to the endpoint you configure, containing:
 
-- the **aggregate groups**, each a resource identity, a parameter name and a
-  before/after pair, ranked by node reach and capped at `max_groups`;
+- the **aggregate groups**, ranked by node reach and capped at `max_groups`:
+  parameter changes carry a before/after pair; additions and removals carry the
+  existing side's redacted parameter map; graph changes carry ordered source
+  and target identities. Resource and edge groups share the budget, and total,
+  assessed and truncated counts include both;
+- **File-content summaries**: state, evidence sources, per-side verification,
+  reference-change and redaction status. Added/removed states describe the
+  catalog membership change, not a prediction of filesystem changes;
 - **certnames as pseudonyms** (`node-001`, `node-002`, and so on), stable
   within a run and never reused across two real names;
 - **per-target counts**: pseudonym, outcome, resource and edge change counts,
@@ -35,9 +41,11 @@ One HTTPS request per run, to the endpoint you configure, containing:
 - your **policy notes file**, if any, size-capped;
 - a task prompt fixed in the binary.
 
-It does **not** contain sensitive values, redacted parameters, managed `File`
-content bytes or their digests, source or catalog provenance, or the compiler
-and PuppetDB authorities. Those are absent entirely rather than pseudonymized.
+Sensitive values are replaced by redaction markers, including inside resource
+parameter maps. Managed `File` content bytes and digests, source URLs, catalog
+provenance, and compiler/PuppetDB authorities are absent from the generated
+evidence payload. File evidence source labels such as `captured_digest` remain
+visible so the assessment can distinguish verified and indeterminate evidence.
 
 Pseudonymization covers the certnames PIACE read out of the result document. A
 change context is forwarded **as you wrote it**: PIACE cannot tell which words
@@ -64,7 +72,7 @@ is a model's opinion about a change, not a measurement of one. A **review
 focus** is a reading order, not a work list.
 
 None of it can affect a comparison. The assessment is not part of the result
-document (`schema_version` stays `1`), does not enter the outcome reducer, and
+document (`schema_version: 2`), does not enter the outcome reducer, and
 cannot change an exit code. It is not deterministic either: two runs over the
 same report may say different things. The HTML section says so on the page, sits
 below every deterministic section, and names the model that produced it.

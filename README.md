@@ -484,7 +484,15 @@ Resource-level `sensitive_parameters` lists and recursive Pcore
 A parameter marked sensitive by either catalog is protected on both sides.
 Configured `redact` selectors match exact type and parameter names. Sensitive
 File content also suppresses derived digests while retaining the comparison
-state. Additions and removals currently publish identity only.
+state. Additions and removals publish the existing side's redacted parameter
+map. File content-bearing parameters are replaced by markers, with separate
+one-sided content evidence. Missing or unsupported File evidence remains
+indeterminate and produces an operational diagnostic.
+
+Aggregate groups combine the most restrictive member disclosure policy.
+File summaries retain state, sources and verification without digests or
+target-specific provenance. Individual target changes retain that provenance.
+The result document uses `schema_version: 2`; `explain` requires this version.
 
 Malformed sensitivity lists and wrappers fail normalization. Synthetic tests
 cover compiler arrays and PuppetDB expanded containers, reports, normal debug

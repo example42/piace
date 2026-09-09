@@ -22,6 +22,20 @@ func publishChanges(selectors []config.RedactionSelector, changes []rawResourceC
 		change := model.ResourceChange{Kind: raw.Kind, Identity: raw.Identity, Parameter: raw.Parameter, Fingerprint: raw.Fingerprint}
 		br, ar := before[raw.Identity], after[raw.Identity]
 		selected := parameterSensitive(br, raw.Parameter) || parameterSensitive(ar, raw.Parameter) || matchesRedactionSelector(selectors, raw.Identity.Type, raw.Parameter)
+		switch raw.Kind {
+		case model.ChangeResourceAdded:
+			change.After = publishParameters(selectors, ar)
+		case model.ChangeResourceRemoved:
+			change.Before = publishParameters(selectors, br)
+		case model.ChangeParameterChanged:
+			if raw.FileContent == nil {
+				if selected {
+					change.Before, change.After = model.RedactedValue, model.RedactedValue
+				} else {
+					change.Before, change.After = redactSensitivePair(raw.Before, raw.After)
+				}
+			}
+		}
 		if raw.FileContent != nil {
 			for name := range fileContentBearingParameters {
 				selected = selected || parameterSensitive(br, name) || parameterSensitive(ar, name) || containsSensitive(br.Parameters[name]) || containsSensitive(ar.Parameters[name]) || matchesRedactionSelector(selectors, raw.Identity.Type, name)
@@ -29,16 +43,29 @@ func publishChanges(selectors []config.RedactionSelector, changes []rawResourceC
 			evidence := *raw.FileContent
 			if selected {
 				evidence.Algorithm = ""
-				evidence.BeforeDigest, evidence.AfterDigest = model.RedactedValue, model.RedactedValue
+				if evidence.Before != nil {
+					evidence.BeforeDigest = model.RedactedValue
+				}
+				if evidence.After != nil {
+					evidence.AfterDigest = model.RedactedValue
+				}
 				evidence.Redacted = true
 			}
 			change.FileContent = &evidence
-		} else if selected {
-			change.Before, change.After = model.RedactedValue, model.RedactedValue
-		} else {
-			change.Before, change.After = redactSensitivePair(raw.Before, raw.After)
 		}
 		out[i] = change
+	}
+	return out
+}
+
+func publishParameters(selectors []config.RedactionSelector, resource model.Resource) map[string]any {
+	out := make(map[string]any, len(resource.Parameters))
+	for name, value := range resource.Parameters {
+		if (resource.Identity.Type == fileResourceType && fileContentBearingParameters[name]) || parameterSensitive(resource, name) || matchesRedactionSelector(selectors, resource.Identity.Type, name) {
+			out[name] = model.RedactedValue
+		} else {
+			out[name], _ = redactSensitivePair(value, value)
+		}
 	}
 	return out
 }

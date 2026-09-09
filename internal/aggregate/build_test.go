@@ -2,10 +2,62 @@ package aggregate
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/example42/piace/internal/model"
 )
+
+func TestBuild_CombinesNestedDisclosureWithoutMutatingMembers(t *testing.T) {
+	value := func(first, second any) any {
+		return map[string]any{"items": []any{first, map[string]any{"protected": second, "public": "visible"}}}
+	}
+	a := value(model.RedactedValue, "second-secret")
+	b := value("first-secret", model.RedactedValue)
+	want := value(model.RedactedValue, model.RedactedValue)
+	diffs := []model.NodeDiff{
+		{Certname: "a", ResourceChanges: []model.ResourceChange{paramChange("User", "app", "settings", "same", a, a)}},
+		{Certname: "z", ResourceChanges: []model.ResourceChange{paramChange("User", "app", "settings", "same", b, b)}},
+	}
+	original, _ := json.Marshal(diffs)
+	for _, reversed := range []bool{false, true} {
+		if reversed {
+			diffs[0], diffs[1] = diffs[1], diffs[0]
+		}
+		got := Build(diffs)
+		if len(got.Groups) != 1 || !reflect.DeepEqual(got.Groups[0].Before, want) || !reflect.DeepEqual(got.Groups[0].After, want) {
+			t.Fatalf("incorrect combined disclosure: %+v", got)
+		}
+	}
+	diffs[0], diffs[1] = diffs[1], diffs[0]
+	after, _ := json.Marshal(diffs)
+	if string(original) != string(after) {
+		t.Fatal("aggregation mutated member projections")
+	}
+}
+
+func TestBuild_CombinesFileSummaryWithoutBorrowingMemberProvenance(t *testing.T) {
+	first := &model.FileContentEvidence{State: model.FileContentIndeterminate, Before: &model.FileSideEvidence{Source: model.FileContentEvidenceCaptured, Verified: true, Context: model.ContentContext{CatalogIdentity: "private"}}}
+	second := &model.FileContentEvidence{State: model.FileContentIndeterminate, Redacted: true, ReferenceChanged: true, Before: &model.FileSideEvidence{Source: model.FileContentEvidenceInline, Verified: false}}
+	var nodes []model.NodeDiff
+	for i, evidence := range []*model.FileContentEvidence{first, second} {
+		change := paramChange("File", "/app", "content", "same", nil, nil)
+		change.FileContent = evidence
+		nodes = append(nodes, model.NodeDiff{Certname: []string{"a", "z"}[i], ResourceChanges: []model.ResourceChange{change}})
+	}
+	for _, reverse := range []bool{false, true} {
+		if reverse {
+			nodes[0], nodes[1] = nodes[1], nodes[0]
+		}
+		got := Build(nodes).Groups[0].FileContent
+		if got == nil || !got.Redacted || !got.ReferenceChanged || got.Before.Source != model.FileContentEvidenceMixed || got.Before.Verified {
+			t.Fatalf("incorrect combined File evidence: %+v", got)
+		}
+	}
+	if first.Redacted || !first.Before.Verified || first.Before.Source != model.FileContentEvidenceCaptured {
+		t.Fatal("member evidence mutated")
+	}
+}
 
 func identity(resourceType, title string) model.ResourceIdentity {
 	return model.ResourceIdentity{Type: resourceType, Title: title}

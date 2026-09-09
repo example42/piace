@@ -582,7 +582,7 @@ pre {
           {{range .Aggregate}}
           <li>
             <span class="sign {{.Class}}">{{.Sign}}</span>
-            <span class="body"><span class="ident">{{.Identity}}</span>{{if .Parameter}}<span class="param">{{.Parameter}}</span>{{end}}{{if .HasValues}}<span class="vals"><span class="was">{{.Before}}</span><span class="arrow">&rarr;</span><span class="now">{{.After}}</span></span>{{end}}<span class="on">{{.Targets}}</span></span>
+            <span class="body"><span class="ident">{{.Identity}}</span>{{if .Parameter}}<span class="param">{{.Parameter}}</span>{{end}}{{if .HasValues}}<span class="vals"><span class="was">{{.Before}}</span><span class="arrow">&rarr;</span><span class="now">{{.After}}</span></span>{{end}}{{if .Note}}<span class="note">{{.Note}}</span>{{end}}<span class="on">{{.Targets}}</span></span>
           </li>
           {{end}}
         </ul>

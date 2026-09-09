@@ -1,8 +1,8 @@
 # PIACE 0.5.0 implementation plan
 
 Status: Phase 1 verified; Phase 2 implemented with the real-wire fixture gate
-in 2.2 still open. Updated 2026-09-09. Based on the codebase review of commit
-`e2b5090` on 2026-09-08.
+in 2.2 still open; steps 3.1 and 3.2 verified. Updated 2026-09-09. Based on the
+codebase review of commit `e2b5090` on 2026-09-08.
 
 PIACE is published but has no deployments. Treat 0.5.0 as the first deployment
 target: choose the correct interfaces, configuration, and artifact formats
@@ -284,7 +284,16 @@ envelope and snapshot-fidelity audit in 3.3 are still outstanding.
 
 ### 3.1 Make aggregation respect every member's disclosure policy
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Synthetic regressions in
+  `internal/aggregate/disclosure_test.go` exercise the differ, aggregation,
+  JSON/text/HTML publication, and inference payload construction with selectors,
+  sensitivity on either catalog, and nested wrappers. Target renaming and
+  reordering preserve disclosure and references. `build_test.go` covers
+  recursive marker union without member mutation and separation of distinct
+  sensitive fingerprints. Local macOS verification passed: `go test -race ./...`,
+  `go vet ./...`, `go build ./...`, and `git diff --check`. These tests establish
+  local disclosure behavior, not live wire conformance. File-content projection
+  remains part of 3.2.
 
 **Finding: medium severity, reproduced.** Aggregation groups equal raw changes,
 then publishes the alphabetically first target's projection. A group containing
@@ -309,7 +318,20 @@ targets `a` and `z` exposed plaintext although `z` redacted that parameter.
 
 ### 3.2 Preserve useful evidence for resource and graph changes
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Additions/removals retain redacted
+  parameter maps and group by raw managed settings. File membership changes
+  resolve only the existing catalog side; missing or unsupported evidence is
+  indeterminate with a diagnostic. Aggregate File summaries carry state, source,
+  verification and redaction without digests or target-specific provenance.
+  Assessment includes ordered edge endpoints under the shared group budget.
+  Result schema is now 2; producers, consumers, fixtures and implementation
+  documentation agree. Synthetic regressions in
+  `internal/aggregate/evidence_test.go`, `internal/filecontent/membership_test.go`
+  and `internal/assess/request_test.go` cover grouping, disclosure, stored-report
+  assessment, all report formats, and edge-only/truncated requests. Local macOS
+  verification passed: `go test ./...`, `go test -race ./...`, `go vet ./...`,
+  `go build ./...`, formatting and `git diff HEAD --check`. No live service
+  conformance evidence was added; the 2.2/5.1 fixture gate remains open.
 
 **Finding: medium severity.** Additions and removals retain identity only, so
 different added configurations can group as equivalent. File-content evidence

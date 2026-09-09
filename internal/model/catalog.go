@@ -121,6 +121,10 @@ type FileSideEvidence struct {
 type FileContentState string
 
 const (
+	// Added/Removed describe verified evidence on the sole catalog side that
+	// exists, not a prediction of filesystem creation or deletion.
+	FileContentAdded   FileContentState = "resource_added"
+	FileContentRemoved FileContentState = "resource_removed"
 	// FileContentUnchanged means compared digests or checksums matched.
 	FileContentUnchanged FileContentState = "unchanged"
 	// FileContentChanged means a verified cryptographic digest or
@@ -149,8 +153,9 @@ const (
 )
 
 // FileContentEvidence is the redaction-safe evidence attached to a File
-// parameter change. It never carries managed content bytes; a redacted
-// content selector suppresses even the digest.
+// parameter or membership change. Membership changes populate only the
+// existing catalog side. It never carries managed content bytes; sensitivity
+// or a content selector suppresses even the digest.
 type FileContentEvidence struct {
 	State            FileContentState          `json:"state"`
 	EvidenceSource   FileContentEvidenceSource `json:"evidence_source,omitempty"`
@@ -161,4 +166,21 @@ type FileContentEvidence struct {
 	Before           *FileSideEvidence         `json:"before,omitempty"`
 	After            *FileSideEvidence         `json:"after,omitempty"`
 	ReferenceChanged bool                      `json:"reference_changed,omitempty"`
+}
+
+// FileContentSummary is aggregate and assessment evidence without content
+// digests or target-specific catalog provenance. Individual change references
+// retain access to that provenance in the report.
+type FileContentSummary struct {
+	State            FileContentState          `json:"state"`
+	EvidenceSource   FileContentEvidenceSource `json:"evidence_source,omitempty"`
+	Redacted         bool                      `json:"redacted,omitempty"`
+	ReferenceChanged bool                      `json:"reference_changed,omitempty"`
+	Before           *FileSideSummary          `json:"before,omitempty"`
+	After            *FileSideSummary          `json:"after,omitempty"`
+}
+
+type FileSideSummary struct {
+	Source   FileContentEvidenceSource `json:"source,omitempty"`
+	Verified bool                      `json:"verified"`
 }
