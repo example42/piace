@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/example42/piace/internal/config/resolve"
+	"github.com/example42/piace/internal/safemeta"
 )
 
 // DefaultTimeout is the per-request deadline applied when a caller does
@@ -96,6 +97,9 @@ func NewClient(ep resolve.Endpoint, opts ...Option) (*Client, error) {
 	if ep.URL == nil {
 		return nil, newError(KindConfig, "", "endpoint URL is not set", nil)
 	}
+	if ep.URL.User != nil {
+		return nil, newError(KindConfig, "", "endpoint userinfo is forbidden", nil)
+	}
 	host := ep.URL.Host
 	if ep.URL.Scheme != "https" {
 		return nil, newError(KindConfig, host, fmt.Sprintf("endpoint scheme must be https, got %q", ep.URL.Scheme), nil)
@@ -162,6 +166,9 @@ func NewClient(ep resolve.Endpoint, opts ...Option) (*Client, error) {
 // redirect.
 func checkRedirect(req *http.Request, via []*http.Request) error {
 	req.Header.Del("Authorization")
+	if req.URL.User != nil {
+		return newError(KindRedirectRejected, "", "redirect userinfo is forbidden", nil)
+	}
 
 	if len(via) == 0 {
 		return nil
@@ -169,12 +176,11 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	orig := via[0].URL
 	if req.URL.Scheme != "https" {
 		return newError(KindRedirectRejected, req.URL.Host,
-			fmt.Sprintf("redirect to non-https scheme %q rejected", req.URL.Scheme), nil)
+			"redirect to non-https scheme rejected", nil)
 	}
 	if req.URL.Host != orig.Host || req.URL.Scheme != orig.Scheme {
 		return newError(KindRedirectRejected, req.URL.Host,
-			fmt.Sprintf("redirect to a different authority rejected: %s://%s -> %s://%s",
-				orig.Scheme, orig.Host, req.URL.Scheme, req.URL.Host), nil)
+			"redirect to a different authority rejected", nil)
 	}
 	return nil
 }
@@ -195,7 +201,11 @@ type Response struct {
 // Client.Timeout. It does not itself apply the deadline; Do does, per
 // request.
 func (c *Client) NewRequest(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, method, url, body)
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, newError(KindConfig, c.host, "invalid request URL", err)
+	}
+	return req, nil
 }
 
 // Do executes req with a bounded deadline and a bounded response body
@@ -218,6 +228,9 @@ func (c *Client) NewRequest(ctx context.Context, method, url string, body io.Rea
 // reported as *Error{Kind: KindResponseTooLarge} rather than silently
 // truncated.
 func (c *Client) Do(req *http.Request, timeout time.Duration) (*Response, error) {
+	if req.URL == nil || req.URL.User != nil || req.URL.Scheme != "https" || req.URL.Host != c.host || (req.Host != "" && req.Host != c.host) {
+		return nil, newError(KindConfig, c.host, "request must use the configured HTTPS authority without userinfo", nil)
+	}
 	if timeout <= 0 {
 		timeout = c.timeout
 	}
@@ -303,13 +316,13 @@ func (c *Client) observe(req *http.Request, requestBody, responseBody []byte, st
 	shape, keys, truncated := describeBody(responseBody)
 	ev := Event{
 		Method:            req.Method,
-		URL:               req.URL.String(),
+		URL:               safemeta.URL(req.URL),
 		Host:              req.URL.Host,
 		StatusCode:        statusCode,
 		Duration:          elapsed,
 		RequestBodyBytes:  req.ContentLength,
 		ResponseBodyBytes: len(responseBody),
-		ContentType:       contentType,
+		ContentType:       safemeta.Text(contentType),
 		Shape:             shape,
 		TopLevelKeys:      keys,
 		KeysTruncated:     truncated,

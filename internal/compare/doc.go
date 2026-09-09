@@ -10,8 +10,9 @@
 // internal/impact, and outcome precedence in internal/model's Reduce.
 // This package sequences those calls, attributes each diagnostic to the
 // right place in the shared result document, and nothing else. It
-// deliberately re-validates nothing: a second copy of a rule is a second
-// rule.
+// validates fact inputs with puppetdb.ValidateFactset and checks catalog
+// attribution at the workflow boundary. The baseline is normalized before
+// compilation, so invalid baseline structure cannot cause a candidate request.
 //
 // # Per-target isolation
 //

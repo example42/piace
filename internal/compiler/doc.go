@@ -145,15 +145,19 @@
 //     `{false, false}` in every request this package builds: PIACE never
 //     persists candidate facts or candidate catalogs to PuppetDB, which
 //     makes this non-negotiable rather than a configurable option.
-//   - trusted facts: a factset's "trusted" fact (present in the classic
-//     Puppet trusted-fact structure alongside ordinary facts, per
-//     PuppetDB's own factsets documentation example) is the exact value
-//     sent as the v4 request's `trusted_facts.values`. A valid
-//     trusted-fact structure is judged as: the
-//     "trusted" fact value decodes to a JSON object with a non-empty
-//     string "certname" field and a present "authenticated" field, the
-//     two fields that distinguish Puppet's documented trusted-fact shape
-//     from an unrelated fact that happens to be named "trusted".
+//   - trusted facts: internal/puppetdb.ValidateFactset checks input identity,
+//     collection structure and supplied trusted facts before any v3/v4 request.
+//     Supplied certname must equal the target, authenticated must be "remote"
+//     or "local", optional extensions/external must be objects, and optional
+//     hostname/domain must agree with certname (null domain is valid without a
+//     domain suffix). Puppet's unauthenticated context uses boolean false and a
+//     null certname; it cannot establish the target identity PIACE requires.
+//     Source: lib/puppet/context/trusted_information.rb in puppetlabs/puppet.
+//     Missing trusted facts may use an explicitly configured compiler lookup.
+//     Malformed or inconsistent supplied trusted facts fail operationally even
+//     when lookup is enabled. Missing facts without lookup remain a v4 policy
+//     failure. These checks validate structure and attribution, not authenticity
+//     of operator-supplied snapshot contents.
 //
 // # Persistence
 //

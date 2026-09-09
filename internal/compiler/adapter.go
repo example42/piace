@@ -42,10 +42,10 @@ func NewAdapter(client *transport.Client, endpoint *url.URL) *Adapter {
 func (a *Adapter) RequestCandidate(ctx context.Context, target resolve.Target, facts puppetdb.Factset) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic) {
 	host := a.client.Host()
 
-	flatFacts, err := flattenFacts(facts.Facts)
+	flatFacts, err := puppetdb.ValidateFactset(facts, target.Certname)
 	if err != nil {
 		diag := operationalLocalDiagnostic(target.Certname, host,
-			"malformed or unparseable input factset: cannot build a candidate catalog request")
+			"invalid input factset: "+err.Error())
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
 	}
 

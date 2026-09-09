@@ -46,8 +46,8 @@ func diffResources(
 	certname, candidateEnvironment string,
 	beforeResources, afterResources map[model.ResourceIdentity]model.Resource,
 	retriever filecontent.ContentRetriever,
-) ([]model.ResourceChange, []model.Diagnostic) {
-	var changes []model.ResourceChange
+) ([]rawResourceChange, []model.Diagnostic) {
+	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
 
 	allIdentities := unionIdentities(beforeResources, afterResources)
@@ -57,12 +57,12 @@ func diffResources(
 
 		switch {
 		case inBefore && !inAfter:
-			changes = append(changes, model.ResourceChange{
+			changes = append(changes, rawResourceChange{
 				Kind:     model.ChangeResourceRemoved,
 				Identity: identity,
 			})
 		case !inBefore && inAfter:
-			changes = append(changes, model.ResourceChange{
+			changes = append(changes, rawResourceChange{
 				Kind:     model.ChangeResourceAdded,
 				Identity: identity,
 			})
@@ -91,8 +91,8 @@ func diffParameters(
 	identity model.ResourceIdentity,
 	before, after map[string]model.Value,
 	retriever filecontent.ContentRetriever,
-) ([]model.ResourceChange, []model.Diagnostic) {
-	var changes []model.ResourceChange
+) ([]rawResourceChange, []model.Diagnostic) {
+	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
 
 	isFile := identity.Type == fileResourceType
@@ -121,7 +121,7 @@ func diffParameters(
 		if reflect.DeepEqual(bv, av) {
 			continue
 		}
-		changes = append(changes, model.ResourceChange{
+		changes = append(changes, rawResourceChange{
 			Kind:      model.ChangeParameterChanged,
 			Identity:  identity,
 			Parameter: name,
@@ -132,16 +132,18 @@ func diffParameters(
 
 	if isFile && fileContentDiffers {
 		evidence, diag := filecontent.ResolveFileContentEvidence(ctx, certname, candidateEnvironment,
-			identity, before, after, retriever)
+			identity, unwrapContentParameters(before), unwrapContentParameters(after), retriever)
 		if diag != nil {
 			diagnostics = append(diagnostics, *diag)
 		}
 		if evidence.State != model.FileContentUnchanged {
-			change := model.ResourceChange{
+			change := rawResourceChange{
 				Kind:        model.ChangeParameterChanged,
 				Identity:    identity,
 				Parameter:   contentBearingParameter,
 				FileContent: &evidence,
+				Before:      contentParameters(before),
+				After:       contentParameters(after),
 			}
 			changes = append(changes, change)
 		}
@@ -207,6 +209,35 @@ func indexResources(resources []model.Resource) map[model.ResourceIdentity]model
 	out := make(map[model.ResourceIdentity]model.Resource, len(resources))
 	for _, r := range resources {
 		out[r.Identity] = r
+	}
+	return out
+}
+
+// File evidence resolves the managed value while publication retains the
+// original sensitivity declaration and suppresses derived digests.
+func unwrapContentParameters(params map[string]model.Value) map[string]model.Value {
+	out := make(map[string]model.Value, len(params))
+	for name, value := range params {
+		if fileContentBearingParameters[name] {
+			for {
+				wrapper, ok := value.(map[string]model.Value)
+				if !ok || !isSensitiveWrapper(wrapper) {
+					break
+				}
+				value = wrapper["__pvalue"]
+			}
+		}
+		out[name] = value
+	}
+	return out
+}
+
+func contentParameters(params map[string]model.Value) map[string]model.Value {
+	out := make(map[string]model.Value)
+	for name := range fileContentBearingParameters {
+		if value, ok := params[name]; ok {
+			out[name] = value
+		}
 	}
 	return out
 }

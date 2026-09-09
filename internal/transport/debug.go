@@ -25,6 +25,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"time"
+
+	"github.com/example42/piace/internal/safemeta"
 )
 
 // maxTopLevelKeys bounds how many top-level member names one Event
@@ -56,9 +58,8 @@ const (
 // RequestBody/ResponseBody is safe to print to a CI log.
 type Event struct {
 	Method string
-	// URL is the full request URL, including any query string. PIACE only
-	// ever puts certnames, environments, and endpoint paths in a URL, all
-	// of which already appear in ordinary diagnostics.
+	// URL is the safe projection defined by internal/safemeta, with
+	// userinfo, fragments and arbitrary query values omitted.
 	URL  string
 	Host string
 	// StatusCode is zero when no response was received (Err is set).
@@ -141,7 +142,7 @@ func describeBody(body []byte) (BodyShape, []string, bool) {
 			truncated = true
 			continue
 		}
-		keys = append(keys, name)
+		keys = append(keys, safemeta.Text(name))
 	}
 	return ShapeObject, keys, truncated
 }

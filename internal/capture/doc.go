@@ -42,4 +42,8 @@
 // compiler) to obtain a candidate catalog. The only write I/O anywhere in
 // this package is internal/snapshot.Write, which writes to the local
 // filesystem, never to PuppetDB.
+//
+// Factsets are validated before capture or candidate compilation. Every built
+// envelope is checked for required metadata and payload identity agreement
+// before writing, using the same snapshot.Validate contract as file reuse.
 package capture

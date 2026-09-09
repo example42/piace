@@ -134,6 +134,10 @@ func (w *Workflow) captureFactsForTarget(ctx context.Context, target resolve.Tar
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
 
+	if err := snapshot.Validate(env, snapshot.KindFactset, target.Certname); err != nil {
+		d := snapshotDiagnostic(target.Certname, err)
+		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
+	}
 	if err := snapshot.Write(target.Facts.File, env, w.Replace); err != nil {
 		d := snapshotDiagnostic(target.Certname, err)
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
@@ -172,6 +176,10 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		return TargetOutcome{Certname: target.Certname, Diagnostic: diag}
 	}
 
+	if _, err := puppetdb.ValidateFactset(fs, target.Certname); err != nil {
+		d := model.Diagnostic{Certname: target.Certname, Operation: model.OperationLoadFacts, Severity: model.SeverityError, Message: err.Error()}
+		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
+	}
 	factsetIdentity, err := puppetdb.FactsetIdentity(fs)
 	if err != nil {
 		d := snapshotDiagnostic(target.Certname, err)
@@ -189,6 +197,10 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
 
+	if err := snapshot.Validate(env, snapshot.KindCatalog, target.Certname); err != nil {
+		d := snapshotDiagnostic(target.Certname, err)
+		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
+	}
 	if err := snapshot.Write(target.Baseline.File, env, w.Replace); err != nil {
 		d := snapshotDiagnostic(target.Certname, err)
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
@@ -203,6 +215,9 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 // wrote this factset: the envelope records the adapter and producer
 // identity whenever the service supplies one.
 func buildFactsetEnvelope(certname string, fs puppetdb.Factset, capturedAt string) (snapshot.Envelope, error) {
+	if _, err := puppetdb.ValidateFactset(fs, certname); err != nil {
+		return snapshot.Envelope{}, err
+	}
 	payload, err := json.Marshal(fs)
 	if err != nil {
 		return snapshot.Envelope{}, fmt.Errorf("encoding factset payload: %w", err)

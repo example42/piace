@@ -87,7 +87,7 @@ func Diff(
 	}
 
 	// Pass 3: redaction, strictly after HasDifference is already set.
-	nodeDiff.ResourceChanges = redactChanges(target.Redact, resourceChanges)
+	nodeDiff.ResourceChanges = publishChanges(target.Redact, resourceChanges, beforeResources, afterResources)
 
 	return nodeDiff, diagnostics
 }

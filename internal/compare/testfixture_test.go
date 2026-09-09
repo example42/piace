@@ -30,6 +30,9 @@ func (f fakeFactSource) Load(_ context.Context, target resolve.Target) (puppetdb
 	}
 	factset := f.factset
 	factset.Certname = target.Certname
+	if factset.Facts == nil {
+		factset.Facts = json.RawMessage(`{"data":[]}`)
+	}
 	return factset, model.SourceProvenance{
 		Kind:     model.SourceKindPuppetDB,
 		Certname: target.Certname,

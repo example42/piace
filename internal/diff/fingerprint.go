@@ -10,27 +10,10 @@ import (
 	"github.com/example42/piace/internal/snapshot"
 )
 
-// fingerprintResourceChange computes the stable, equality-preserving
-// digest documented on model.ResourceChange.Fingerprint, over a change's
-// *unredacted* canonical evidence. It must be called during pass 1,
-// before redactChanges runs.
-//
-// The digested tuple deliberately includes kind, identity, and parameter
-// name in addition to the before/after evidence: internal/aggregate groups on
-// (kind, identity, parameter) already, but including them here means two
-// changes with different keys can never collide on Fingerprint alone, so
-// a consumer may treat the Fingerprint as the complete group token
-// without re-deriving the key.
-//
-// For a File-content change, the evidence is the pre-redaction
-// FileContentEvidence (state, evidence source, algorithm, and both
-// digests) rather than Before/After, which that entry deliberately
-// leaves unset (see resources.go). Without this, every redacted File
-// content change on the same path would collapse into a single aggregate
-// group regardless of whether the underlying content actually matched,
-// which is exactly the merging of distinct sensitive changes that
-// redaction ordering exists to prevent.
-func fingerprintResourceChange(change model.ResourceChange) (string, error) {
+// fingerprintResourceChange hashes raw evidence before publishChanges.
+// File changes include both content-bearing parameter maps and resolved
+// evidence so distinct unresolved changes cannot collapse into one group.
+func fingerprintResourceChange(change rawResourceChange) (string, error) {
 	evidence := map[string]model.Value{
 		"kind":      string(change.Kind),
 		"type":      change.Identity.Type,
@@ -40,6 +23,8 @@ func fingerprintResourceChange(change model.ResourceChange) (string, error) {
 	switch {
 	case change.FileContent != nil:
 		fc := change.FileContent
+		evidence["before"] = fingerprintable(change.Before)
+		evidence["after"] = fingerprintable(change.After)
 		evidence["file_content"] = map[string]model.Value{
 			"state":           string(fc.State),
 			"evidence_source": string(fc.EvidenceSource),

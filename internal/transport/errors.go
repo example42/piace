@@ -53,7 +53,7 @@ type Error struct {
 	Host string
 	// Message is a short, secret-free description of what failed.
 	Message string
-	// Err is the underlying error, if any. It is included in Error() but
+	// Err is the underlying error, if any. Error() never displays it;
 	// callers building a model.Diagnostic should prefer Message plus safe
 	// fields over calling Err.Error() directly on an unclassified error
 	// from elsewhere, since this package cannot guarantee an error it did
@@ -64,9 +64,6 @@ type Error struct {
 func (e *Error) Error() string {
 	if e == nil {
 		return "<nil>"
-	}
-	if e.Err != nil {
-		return fmt.Sprintf("transport: %s: %s: %v", e.Kind, e.Message, e.Err)
 	}
 	return fmt.Sprintf("transport: %s: %s", e.Kind, e.Message)
 }

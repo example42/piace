@@ -56,4 +56,19 @@
 //     returns it as a plain status code with nil error), and interpreting
 //     it as a compilation failure requires v3/v4 response-shape knowledge
 //     that belongs to internal/compiler's compiler adapter, not this package.
+//
+// # Observable metadata and authority
+//
+// Configuration and construction reject URL userinfo. Every initial request
+// must use the client's configured HTTPS authority, including its Host header;
+// redirects remain on that authority and cannot introduce userinfo. Authorization
+// is stripped on both paths. Errors retain causes for classification but their
+// display text never includes URL-bearing lower-level errors.
+//
+// Debug URLs omit userinfo, fragments and arbitrary query values. The sole
+// query allowlist entry is api-version in YYYY-MM-DD or YYYY-MM-DD-preview form.
+// File-content request paths omit the source suffix, which can be sensitive.
+// Response member names and content types are untrusted: safemeta.Text escapes
+// controls and bounds each to 256 output bytes; at most 64 names are retained.
+// Explicit body capture remains a separate raw-body opt-in.
 package transport

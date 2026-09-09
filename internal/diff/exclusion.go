@@ -32,10 +32,10 @@ import (
 // something, not about every configured rule regardless of effect.
 func applyExclusions(
 	rules []config.ExclusionRule,
-	resourceChanges []model.ResourceChange,
+	resourceChanges []rawResourceChange,
 	edgeChanges []model.EdgeChange,
 	allIdentities []model.ResourceIdentity,
-) ([]model.ResourceChange, []model.EdgeChange, []model.ExclusionOutcome) {
+) ([]rawResourceChange, []model.EdgeChange, []model.ExclusionOutcome) {
 	if len(rules) == 0 {
 		return resourceChanges, edgeChanges, nil
 	}
@@ -64,7 +64,7 @@ func applyExclusions(
 		counts[i].Rule = model.ExclusionRuleRef{Type: rule.Type, Title: rule.Title}
 	}
 
-	keptResourceChanges := make([]model.ResourceChange, 0, len(resourceChanges))
+	keptResourceChanges := make([]rawResourceChange, 0, len(resourceChanges))
 	for _, change := range resourceChanges {
 		ruleIndex, excluded := excludedIdentityRule[change.Identity]
 		if !excluded {

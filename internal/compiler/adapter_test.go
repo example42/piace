@@ -16,6 +16,15 @@ import (
 	"github.com/example42/piace/internal/transport"
 )
 
+type factEntry struct {
+	Name  string          `json:"name"`
+	Value json.RawMessage `json:"value"`
+}
+type expandedFacts struct {
+	Href string      `json:"href"`
+	Data []factEntry `json:"data"`
+}
+
 func factsetWithTrusted(certname, environment string, trusted bool) puppetdb.Factset {
 	data := []factEntry{
 		{Name: "os", Value: json.RawMessage(`"linux"`)},

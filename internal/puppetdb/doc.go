@@ -129,4 +129,15 @@
 // environment against resolve.Target.Baseline.Environment and returns an
 // operational diagnostic (model.OperationLoadBaseline) when they differ,
 // before the catalog is usable for diffing.
+//
+// # Input validation
+//
+// File and PuppetDB sources reject a payload certname that differs from the
+// requested target. Factsets require a facts object with a present data array;
+// [] is a valid empty collection, while missing/null collections, malformed
+// entries, missing values and duplicate names are operational load failures.
+// ValidateFactset also checks supplied trusted-fact identity and field types.
+// Missing trusted facts remain a compiler-lookup policy decision. File inputs
+// additionally require snapshot envelope, payload and requested identities to
+// agree, independently of checksum validation.
 package puppetdb

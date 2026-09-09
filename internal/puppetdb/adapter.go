@@ -159,6 +159,11 @@ func (a *Adapter) Load(ctx context.Context, target resolve.Target) (Factset, mod
 		return Factset{}, model.SourceProvenance{}, &diag
 	}
 
+	if _, err := ValidateFactset(fs, target.Certname); err != nil {
+		diag := snapshotDiagnostic(model.OperationLoadFacts, target.Certname, err.Error())
+		return Factset{}, model.SourceProvenance{}, &diag
+	}
+
 	prov := model.SourceProvenance{
 		Kind:              model.SourceKindPuppetDB,
 		Certname:          fs.Certname,
@@ -206,6 +211,11 @@ func (a *Adapter) LoadBaseline(ctx context.Context, target resolve.Target) (Cata
 	if notFound {
 		diag := notFoundOrMalformedDiagnostic(model.OperationLoadBaseline, target.Certname, host, resp.StatusCode,
 			"no catalog found in puppetdb for certname")
+		return Catalog{}, model.SourceProvenance{}, &diag
+	}
+
+	if target.Certname == "" || cat.Certname != target.Certname {
+		diag := snapshotDiagnostic(model.OperationLoadBaseline, target.Certname, "catalog certname does not match the requested target")
 		return Catalog{}, model.SourceProvenance{}, &diag
 	}
 
