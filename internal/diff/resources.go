@@ -152,7 +152,11 @@ func diffParameters(
 		if diag != nil {
 			diagnostics = append(diagnostics, *diag)
 		}
-		if evidence.State != model.FileContentUnchanged {
+		// FileContentNotManaged is as much a "nothing to report" answer
+		// as FileContentUnchanged: neither side asks Puppet to place
+		// bytes at this path, so a content row would describe a
+		// difference that does not exist.
+		if evidence.State != model.FileContentUnchanged && evidence.State != model.FileContentNotManaged {
 			change := rawResourceChange{
 				Kind:        model.ChangeParameterChanged,
 				Identity:    identity,

@@ -261,7 +261,7 @@ func TestDecodeJSON_RejectsAnOversizedDocument(t *testing.T) {
 // TestDecodeJSON_ValidatesWhatItDecodes: the sparse document that
 // motivated this check reaches no consumer.
 func TestDecodeJSON_ValidatesWhatItDecodes(t *testing.T) {
-	if _, err := DecodeJSON([]byte(`{"schema_version":2}`)); err == nil {
+	if _, err := DecodeJSON([]byte(`{"schema_version":3}`)); err == nil {
 		t.Fatal("accepted a document describing no comparison")
 	}
 }

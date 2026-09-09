@@ -6,7 +6,7 @@ import "github.com/example42/piace/internal/exitcode"
 // result document. Consumers (CI scripts, the HTML/text renderers) key
 // their parsing on this value; an incompatible schema change increments
 // it.
-const ResultSchemaVersion = 2
+const ResultSchemaVersion = 3
 
 // Invocation carries invocation metadata: tool version, run timestamp,
 // and resolved safe configuration provenance. It is the result

@@ -36,6 +36,13 @@
 // its own side's environment at GET /puppet/v3/file_content/<mount-path>, with
 // Accept: application/octet-stream. Only HTTP 200 yields locally hashed bytes.
 //
+// A File whose ensure is absent or link manages no bytes: Puppet ignores
+// content, source and checksum_value there. That is not_managed on either
+// side, reported without evidence and without a diagnostic, because it is a
+// determinate answer rather than a failed comparison. The ensure value itself
+// is not a content-bearing parameter, so a change to it is reported by the
+// ordinary parameter diff.
+//
 // Directory, recursive and non-file sources are not byte-comparable. Their
 // source changes are reference_changed with a visible limitation warning;
 // unchanged references are indeterminate with an error, never claimed equal.
