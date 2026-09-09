@@ -658,6 +658,99 @@ That does not establish real-service conformance: several fixtures encode the
 same assumptions as the code. Acquire real wire evidence as early as a preceding
 step needs it; this step is the final integration gate.
 
+#### Live findings, 2026-09-09
+
+PIACE ran against a deployed OpenVox 8.15.2 compiler (`puppet 8.28.1`) and its
+PuppetDB for the first time on 2026-09-09. Two runs: one comparing a node's
+`production` baseline against an `upstream` candidate, and one comparing
+`production` against itself, which is the controlled case because every
+reported difference in it is by construction an artifact.
+
+The self-comparison exited 30 with 28 resource differences and 57 edge
+differences. All of them were artifacts. They have one root cause.
+
+**A PuppetDB baseline is Puppet's own lossy projection of a catalog, and PIACE
+compares it against a full-fidelity compiler response as though the two were
+the same format.** `Puppet::Resource::Catalog::Puppetdb#munge_catalog`, in the
+terminus deployed on that server, rewrites a catalog before storing it. Each
+rewrite is a place where a stored baseline and a compiled candidate can differ
+while describing the same desired state. The full list, from the deployed
+source, is the conformance matrix this step owes:
+
+| Terminus munge | Effect on a stored catalog | Status |
+| --- | --- | --- |
+| `add_namevar_aliases` | injects an `alias` parameter absent from a compiler response | closed 2026-08-28, `normalize` drops it |
+| `sort_unordered_metaparams` | sorts `alias`, `audit`, `before`, `check`, `notify`, `require`, `subscribe`, `tag` | finding L2 below |
+| `synthesize_edges` | adds relationship edges a compiler response does not carry | finding L3 below |
+| `stringify_rich` around `to_data_hash` | rewrites every rich value to a lossy string | finding L4 below |
+| `redact_sensitive_params` | deletes sensitive parameters and the `sensitive_parameters` key | finding L5 below |
+| `stringify_titles` | stringifies resource titles | checked: no non-string title in the sample |
+| `stringify_version`, `add_producer*`, `add_code_id_if_missing`, `filter_keys`, `change_name_to_certname`, `hashify_tags` | catalog-level metadata only | not compared by PIACE |
+| `munge_catalog_inputs` | Hiera lookup recording, separate PuppetDB command | not compared by PIACE |
+
+`ToStringifiedConverter`, the class the fourth of those uses, documents itself:
+"The conversion is lossy - the result cannot be deserialized to produce the
+original data types." `Puppet::Resource#to_data_hash` adds "the
+ToStringifiedConverter output is lossy and should not be used when producing a
+catalog serialization". PIACE compares against exactly that output.
+
+**Finding L1: `ensure => absent` files were reported as unsupported
+comparisons.** High severity, reproduced, fixed. Sixteen of the
+self-comparison's differences were File resources both catalogs held
+identically with `ensure => absent`. `filecontent.nonByteComparable` grouped
+`ensure => absent` and `ensure => link` with directories and recursive sources,
+so each produced a spurious change, a diagnostic misdescribing a plain file as
+a directory, and an error severity that made the run an operational error. A
+catalog that manages no bytes at a path is a determinate answer, not missing
+evidence. Now `not_managed`; see the commit and
+`internal/filecontent/unmanaged_test.go`.
+
+**Finding L2: relationship order was reported as a change.** Medium severity,
+reproduced, fixed. `Service[pabawi]`'s `require` and `subscribe` held the same
+entries on both sides in different orders. Puppet's terminus calls these
+metaparameters "fundamentally unordered" and sorts them; a compiler response is
+in declaration order. `normalize` now sorts the same seven on both sides. Two
+compilations of the same catalog returned byte-identical parameters, so this is
+the terminus's reordering and not compilation nondeterminism.
+
+**Finding L3: synthesized relationship edges were reported as removed.** Medium
+severity, reproduced. The stored baseline carried 296 edges, the compiled
+candidate 239. The 239 containment edges were an identical multiset; every one
+of the extra 57 was a relationship edge the terminus synthesized from a
+`require`, `before`, `notify` or `subscribe` metaparameter. A compiler catalog
+carries containment edges only, because relationship edges are resolved by the
+agent at apply time. So a PuppetDB-backed comparison reports every relationship
+in the catalog as removed, and reports it twice, since the metaparameter it was
+derived from is compared as a parameter in its own right. The text report hides
+edge groups by design, so these were invisible there while reaching the JSON
+document, the aggregate and the inference request.
+
+**Finding L4: rich values were reported as changed.** Medium severity,
+reproduced. `Class[Psick::Puppet]`'s `facts_file_exclude_regex` compared
+`"/^(...)$/"` against `{"__ptype":"Regexp","__pvalue":"^(...)$"}`. The baseline
+holds `ToStringifiedConverter`'s output and the candidate holds Pcore rich
+data. Neither side is wrong; they are different fidelities of the same value.
+The measured evidence covers `Regexp` and no other type. Every other Pcore type
+that could appear (`Timestamp`, `Timespan`, `Binary`, `SemVer`, `Deferred`,
+`Default`, object types) is an open gate until a fixture measures it: reading
+Ruby is not evidence.
+
+**Finding L5: sensitive parameters are absent from a PuppetDB baseline.** Open,
+partially measured. `redact_sensitive_params` deletes every parameter named in
+`sensitive_parameters`, and the key itself, before a catalog is stored. So a
+PuppetDB baseline cannot carry either. What the compiler's v4 response carries
+is not yet measured: neither catalog in the sample contained a sensitive
+parameter at all, so `sensitive_parameters` appeared zero times on both sides.
+Until a fixture settles it, phase 1.1's "decode it from supported compiler and
+PuppetDB representations" is unexercised against real wire data on both sides,
+and 5.2's disclosure row cannot state a verified representation.
+
+The fixture manifest this step still owes must therefore cover, at minimum:
+each Pcore rich type as an actual parameter value; a resource with
+`sensitive_parameters`; a class with a `Sensitive` parameter; a regexp carrying
+flags, to settle whether `regexp_to_s_with_delimiters` round-trips them; and
+the File shapes 2.2 needs.
+
 **Changes**
 
 1. Generate catalogs and facts from dedicated test manifests containing synthetic
