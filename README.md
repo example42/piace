@@ -503,6 +503,38 @@ than* the limit, never as an exact population, with a sorted certname sample.
 Because an enabled estimate is requested analysis, a failed one is an
 operational error.
 
+## Writing artifacts
+
+Every file PIACE writes is published through a same-directory temporary file
+and one atomic replacement: a reader sees the previous file or the complete new
+one, never a half-written artifact, and a run that dies mid-write leaves no
+truncated file behind. Reports and assessments are `0644`, snapshots `0600`, and
+the mode is set before any content reaches the file. A destination that is a
+pipe or a device (`--json-out /dev/stdout`) is written in place, since it has no
+directory entry to replace; a destination that is a symlink to a regular file is
+replaced by the artifact, leaving the file it pointed at alone.
+
+Publication across *several* files is not a transaction and is not described as
+one. Every requested artifact is rendered before any is written, so the usual
+failure costs nothing; if a write then fails, the run exits `30` and says which
+artifacts exist and which do not.
+
+Destinations are checked before any service request. Two artifacts of one run
+may not name the same file, and no artifact may be written over a file the same
+run reads: its configuration, or a snapshot it loads. Paths are compared after
+normalization, and where both already exist, by file identity, so a symlink or a
+hard link to the input is caught too. Two destinations that do not exist yet and
+would become hard links to each other are not detectable and are not claimed to
+be.
+
+```sh
+# Rejected before an inference service is contacted:
+piace explain --json-in report.json --ai-out report.json
+# Rejected before a compiler request:
+piace compare --targets t.yaml --services s.yaml \
+  --json-out out.txt --text-out out.txt
+```
+
 ## Output and secrecy
 
 Redaction happens after semantic comparison and exclusions through an explicit
@@ -550,7 +582,9 @@ outside the checksum and is checked a different way: its claims must agree with
 the payload they describe, and its capture provenance must describe a request
 sequence that can actually occur (a fallback means a v4 request compiled
 through v3; a v3 capture carries no trusted-fact source). Files are written
-atomically at `0600` and are never overwritten without `--replace`.
+atomically at `0600`, and without `--replace` the refusal to overwrite is the
+publication step itself, so two capture runs racing for one destination cannot
+both believe they wrote it.
 
 Reuse applies two separate checks. Integrity: a supported format version and a
 payload matching its checksum. Attribution: kind, target, source kind,

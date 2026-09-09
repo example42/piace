@@ -63,9 +63,9 @@ request, on every push to `main`, and on every `v*` tag.
 | `release` | `build` | Tags only. Publishes a GitHub Release from the artifacts `build` produced. The only job granted `contents: write` |
 | `image` | `build`, `release` | Tags only. Packages the same binaries into one multi-platform image and pushes it to Docker Hub and GHCR. See [release.md](release.md#the-container-image) |
 
-Both platforms are covered because snapshot writes (atomic rename, `fsync`,
-`0600`) and the release script's `sha256sum`/`shasum` branch are where they
-diverge. `build` runs on pull requests too, so a broken release script surfaces
+Both platforms are covered because artifact publication (atomic rename, hard
+links for a no-replace snapshot, `fsync`, file modes) and the release script's
+`sha256sum`/`shasum` branch are where they diverge. `build` runs on pull requests too, so a broken release script surfaces
 in review rather than at release time.
 
 Cutting a release is `git push origin v1.0.0`; a malformed tag fails before
@@ -82,7 +82,8 @@ internal/config/      Target and service file schemas
 internal/config/resolve/  Defaults, overrides, validation, safe provenance
 internal/transport/   Hardened, independent mTLS clients; redaction
 internal/puppetdb/    Fact and baseline-catalog sources (PuppetDB and file)
-internal/snapshot/    Envelopes, canonical JSON, checksums, atomic writes
+internal/artifact/    Atomic publication and destination conflict checks
+internal/snapshot/    Envelopes, canonical JSON, checksums
 internal/compiler/    v3/v4 candidate requests, trusted-fact and fallback policy
 internal/capture/     The capture pipeline for fact and catalog snapshots
 internal/normalize/   Catalogs into the deterministic semantic graph

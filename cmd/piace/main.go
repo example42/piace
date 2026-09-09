@@ -22,10 +22,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"net/http"
 
+	"github.com/example42/piace/internal/artifact"
 	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/capture"
 	"github.com/example42/piace/internal/compare"
@@ -247,6 +249,14 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
 		return exitcode.OperationalError
 	}
+	if err := artifact.Validate(comparisonInputs(f, cfg), []artifact.File{
+		{Role: "--json-out", Path: f.jsonOut},
+		{Role: "--html-out", Path: f.htmlOut},
+		{Role: "--text-out", Path: f.textOut},
+	}); err != nil {
+		fmt.Fprintf(stderr, "piace compare: %s\n", err)
+		return exitcode.OperationalError
+	}
 	debugOpts, err := f.debug.transportOptions("compare", stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
@@ -271,6 +281,53 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	}
 
 	return exitcode.Code(result.ExitCode)
+}
+
+// comparisonInputs lists the files a comparison reads: its two
+// configuration files and, for every file-backed target, the snapshots
+// it loads. The snapshots are the ones that matter here: a report
+// written over the baseline it was just compared against destroys the
+// input of every later run, and the operator finds out at the next
+// comparison rather than at this one.
+//
+// The list is built per command rather than from a shared helper,
+// because the same path is legitimately an input to one command and an
+// output of another: a target's facts.file is what `capture facts`
+// writes and what a comparison reads.
+func comparisonInputs(f compareFlags, cfg resolve.Config) []artifact.File {
+	inputs := []artifact.File{
+		{Role: "--targets", Path: f.targets},
+		{Role: "--services", Path: f.services},
+	}
+	for _, target := range cfg.Targets {
+		if target.Facts.File != "" {
+			inputs = append(inputs, artifact.File{Role: "the factset snapshot of " + target.Certname, Path: target.Facts.File})
+		}
+		if target.Baseline.File != "" {
+			inputs = append(inputs, artifact.File{Role: "the baseline snapshot of " + target.Certname, Path: target.Baseline.File})
+		}
+	}
+	return inputs
+}
+
+// captureDestinations lists the snapshots a capture run writes, one per
+// target that has a file-backed destination for the kind of snapshot
+// being captured. Two targets resolving to one path would have the
+// second silently overwrite the first, which a `{certname}`-free literal
+// path in the defaults block produces.
+func captureDestinations(targets []resolve.Target, catalog bool) []artifact.File {
+	out := make([]artifact.File, 0, len(targets))
+	for _, target := range targets {
+		path := target.Facts.File
+		role := "the factset snapshot of " + target.Certname
+		if catalog {
+			path, role = target.Baseline.File, "the catalog snapshot of "+target.Certname
+		}
+		if path != "" {
+			out = append(out, artifact.File{Role: role, Path: path})
+		}
+	}
+	return out
 }
 
 // newCompareWorkflow builds the compare pipeline from resolved
@@ -351,40 +408,93 @@ func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
 	// nothing at all, so these are the artifacts v0.1.0 wrote.
 	opts := report.Options{ImpactNodes: f.impactNodes}
 
+	var pending []pendingArtifact
 	if f.jsonOut != "" {
 		data, err := report.JSON(result)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(f.jsonOut, data, 0o644); err != nil {
-			return fmt.Errorf("writing JSON report: %w", err)
-		}
+		pending = append(pending, pendingArtifact{role: "JSON report", path: f.jsonOut, data: data})
 	}
-
 	if f.htmlOut != "" {
 		data, err := report.HTML(result, nil)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(f.htmlOut, data, 0o644); err != nil {
-			return fmt.Errorf("writing HTML report: %w", err)
-		}
+		pending = append(pending, pendingArtifact{role: "HTML report", path: f.htmlOut, data: data})
 	}
-
 	text, err := report.Text(result, nil, opts)
 	if err != nil {
 		return err
 	}
 	if f.textOut != "" {
-		if err := os.WriteFile(f.textOut, text, 0o644); err != nil {
-			return fmt.Errorf("writing text report: %w", err)
-		}
-		return nil
+		pending = append(pending, pendingArtifact{role: "text report", path: f.textOut, data: text})
 	}
-	if _, err := stdout.Write(text); err != nil {
-		return fmt.Errorf("writing text report to stdout: %w", err)
+
+	if err := publish(pending); err != nil {
+		return err
+	}
+	if f.textOut == "" {
+		if _, err := stdout.Write(text); err != nil {
+			return fmt.Errorf("writing text report to stdout: %w", err)
+		}
 	}
 	return nil
+}
+
+// pendingArtifact is one rendered artifact waiting to be published.
+type pendingArtifact struct {
+	role string
+	path string
+	data []byte
+}
+
+// publish writes rendered artifacts, in order, and reports what actually
+// happened when one of them cannot be written.
+//
+// Every artifact is rendered before any is published (see the callers),
+// so the common failure, a renderer that cannot produce one of them, costs
+// nothing and leaves nothing behind. Publication itself is not a
+// transaction across files and is not described as one: the filesystem
+// offers atomicity per file, which internal/artifact uses, and there is
+// no way to make three separate destinations appear together. What this
+// does guarantee is that each individual artifact is complete or absent,
+// and that a partial run says which of the requested artifacts exist, so
+// a CI job archiving them is not left guessing.
+func publish(artifacts []pendingArtifact) error {
+	for i, a := range artifacts {
+		// Reports are 0644: unlike a snapshot envelope (0600), a report is a
+		// review artifact meant to be read by CI and by humans, and it
+		// contains no credentials, private material, managed content bytes,
+		// or unredacted sensitive values by construction.
+		if err := artifact.Write(a.path, a.data, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w%s", a.role, err, publishedSoFar(artifacts[:i], artifacts[i+1:]))
+		}
+	}
+	return nil
+}
+
+// publishedSoFar renders the "what exists now" clause of a publication
+// failure. A message that says only which artifact failed leaves the
+// operator to work out whether the others were written.
+func publishedSoFar(done, remaining []pendingArtifact) string {
+	describe := func(as []pendingArtifact) string {
+		names := make([]string, 0, len(as))
+		for _, a := range as {
+			names = append(names, a.role+" ("+a.path+")")
+		}
+		return strings.Join(names, ", ")
+	}
+	switch {
+	case len(done) == 0 && len(remaining) == 0:
+		return ""
+	case len(done) == 0:
+		return "; not written: " + describe(remaining)
+	case len(remaining) == 0:
+		return "; already written: " + describe(done)
+	default:
+		return "; already written: " + describe(done) + "; not written: " + describe(remaining)
+	}
 }
 
 // captureFlags holds the parsed `capture facts`/`capture catalog` flags.
@@ -441,6 +551,14 @@ func runCaptureFacts(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
+	if err := artifact.Validate([]artifact.File{
+		{Role: "--targets", Path: f.targets},
+		{Role: "--services", Path: f.services},
+	}, captureDestinations(cfg.Targets, false)); err != nil {
+		fmt.Fprintf(stderr, "piace capture facts: %s\n", err)
+		return exitcode.OperationalError
+	}
+
 	puppetDBFacts, err := newPuppetDBAdapter(cfg, debugOpts)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture facts: %s\n", err)
@@ -488,6 +606,23 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
 	}
+	// A catalog capture reads each target's file-backed factset and writes
+	// its baseline snapshot, so the two cannot name one file.
+	captureInputs := []artifact.File{
+		{Role: "--targets", Path: f.targets},
+		{Role: "--services", Path: f.services},
+	}
+	for _, target := range cfg.Targets {
+		if target.Facts.File != "" {
+			captureInputs = append(captureInputs,
+				artifact.File{Role: "the factset snapshot of " + target.Certname, Path: target.Facts.File})
+		}
+	}
+	if err := artifact.Validate(captureInputs, captureDestinations(cfg.Targets, true)); err != nil {
+		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
+		return exitcode.OperationalError
+	}
+
 	// One compiler client for both the catalog request and the file-content
 	// retrieval capture performs while the environment is live; see
 	// newCompareWorkflow for why a service gets one client rather than one
@@ -636,6 +771,17 @@ func runExplain(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
+	if err := artifact.Validate([]artifact.File{
+		{Role: "--json-in", Path: f.jsonIn},
+		{Role: "--services", Path: f.services},
+	}, []artifact.File{
+		{Role: "--ai-out", Path: f.aiOut},
+		{Role: "--html-out", Path: f.htmlOut},
+	}); err != nil {
+		fmt.Fprintf(stderr, "piace explain: %s\n", err)
+		return exitcode.OperationalError
+	}
+
 	raw, err := readResultDocument(f.jsonIn)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace explain: %s\n", err)
@@ -733,19 +879,20 @@ func readResultDocument(path string) ([]byte, error) {
 // the same reason a report is: a change assessment carries no credential
 // and no managed content, and CI has to be able to publish it.
 func writeAssessment(f explainFlags, result model.Result, a assess.Assessment) error {
+	var pending []pendingArtifact
 	if f.aiOut != "" {
-		if err := assess.WriteArtifact(f.aiOut, a); err != nil {
+		data, err := assess.JSON(a)
+		if err != nil {
 			return err
 		}
+		pending = append(pending, pendingArtifact{role: "change assessment", path: f.aiOut, data: data})
 	}
 	if f.htmlOut != "" {
 		data, err := report.HTML(result, &a)
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(f.htmlOut, data, 0o644); err != nil {
-			return fmt.Errorf("writing HTML report: %w", err)
-		}
+		pending = append(pending, pendingArtifact{role: "HTML report", path: f.htmlOut, data: data})
 	}
-	return nil
+	return publish(pending)
 }

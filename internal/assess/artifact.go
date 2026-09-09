@@ -3,8 +3,8 @@ package assess
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 
+	"github.com/example42/piace/internal/artifact"
 	"github.com/example42/piace/internal/snapshot"
 )
 
@@ -30,19 +30,26 @@ func JSON(a Assessment) ([]byte, error) {
 	return append(canonical, '\n'), nil
 }
 
-// WriteArtifact writes the change assessment to path.
+// WriteArtifact publishes the change assessment at path through
+// internal/artifact, so a reader sees the complete document or the
+// previous one, never a half-written file.
 //
 // It is written 0644, like a report and unlike a snapshot envelope: it
 // carries no credential and no managed file content, and CI has to be
 // able to publish it. It does carry real certnames, since pseudonyms
 // exist only in an inference request body, so it belongs wherever the
 // JSON and HTML reports already go and nowhere less protected than that.
+//
+// cmd/piace renders and publishes the assessment alongside the HTML
+// report rather than calling this, so both artifacts are rendered before
+// either is written; this remains the single-artifact entry point for a
+// caller with nothing to coordinate.
 func WriteArtifact(path string, a Assessment) error {
 	data, err := JSON(a)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := artifact.Write(path, data, 0o644); err != nil {
 		return fmt.Errorf("writing change assessment: %w", err)
 	}
 	return nil

@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/example42/piace/internal/artifact"
 )
 
 // ErrExists is returned by Write when path already exists and replace
@@ -15,24 +16,16 @@ import (
 // distinguish overwrite refusal from any other write failure.
 var ErrExists = errors.New("snapshot: destination already exists (use --replace to overwrite)")
 
-// Write atomically writes env to path as canonical, checksum-verified
-// JSON:
+// Write publishes env at path as canonical, checksum-verified JSON,
+// through internal/artifact: a same-directory temporary file at mode
+// 0600, fsynced and then atomically put in place, so a concurrent reader
+// sees either the previous snapshot or the complete new one.
 //
-//   - refuses to overwrite an existing file at path unless replace is
-//     true (returns ErrExists, wrapped, without touching path);
-//   - writes to a same-directory temporary file, mode 0600;
-//   - fsyncs the temporary file's contents before renaming;
-//   - atomically renames the temporary file onto path (os.Rename, which
-//     is atomic within one filesystem/directory on every platform Go
-//     targets);
-//   - best-effort fsyncs the containing directory afterward, so the
-//     rename itself is durable. This is skipped, without failing the
-//     write, on platforms/filesystems that reject an fsync on a
-//     directory file descriptor (e.g. this is a documented no-op on
-//     Windows; some filesystems return ENOTSUP), since a missing durable-
-//     rename guarantee on such a platform is a pre-existing platform
-//     limitation this package cannot fix, not a correctness regression
-//     introduced here.
+// When replace is false the publication itself refuses an existing
+// destination ("Capture refuses to overwrite a snapshot unless --replace
+// is supplied"), and the returned error wraps ErrExists. The refusal and
+// the write are one operation, so two capture runs racing for one
+// destination cannot both believe they succeeded; see artifact.WriteNew.
 //
 // Write does not itself verify env.PayloadChecksum against env.Payload,
 // callers being expected to have just computed it via Checksum (see the
@@ -40,28 +33,15 @@ var ErrExists = errors.New("snapshot: destination already exists (use --replace 
 // checksum field is empty, since that would silently produce a snapshot
 // Load could never validate.
 //
-// Write creates path's containing directory (and any missing parents,
-// mode 0700) if it does not already exist. Nothing states whether a
-// first-time capture must have its destination directory pre-created by
-// the operator or by PIACE itself, and requiring the operator to
-// pre-create every per-target snapshot directory before the very command
-// that populates it can run for the first time would make the snapshot
-// workflow (CI refreshes catalog snapshots after a merge to the baseline
-// branch) fail on a repository's first capture. So this package creates
-// the directory rather than requiring that out-of-band step. This has no
-// bearing on overwrite protection: the file-exists check above still
-// runs first and is unaffected by whether the directory already existed.
+// The containing directory is created when absent, per artifact.Write:
+// requiring the operator to pre-create every per-target snapshot
+// directory before the command that populates it can run for the first
+// time would make a repository's first capture fail. Overwrite
+// protection is unaffected, being a property of the publication rather
+// than of the directory.
 func Write(path string, env Envelope, replace bool) error {
 	if env.PayloadChecksum == "" {
 		return fmt.Errorf("snapshot: writing %s: envelope has no payload_checksum set", path)
-	}
-
-	if !replace {
-		if _, err := os.Lstat(path); err == nil {
-			return fmt.Errorf("%w: %s", ErrExists, path)
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("snapshot: checking %s: %w", path, err)
-		}
 	}
 
 	data, err := json.Marshal(env)
@@ -69,60 +49,22 @@ func Write(path string, env Envelope, replace bool) error {
 		return fmt.Errorf("snapshot: encoding envelope for %s: %w", path, err)
 	}
 
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("snapshot: creating directory %s: %w", dir, err)
-	}
-	tmp, err := os.CreateTemp(dir, ".piace-snapshot-*.tmp")
-	if err != nil {
-		return fmt.Errorf("snapshot: creating temp file in %s: %w", dir, err)
-	}
-	tmpPath := tmp.Name()
-	// Ensure the temp file never survives a failed write, but do not
-	// clobber a successfully renamed file: once the rename below succeeds,
-	// tmpPath no longer refers to anything, so this Remove is a harmless
-	// no-op.
-	defer os.Remove(tmpPath)
-
-	writeErr := func() error {
-		if err := tmp.Chmod(0o600); err != nil {
-			return fmt.Errorf("setting temp file mode: %w", err)
+	if replace {
+		if err := artifact.Write(path, data, 0o600); err != nil {
+			return fmt.Errorf("snapshot: writing %s: %w", path, err)
 		}
-		if _, err := tmp.Write(data); err != nil {
-			return fmt.Errorf("writing temp file: %w", err)
-		}
-		if err := tmp.Sync(); err != nil {
-			return fmt.Errorf("fsyncing temp file: %w", err)
-		}
-		return tmp.Close()
-	}()
-	if writeErr != nil {
-		tmp.Close()
-		return fmt.Errorf("snapshot: writing %s: %w", path, writeErr)
+		return nil
 	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("snapshot: renaming temp file onto %s: %w", path, err)
+	if err := artifact.WriteNew(path, data, 0o600); err != nil {
+		if errors.Is(err, artifact.ErrExists) {
+			// ErrExists stays this package's own sentinel rather than the
+			// artifact one: callers already match on it, and a snapshot
+			// refusal names the flag that lifts it.
+			return fmt.Errorf("%w: %s", ErrExists, path)
+		}
+		return fmt.Errorf("snapshot: writing %s: %w", path, err)
 	}
-
-	syncDirBestEffort(dir)
 	return nil
-}
-
-// syncDirBestEffort opens dir and fsyncs it so the preceding atomic
-// rename is durable against a crash. Any failure (permission, or a
-// platform or filesystem that does not support fsync on a directory
-// descriptor at all) is silently ignored: this is a durability
-// best-effort, not a correctness requirement Write's success depends on,
-// and the rename itself has already completed and is visible to any
-// reader by the time this runs.
-func syncDirBestEffort(dir string) {
-	d, err := os.Open(dir)
-	if err != nil {
-		return
-	}
-	defer d.Close()
-	_ = d.Sync()
 }
 
 // Load reads path, decodes it as an Envelope, and performs the

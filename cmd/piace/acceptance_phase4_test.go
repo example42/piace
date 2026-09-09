@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -256,5 +257,140 @@ func TestAcceptance_ConfiguredServiceTimeoutIsAccepted(t *testing.T) {
 	}
 	if !strings.Contains(got.stderr, "timeout") {
 		t.Errorf("the diagnostic does not mention the timeout:\n%s", got.stderr)
+	}
+}
+
+// TestAcceptance_ExplainRefusesToOverwriteItsInput is the acceptance
+// case for destination validation: an assessment written over the result
+// document it was produced from destroys the record of the comparison,
+// and the check runs before anything is sent to an inference service.
+func TestAcceptance_ExplainRefusesToOverwriteItsInput(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(certname)))
+	got := h.compare(t)
+	if got.code != exitcode.Success {
+		t.Fatalf("compare: %s", got.stderr)
+	}
+	reportPath := h.path("report0.json")
+	original := readFile(t, reportPath)
+
+	stub := newInferenceStub(t)
+	for name, aiOut := range map[string]string{
+		"the same path": reportPath,
+		"a symlink to it": func() string {
+			link := h.path("linked-report.json")
+			if err := os.Symlink(reportPath, link); err != nil {
+				t.Skipf("this platform cannot create symlinks: %v", err)
+			}
+			return link
+		}(),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("PIACE_TEST_INFERENCE_TOKEN", "a-bearer-token")
+			previous := inferenceHTTPClient
+			inferenceHTTPClient = stub.server.Client()
+			t.Cleanup(func() { inferenceHTTPClient = previous })
+
+			_, stderr, code := captureRun(t, []string{"explain",
+				"--json-in", reportPath,
+				"--services", h.inferenceServices(t, "inference.yaml", stub, ""),
+				"--ai-out", aiOut})
+			if code != exitcode.OperationalError {
+				t.Fatalf("exit = %d, want 30 for an assessment written over its own input", code)
+			}
+			if !strings.Contains(stderr, "--json-in") {
+				t.Errorf("the diagnostic does not name the input it would destroy:\n%s", stderr)
+			}
+			if len(stub.requests) != 0 {
+				t.Errorf("the run sent %d inference requests before failing, want none", len(stub.requests))
+			}
+			if readFile(t, reportPath) != original {
+				t.Error("the result document was modified")
+			}
+		})
+	}
+}
+
+// TestAcceptance_CollidingReportDestinationsAreRejected covers the other
+// direction: two artifacts of one run cannot share a destination, since
+// whichever is written second is the only one that survives.
+func TestAcceptance_CollidingReportDestinationsAreRejected(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(certname)))
+
+	shared := h.path("everything.out")
+	_, stderr, code := captureRun(t, []string{"compare",
+		"--targets", h.path("targets.yaml"), "--services", h.path("services.yaml"),
+		"--json-out", shared, "--html-out", shared, "--text-out", h.path("report.txt")})
+	if code != exitcode.OperationalError {
+		t.Fatalf("exit = %d, want 30 for two artifacts sharing a destination", code)
+	}
+	if !strings.Contains(stderr, "--json-out") || !strings.Contains(stderr, "--html-out") {
+		t.Errorf("the diagnostic does not name both artifacts:\n%s", stderr)
+	}
+	if _, err := os.Stat(shared); err == nil {
+		t.Error("a rejected run wrote an artifact anyway")
+	}
+}
+
+// TestAcceptance_ReportOverASnapshotInputIsRejected: a report written
+// over the baseline snapshot it was compared against destroys the input
+// of every later run, and the failure would surface at the next
+// comparison rather than at this one.
+func TestAcceptance_ReportOverASnapshotInputIsRejected(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+	h.compiler.catalogs[certname] = compilerCatalog(certname, "production", baseResources(), baseEdges())
+	h.writeConfigs(t, targetsYAML(snapshotDefaults, target(certname)))
+
+	configArgs := []string{"--targets", h.path("targets.yaml"), "--services", h.path("services.yaml")}
+	if _, stderr, code := captureRun(t, append([]string{"capture", "facts"}, configArgs...)); code != exitcode.Success {
+		t.Fatalf("capture facts: %s", stderr)
+	}
+	if _, stderr, code := captureRun(t,
+		append(append([]string{"capture", "catalog"}, configArgs...), "--environment", "production")); code != exitcode.Success {
+		t.Fatalf("capture catalog: %s", stderr)
+	}
+
+	baseline := h.path(filepath.Join("snapshots/catalogs", certname+".json"))
+	before := readFile(t, baseline)
+	_, stderr, code := captureRun(t, append(append([]string{"compare"}, configArgs...), "--json-out", baseline))
+	if code != exitcode.OperationalError {
+		t.Fatalf("exit = %d, want 30 for a report written over a snapshot input", code)
+	}
+	if !strings.Contains(stderr, "--json-out") {
+		t.Errorf("the diagnostic does not name the artifact:\n%s", stderr)
+	}
+	if readFile(t, baseline) != before {
+		t.Error("the baseline snapshot was overwritten")
+	}
+}
+
+// TestAcceptance_CaptureRejectsTwoTargetsSharingOneSnapshot: a defaults
+// block naming a literal path rather than a {certname} template makes
+// every target write the same file, so all but the last capture is lost.
+func TestAcceptance_CaptureRejectsTwoTargetsSharingOneSnapshot(t *testing.T) {
+	h := newHarness(t)
+	for _, certname := range []string{"web-01.example.test", "web-02.example.test"} {
+		h.pdb.factsets[certname] = pdbFactset(certname, true)
+	}
+	defaults := strings.Replace(factsOnlyDefaults, "snapshots/facts/{certname}.json", "snapshots/facts/all.json", 1)
+	h.writeConfigs(t, targetsYAML(defaults, target("web-01.example.test"), target("web-02.example.test")))
+
+	_, stderr, code := captureRun(t, []string{"capture", "facts",
+		"--targets", h.path("targets.yaml"), "--services", h.path("services.yaml")})
+	if code != exitcode.OperationalError {
+		t.Fatalf("exit = %d, want 30 for two targets sharing one snapshot path", code)
+	}
+	if !strings.Contains(stderr, "web-01.example.test") || !strings.Contains(stderr, "web-02.example.test") {
+		t.Errorf("the diagnostic does not name both targets:\n%s", stderr)
+	}
+	if _, err := os.Stat(h.path("snapshots/facts/all.json")); err == nil {
+		t.Error("a rejected capture wrote a snapshot anyway")
 	}
 }
