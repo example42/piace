@@ -131,8 +131,8 @@ jobs:
           echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
           echo "building version $version"
 
-      # Every artifact is CGO-free (requirements.md 12.1), so one Linux
-      # runner cross-compiles the whole supported matrix. Running this on
+      # Every artifact is CGO-free, so one Linux runner cross-compiles
+      # the whole supported matrix. Running this on
       # pull requests too means a broken release script is found in review
       # rather than at release time.
       - name: Build artifacts and checksum manifest
@@ -146,7 +146,7 @@ jobs:
         run: sha256sum --check SHA256SUMS
 
       # Confirms the artifacts are the statically linked binaries
-      # design.md section 11 describes, not something dynamically linked
+      # docs/release.md describes, not something dynamically linked
       # against the runner's libc.
       - name: Confirm the Linux artifacts are statically linked
         working-directory: dist

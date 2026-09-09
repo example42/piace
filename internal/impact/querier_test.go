@@ -58,7 +58,7 @@ func limits(resultLimit int) Limits {
 	return Limits{Timeout: 5 * time.Second, ResultLimit: resultLimit}
 }
 
-func TestEstimate_SendsDesignSection8QueryToTheRootEndpoint(t *testing.T) {
+func TestEstimate_SendsTheSpecifiedQueryToTheRootEndpoint(t *testing.T) {
 	var captured capturedRequest
 	q := serveRows(t, &captured, certnameRows("web-02", "web-01"))
 

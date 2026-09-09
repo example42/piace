@@ -20,7 +20,10 @@ key by key in [`examples/services.yaml`](../examples/services.yaml).
 
 ### What leaves the building
 
-One HTTPS request per run, to the endpoint you configure, containing:
+One HTTPS request per run to the endpoint you configure, plus at most one
+retry when the first reply cannot be read as an assessment. The retry appends a
+message to the same request rather than replacing it, so it is a second
+disclosure of the same comparison; see the budget below. The request contains:
 
 - the **aggregate groups**, ranked by node reach and capped at `max_groups`:
   parameter changes carry a before/after pair; additions and removals carry the
@@ -30,8 +33,9 @@ One HTTPS request per run, to the endpoint you configure, containing:
 - **File-content summaries**: state, evidence sources, per-side verification,
   reference-change and redaction status. Added/removed states describe the
   catalog membership change, not a prediction of filesystem changes;
-- **certnames as pseudonyms** (`node-001`, `node-002`, and so on), stable
-  within a run and never reused across two real names;
+- **certnames as pseudonyms** (`node-001`, `node-002`, and so on) in the two
+  structured fields that carry them, each target's `node` and each group's
+  `nodes` list, stable within a run and never reused across two real names;
 - **per-target counts**: pseudonym, outcome, resource and edge change counts,
   and whether the target failed;
 - **impact estimates** as an identity, a status, a result count, and whether the
@@ -64,16 +68,24 @@ provenance, and compiler/PuppetDB authorities are absent from the generated
 evidence payload. File evidence source labels such as `captured_digest` remain
 visible so the assessment can distinguish verified and indeterminate evidence.
 
-Pseudonymization covers the certnames PIACE read out of the result document. A
-change context is forwarded **as you wrote it**: PIACE cannot tell which words
-in a pull-request description are node names. Treat it as text a third party
-will read.
+Pseudonymization substitutes those two structured identity fields and nothing
+else. Free text is forwarded as it stands, and a node name can appear in free
+text: a resource title such as `File[/etc/ssl/certs/web-01.example.com.pem]`, a
+parameter value naming a host, a policy note, and above all a change context,
+which is forwarded **as you wrote it** because PIACE cannot tell which words in
+a pull-request description are node names. Impact-estimate identities are
+resource identities and are not certnames, and the certnames behind an
+estimate's count are never sent at all. Treat everything here as text a third
+party will read.
 
 Two deliberate loosenings, both off by default:
 
-- **`pseudonymize: false`** sends real certnames. The assessment artifact is
-  identical either way, since pseudonyms exist only in the request body, so the
-  only thing this changes is what the provider sees.
+- **`pseudonymize: false`** sends real certnames. Pseudonyms exist only in the
+  request body and are reversed before anything is written, so the artifact
+  names real certnames either way and the setting changes only what the
+  provider sees. It does not make two assessments comparable: the prose is
+  model output and two runs over one report may differ whatever this is set
+  to. Identity restoration is the local guarantee, not output stability.
 - **`--fail-on-inference-error`** exits `30` when the assessment could not be
   produced. Without it, an unreachable inference service produces a complete
   artifact in which every risk indication is `unknown`, with the reason recorded

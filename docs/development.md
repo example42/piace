@@ -18,19 +18,25 @@ go test -race -count=1 ./...
 ## Project status
 
 The fixture-driven acceptance suite exercises the command path with local TLS
-services. Three original confirmations needing real infrastructure are recorded as
-skipped test carrying its confirmation procedure in
+services. Three confirmations needing real infrastructure are recorded as
+skipped tests carrying their confirmation procedure in
 [`cmd/piace/acceptance_assumptions_test.go`](../cmd/piace/acceptance_assumptions_test.go).
+On 2026-09-09 the project ran against a deployed OpenVox 8.15.2 compiler and
+PuppetDB 8.15.0 for the first time, which closed one of them and changed
+another; the findings that came out of that run are recorded in
+[the 0.5.0 plan](plan-0.5.0.md).
 
-- **PuppetDB impact endpoints**: that the impact PQL text is accepted at the
-  root `/pdb/query/v4`, and that `limit` and `order_by` are honoured there. If
-  `order_by` is not honoured, a *truncated* impact sample is not reproducible.
-- **Puppet sensitivity representations**: resource-level `sensitive_parameters`
-  and recursive `{"__ptype":"Sensitive","__pvalue":...}` wrappers are covered
-  by synthetic fixtures, including one-sided declarations and File content.
-  The contracts derive from Puppet's Ruby sources. Real compiler/PuppetDB
-  captures must establish which representations each supported deployment
-  preserves; unknown encodings remain outside the verified disclosure scope.
+- **PuppetDB impact endpoints**: **confirmed** against PuppetDB 8.15.0. The
+  impact PQL text is accepted at the root `/pdb/query/v4`, and `limit` and
+  `order_by` are honoured there, server-side. `internal/impact/doc.go` records
+  the measurement.
+- **Puppet sensitivity representations**: **partly answered**. A PuppetDB
+  baseline carries no sensitivity metadata in any encoding, because Puppet's
+  own terminus deletes sensitive parameters before storing a catalog, so there
+  is nothing on that side to recognize. What a v4 compiler response carries is
+  still unmeasured: no catalog in that lab had a sensitive parameter. Synthetic
+  fixtures cover both representations, including one-sided declarations and
+  File content, and the contracts still derive from Puppet's Ruby sources.
 - **The structured-output wire shape** (`piace explain`): that a deployed
   OpenAI-compatible provider accepts `response_format: {type: json_schema, …}`
   and honours `strict`. The least load-bearing of the three: structured output
@@ -51,7 +57,10 @@ Puppet's published example, not a live capture; its README records the source.
 Source selection follows Puppet's File source implementation, while generic v4
 HTTP 404 fallback remains explicitly ambiguous and opt-in. Supported-version
 wire conformance is still required by steps 2.2 and 5.1 of
-[the 0.5.0 plan](plan-0.5.0.md).
+[the 0.5.0 plan](plan-0.5.0.md). One gate is sharper than it reads: no node in
+the lab used for the 2026-09-09 measurements has a File with a single-file
+`puppet:///` source, so the captured-digest path has no live coverage at all
+and needs the fixture manifest 5.1 owes.
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every pull
 request, on every push to `main`, and on every `v*` tag.
@@ -119,8 +128,14 @@ send it, and is reviewable with no knowledge of catalogs: it does not import
   private key material, managed file content bytes, or unredacted sensitive
   values (`cmd/piace/acceptance_disclosure_test.go`). The same assertion is made
   at the inference request seam (`internal/assess/request_test.go`).
-- **Determinism**: identical input catalogs and configuration produce
-  byte-identical JSON artifacts (`cmd/piace/acceptance_determinism_test.go`).
+- **Determinism**: one result encodes to the same bytes every time, and two
+  runs over the same catalogs and configuration reach the same comparison even
+  when their clocks, tool versions and service authorities differ. Both are in
+  `cmd/piace/acceptance_determinism_test.go`; the second compares
+  `report.SemanticProjection`, the document with its invocation metadata
+  removed, across two deliberately different clocks. The first freezes the
+  clock, as the whole suite does, so on its own it says only that nothing
+  except the timestamp can differ.
 - **Endpoint separation**: `compare` never reaches an inference service and
   `explain` never reaches a compiler or PuppetDB; reaching the wrong endpoint
   fails the test.

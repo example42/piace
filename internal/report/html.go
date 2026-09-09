@@ -187,8 +187,9 @@ type htmlTarget struct {
 	Compared          bool
 	// Changes and EdgeChanges are the target's differences, split because
 	// the page discloses them separately: a run's edge differences
-	// routinely outnumber its resource differences, being a consequence of
-	// them, so they get their own chip rather than padding the list a
+	// routinely outnumber its resource differences and are usually
+	// connected to them, so they get their own chip rather than padding a
+	// list a
 	// reader opens first. HasDifference stays authoritative for whether
 	// the target changed at all, so a target whose only differences are
 	// edges is never rendered as unchanged.

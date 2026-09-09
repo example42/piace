@@ -843,7 +843,21 @@ the File shapes 2.2 needs.
 
 ### 5.2 Define determinism and align every documented guarantee
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-10. `report.SemanticProjection` defines
+  the comparison projection: the canonical result document with its invocation
+  metadata removed, which is also what a reader can compute with
+  `jq -S 'del(.invocation)'`, so the guarantee is checkable outside this
+  codebase. Two claims are now stated separately and both tested:
+  one result encodes to the same bytes every time, and two runs over the same
+  catalogs and configuration reach the same comparison.
+  `TestAcceptance_TheComparisonIsReproducibleAcrossClocks` runs the pipeline
+  twice under two deliberately different clocks, asserts the documents differ
+  and the projections do not; the existing byte-identical case keeps its
+  frozen clock and now says in its own comment that this is what limits it.
+  Every row of the alignment checklist below is applied. The
+  `design.md`/`requirements.md` references are gone from `ci.yml` and from two
+  test names. Local macOS verification passed: `go test -race ./...`,
+  `go vet ./...`, `go build ./...`, `gofmt -l` and `git diff --check`.
 
 **Finding:** documentation promises identical artifact bytes for identical
 catalogs and configuration, while production includes a changing invocation
@@ -859,6 +873,8 @@ timestamp and the acceptance harness freezes the clock.
 3. Update README.md, CONTEXT.md, docs/development.md, docs/change-assessment.md,
    docs/ci.md, docs/release.md, examples, CLI help, and package comments using
    the following alignment checklist.
+
+Each row is now applied; the second column is what the documentation says.
 
 | Existing mismatch | Required documented contract |
 | --- | --- |
