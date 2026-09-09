@@ -904,7 +904,46 @@ Each row is now applied; the second column is what the documentation says.
 
 ### 5.3 Make CI examples and release tooling exercise the supported path
 
-- [ ] Implement and verify.
+- [ ] Partially implemented 2026-09-10. Items 1 and 2 are done and verified
+  against the published release; items 3 to 6 are outstanding.
+
+  **Item 1, signature verification, done.** All three CI examples now verify
+  `SHA256SUMS.sigstore.json` before running anything, as an executed step
+  rather than a commented suggestion, and treat the checksum as the second
+  check rather than the only one. The GitHub example installs cosign with
+  `sigstore/cosign-installer@v3`; the GitLab and Azure examples download
+  cosign pinned by version and by SHA-256, since the digest reviewed in the
+  pipeline file is what makes the signature check a check rather than another
+  unverified download. Verified end to end against the published v0.4.0
+  release with cosign 3.1.3: `Verified OK`, and both negatives fail, a wrong
+  signer identity with "none of the expected identities matched" and a
+  tampered manifest with a payload mismatch. The certificate's SAN is
+  `https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v0.4.0`
+  with issuer `https://token.actions.githubusercontent.com`, exactly what the
+  examples pin.
+
+  **Item 2, change-context refs, done.** Reproduced first: in a checkout
+  detached at a merge commit with no local branches, a bare branch name does
+  not resolve, because git looks for `refs/heads/NAME` and `refs/remotes/NAME`
+  and never `refs/remotes/origin/NAME`. `git merge-base` fails with "Not a
+  valid object name" and the assessment runs with no change context at all.
+  All three examples had it on the head ref, and the GitLab one on both refs.
+  Each now fetches both refs explicitly into their remote-tracking form and
+  names them that way; confirmed against a local repository reduced to exactly
+  that shape.
+
+  **Outstanding.** Item 3, job-specific credential scope, especially GitLab
+  protected-variable availability and environment scoping. Item 4, the
+  candidate-environment mapping against the actual deploy step: the examples
+  and `docs/ci.md` already say to match whatever mapping the deploy tooling
+  applies rather than assuming the dash substitution shown, but this has not
+  been checked against a real deploy step. Item 5, the release toolchain:
+  `.github/workflows/ci.yml`'s build job still uses `go-version-file: go.mod`,
+  which couples the release compiler to the declared minimum; pin an explicit
+  `go-version` there and record it in `docs/release.md`, keeping the 1.22
+  matrix leg and adding no `toolchain` directive to `go.mod`. Item 6,
+  consistency of the verification story across the release workflow and
+  consumer instructions.
 
 **Findings:** CI installation examples verify checksums but leave signature
 verification inactive. Change-context examples rely on branch names that may
