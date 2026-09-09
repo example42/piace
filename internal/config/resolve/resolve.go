@@ -7,16 +7,15 @@ import (
 // Documented assumptions this package makes where the configuration
 // rules leave a gap (see also doc.go and validate.go):
 //
-//  1. Service-level request deadline. The effective network request
-//     deadline is the smaller of the service deadline and the target
-//     impact timeout, but config.ServicesFile has no service-level
-//     deadline field, and the transport layer applies timeouts at the
-//     transport boundary without naming a config source for one. This
-//     package resolves and validates only the target's own
-//     impact_estimate.timeout; combining it with a service-level deadline
-//     stays a gap, to be closed either by introducing that field or by
-//     sourcing the deadline from the transport layer itself. This package
-//     must not invent a new ServicesFile field unilaterally.
+//  1. Service-level request deadline. services.<section>.timeout is this
+//     package's optional, validated service-level deadline, resolved into
+//     Endpoint.Timeout. It is not combined with a target's
+//     impact_estimate.timeout here: the two are named at different levels
+//     for different reasons, and internal/transport owns their precedence
+//     (caller, then service, then its own default; see that package's
+//     doc.go decision 1). An unset service timeout resolves to zero,
+//     which this package means as "the transport's default" rather than
+//     as a deadline of its own choosing.
 //  2. impact_estimate presence is only required when Enabled resolves to
 //     true. Every target needs an environment, a fact source, a baseline
 //     source, a baseline environment, an API version and fail_on_diff,

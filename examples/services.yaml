@@ -23,8 +23,19 @@ version: 1
 
 # The Puppet Server or OpenVox compiler serving the deployed environments.
 # `compare` and `capture catalog` POST candidate catalog requests here.
+#
+# Each section is required only by the commands that contact it. A
+# services file naming no puppetdb: at all is valid for a comparison of
+# file-backed facts against a file-backed baseline with the impact
+# estimate off, and one naming no compiler: is valid for `capture facts`.
 compiler:
   endpoint: https://puppet.ops.example.com:8140
+
+  # Optional per-service request deadline; 30s when unset. A caller that
+  # names its own deadline for one request, which only the impact
+  # estimate does, uses that instead: see the README's "Request
+  # deadlines".
+  # timeout: 45s
 
   # Two ways to name the mTLS identity, and exactly one per credential.
   # Naming both forms of the same credential is an error rather than a
@@ -47,6 +58,11 @@ compiler:
 # PuppetDB, read-only: baseline catalogs, factsets, and impact estimates.
 puppetdb:
   endpoint: https://puppetdb.ops.example.com:8081
+
+  # An impact estimate whose target sets impact_estimate.timeout longer
+  # than this value still gets the deadline it asked for; this one is the
+  # default for requests that name none.
+  # timeout: 45s
 
   # Each service names its own identity. Reusing one for both is a
   # deliberate choice rather than a default: split them if PuppetDB's

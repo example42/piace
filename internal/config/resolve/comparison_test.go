@@ -15,7 +15,7 @@ func TestComparisonV3PolicyIsSeparateFromCaptureResolution(t *testing.T) {
 			if source == config.BaselineSourcePuppetDB {
 				d.Baseline.File = ""
 			}
-			targets, err := ResolveTargets(config.TargetFile{Version: 1, Defaults: d, Targets: []config.Target{{Certname: "node"}}}, t.TempDir())
+			targets, err := ResolveTargets(config.TargetFile{Version: 1, Defaults: d, Targets: []config.Target{{Certname: "node"}}}, t.TempDir(), CommandCompare)
 			if err != nil {
 				t.Fatalf("capture config refused: %v", err)
 			}

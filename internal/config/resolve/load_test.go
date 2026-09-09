@@ -51,7 +51,7 @@ func TestLoad_ValidFilesResolveTargetsRelativeToTargetFileDir(t *testing.T) {
 	targetsPath := writeTempFile(t, dir, "targets.yaml", validTargetsYAML)
 	servicesPath := writeTempFile(t, dir, "services.yaml", validServicesYAML)
 
-	cfg, err := Load(targetsPath, servicesPath, Overrides{})
+	cfg, err := Load(CommandCompare, targetsPath, servicesPath, Overrides{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -90,7 +90,7 @@ puppetdb:
 	targetsPath := writeTempFile(t, dir, "targets.yaml", invalidTargets)
 	servicesPath := writeTempFile(t, dir, "services.yaml", invalidServices)
 
-	_, err := Load(targetsPath, servicesPath, Overrides{})
+	_, err := Load(CommandCompare, targetsPath, servicesPath, Overrides{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -106,7 +106,7 @@ puppetdb:
 func TestLoad_MissingFileIsError(t *testing.T) {
 	dir := t.TempDir()
 	servicesPath := writeTempFile(t, dir, "services.yaml", validServicesYAML)
-	_, err := Load(filepath.Join(dir, "does-not-exist.yaml"), servicesPath, Overrides{})
+	_, err := Load(CommandCompare, filepath.Join(dir, "does-not-exist.yaml"), servicesPath, Overrides{})
 	if err == nil {
 		t.Fatal("expected error for missing target file, got nil")
 	}

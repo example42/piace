@@ -77,6 +77,7 @@ func buildV4Request(ctx context.Context, client *transport.Client, baseURL *url.
 		Persistence: v4Persistence{Facts: false, Catalog: false},
 		Environment: environment,
 		Facts:       v4FactsField{Values: flatFacts},
+		Options:     v4Options{PreferRequestedEnvironment: true},
 	}
 	if decision.source == trustedFactsSourceProvided {
 		body.TrustedFacts = &v4TrustedFactsField{Values: decision.value}

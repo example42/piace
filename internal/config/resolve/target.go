@@ -7,15 +7,19 @@ import (
 )
 
 // ResolveTargets resolves and validates every target in tf against its
-// global defaults. targetFileDir is the directory containing the target
-// file, used to resolve relative facts.file/baseline.file values.
+// global defaults, for the command that is going to read them.
+// targetFileDir is the directory containing the target file, used to
+// resolve relative facts.file/baseline.file values.
+//
+// cmd governs which fields must be *present* (see Command.needs); every
+// value that is present is validated the same way whatever the command.
 //
 // It validates config.TargetFileVersion (version: 1) and accumulates
 // every problem found across every target into a single error.
 // ("Invalid configuration is one operational diagnostic"). When err is
 // non-nil, targets is nil: a caller must not act on partial results from
 // an invalid target file.
-func ResolveTargets(tf config.TargetFile, targetFileDir string) (targets []Target, err error) {
+func ResolveTargets(tf config.TargetFile, targetFileDir string, cmd Command) (targets []Target, err error) {
 	var c errorCollector
 
 	if tf.Version != config.TargetFileVersion {
@@ -40,7 +44,7 @@ func ResolveTargets(tf config.TargetFile, targetFileDir string) (targets []Targe
 		}
 		seenCertnames[t.Certname] = true
 
-		rt, ok := resolveOneTarget(tf.Defaults, t, targetFileDir, &c)
+		rt, ok := resolveOneTarget(tf.Defaults, t, targetFileDir, cmd.needs(), &c)
 		if ok {
 			resolved = append(resolved, rt)
 		}
@@ -57,17 +61,18 @@ func ResolveTargets(tf config.TargetFile, targetFileDir string) (targets []Targe
 // could not be fully resolved (callers must not use a partially resolved
 // Target). t.Certname has already been validated and checked for
 // uniqueness by the caller.
-func resolveOneTarget(defaults config.Defaults, t config.Target, targetFileDir string, c *errorCollector) (Target, bool) {
+func resolveOneTarget(defaults config.Defaults, t config.Target, targetFileDir string, needs targetNeeds, c *errorCollector) (Target, bool) {
 	scalars := mergeScalars(defaults, t)
 	ok := true
 
 	// --- candidate ---
-	if scalars.candidate.Environment == "" {
+	if needs.candidateEnvironment && scalars.candidate.Environment == "" {
 		c.addf("target %q: candidate.environment is required", t.Certname)
 		ok = false
 	}
-	switch scalars.candidate.CatalogAPI {
-	case config.CatalogAPIv3, config.CatalogAPIv4:
+	switch {
+	case scalars.candidate.CatalogAPI == config.CatalogAPIv3 || scalars.candidate.CatalogAPI == config.CatalogAPIv4:
+	case scalars.candidate.CatalogAPI == "" && !needs.candidateAPI:
 	default:
 		c.addf("target %q: candidate.catalog_api must be %q or %q, got %q",
 			t.Certname, config.CatalogAPIv3, config.CatalogAPIv4, scalars.candidate.CatalogAPI)
@@ -113,11 +118,17 @@ func resolveOneTarget(defaults config.Defaults, t config.Target, targetFileDir s
 	}
 
 	// --- baseline ---
-	if scalars.baseline.Environment == "" {
+	if needs.baselineEnvironment && scalars.baseline.Environment == "" {
 		c.addf("target %q: baseline.environment is required", t.Certname)
 		ok = false
 	}
 	switch scalars.baseline.Source {
+	case "":
+		if needs.baselineSource {
+			c.addf("target %q: baseline.source must be %q or %q, got %q",
+				t.Certname, config.BaselineSourcePuppetDB, config.BaselineSourceFile, scalars.baseline.Source)
+			ok = false
+		}
 	case config.BaselineSourcePuppetDB:
 		if scalars.baseline.File != "" {
 			c.addf("target %q: baseline.file must not be set when baseline.source is %q",

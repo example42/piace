@@ -55,7 +55,7 @@ func TestExamples_TargetAndServicesFilesLoad(t *testing.T) {
 	for _, s := range services {
 		for _, tg := range targets {
 			t.Run(filepath.Base(filepath.Dir(s))+"/"+filepath.Base(s)+" + "+filepath.Base(tg), func(t *testing.T) {
-				if _, err := resolve.Load(tg, s, resolve.Overrides{}); err != nil {
+				if _, err := resolve.Load(resolve.CommandCompare, tg, s, resolve.Overrides{}); err != nil {
 					t.Errorf("resolve.Load: %v", err)
 				}
 			})
@@ -73,6 +73,7 @@ func TestExamples_CompareIgnoresTheInferenceSection(t *testing.T) {
 	t.Setenv("PIACE_INFERENCE_TOKEN", "")
 
 	cfg, err := resolve.Load(
+		resolve.CommandCompare,
 		examplePath(t, "targets-puppetdb-baseline.yaml"),
 		examplePath(t, "ci", "services.yaml"),
 		resolve.Overrides{},

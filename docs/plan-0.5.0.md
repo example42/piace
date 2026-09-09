@@ -416,7 +416,32 @@ and capture output.
 
 ### 4.1 Resolve requirements per command and capability
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Configuration resolution is
+  parameterized by `resolve.Command`: presence requirements are per command
+  (`capture facts` needs a certname and a fact destination; `capture catalog`
+  adds a catalog API and a baseline destination and takes its environment from
+  `--environment`; compare needs everything), while validity checks stay
+  unconditional for every command. `Command.services` derives the required
+  endpoints from the decoded targets, so a services file naming no `puppetdb:`
+  loads for a file-backed comparison with impact disabled, and one naming no
+  `compiler:` loads for `capture facts`; `Config.Required` drives client
+  construction. Compare and capture catalog now build one client per service
+  rather than one per use, keeping the two services' credentials separate.
+  Services sections accept an optional `timeout`; `*http.Client.Timeout` no
+  longer caps it, so the precedence is caller, then service, then
+  `transport.DefaultTimeout` (documented in that package's decision 1), and a
+  90s impact deadline is no longer silently cut to 30s. Every v4 request sets
+  `options.prefer_requested_environment: true`, verified against the published
+  v4 catalog API contract, with returned-environment validation unchanged.
+  Synthetic regressions: `internal/config/resolve/requirements_test.go`,
+  `internal/transport/client_test.go`, `internal/compiler/adapter_test.go`, and
+  `cmd/piace/acceptance_phase4_test.go`. Local macOS verification passed:
+  `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./...`,
+  `gofmt -l`, and `git diff --check`. The "unused inference section causes no
+  inference request" acceptance was already covered by
+  `cmd/piace/acceptance_explain_test.go` and is unchanged. No live service was
+  contacted; the classifier interaction behind `prefer_requested_environment`
+  is a 5.1 fixture item.
 
 **Finding: medium severity.** Service resolution always requires compiler and
 PuppetDB configuration. Comparison constructs four clients even when PuppetDB
