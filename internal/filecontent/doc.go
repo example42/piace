@@ -63,14 +63,17 @@
 // including when an exclusion later suppresses the resource change.
 //
 // The diagnostic severity separates evidence that was never obtainable from an
-// attempt that failed. A historical baseline retaining no digest, a directory
-// or recursive source, a bare local path the compiler's file server does not
-// serve, and a resource naming neither content nor source are warnings: they
-// describe the catalog, not the run, and they are ordinary. An invalid
+// attempt that failed, and classifyEvidenceError is the single place that
+// decides it for both the differ and internal/capture. A historical baseline
+// retaining no digest, a directory or recursive source, a bare local path the
+// compiler's file server does not serve, a resource naming neither content nor
+// source, and two sides carrying digests of different algorithms are warnings:
+// they describe the catalog, not the run, and they are ordinary. An invalid
 // checksum, a refused traversal path, a failed retrieval and a missing
 // environment are errors. Either way the state stays indeterminate, which is
 // what keeps a clean result off the table; see model.ClassifyOutcome for how
-// that reaches the exit code.
+// that reaches the exit code. In capture the same split decides whether a
+// snapshot is published at all.
 //
 // Wire provenance: compiler/testdata/static-catalog.json is reduced from
 // Puppet's published static catalog example, not a live capture. Source-array

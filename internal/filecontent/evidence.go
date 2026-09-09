@@ -60,15 +60,8 @@ func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.
 	}
 	if err != nil {
 		e.State = model.FileContentIndeterminate
-		reason := "resource membership changed; content evidence for the existing catalog side could not be verified"
-		if errors.Is(err, ErrNonByteComparable) {
-			reason = "resource membership changed; directory, recursive or non-file byte evidence is unsupported"
-		} else if errors.Is(err, errHistoricalEvidence) {
-			reason = "resource membership changed; historical catalog has no retained content digest"
-		} else if errors.Is(err, errInvalidChecksum) {
-			reason = "resource membership changed; invalid content checksum"
-		}
-		d := verifyContentDiagnostic(evidenceSeverity(err), certname, side.Resource.Identity, reason)
+		reason, severity := classifyEvidenceError(err)
+		d := verifyContentDiagnostic(severity, certname, side.Resource.Identity, "resource membership changed; "+reason)
 		return e, &d
 	}
 	e.Algorithm = digest.Algorithm
@@ -121,13 +114,22 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 	if referenceChanged && retriever == nil {
 		e.State = model.FileContentReferenceChanged
 	}
-	reason, severity := "content retrieval or comparison could not establish comparable bytes for this resource", evidenceSeverity(be, ae)
-	switch {
-	case errors.Is(be, errHistoricalEvidence) || errors.Is(ae, errHistoricalEvidence):
-		reason = "historical catalog has no retained content digest; current environment bytes cannot verify historical content"
-	case errors.Is(be, errInvalidChecksum) || errors.Is(ae, errInvalidChecksum):
-		reason = "invalid content checksum: expected a supported algorithm and a full hexadecimal digest"
-	case be == nil && ae == nil:
+	// Both sides are classified and the more severe answer wins: one
+	// side failing to retrieve is a report about this run whatever the
+	// other side's evidence looked like. Between two of equal severity
+	// the baseline's reason is reported, so a comparison names the side
+	// a reader can do something about first.
+	reason, severity := "", model.SeverityWarning
+	for _, err := range []error{ae, be} {
+		if err == nil {
+			continue
+		}
+		r, sev := classifyEvidenceError(err)
+		if reason == "" || sev == model.SeverityError || severity != model.SeverityError {
+			reason, severity = r, sev
+		}
+	}
+	if be == nil && ae == nil {
 		// Both sides produced valid evidence in different algorithms,
 		// which happens when one catalog carries a compiled
 		// `checksum => md5` value and the other's bytes were hashed
@@ -136,14 +138,35 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 		// indeterminate. Nothing failed and nothing was refused, so
 		// this is a warning: it is the same class as a directory that
 		// has no single set of bytes.
-		reason = "the two catalogs carry content digests of different algorithms, which cannot be compared"
-		severity = model.SeverityWarning
+		reason, severity = "the two catalogs carry content digests of different algorithms, which cannot be compared", model.SeverityWarning
 	}
 	d := verifyContentDiagnostic(severity, certname, identity, reason)
 	return e, &d
 }
 
-// evidenceSeverity separates evidence PIACE could never have had from an
+// EvidenceDiagnostic builds the diagnostic for an evidence-resolution
+// error, with the safe reason text and the severity this package decides
+// for that error.
+//
+// It is exported for internal/capture, which resolves one side of a live
+// catalog and has to report what it could not observe. Capture used to
+// obtain that diagnostic by calling ResolveFileContentEvidence again
+// with a nil retriever, which reported the absence of a retriever rather
+// than the reason the real resolution failed: a catalog holding a File
+// with `source => /etc/puppetlabs/puppet/ssl/certs/ca.pem` failed to
+// capture at all, with a diagnostic that named neither the source nor
+// the reason.
+func EvidenceDiagnostic(certname string, identity model.ResourceIdentity, err error) model.Diagnostic {
+	reason, severity := classifyEvidenceError(err)
+	return verifyContentDiagnostic(severity, certname, identity, reason)
+}
+
+// classifyEvidenceError maps an evidence-resolution error to the safe
+// reason text a diagnostic carries and the severity that goes with it.
+// The reason never quotes a catalog value: a `source` reaches CI logs
+// and reports through this text.
+//
+// The severity separates evidence PIACE could never have had from an
 // attempt that failed.
 //
 // The first is a warning. A historical baseline retains no digest for a
@@ -153,30 +176,32 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 // name neither content nor source. None of those is something a run did
 // wrong, and all of them are ordinary in a real catalog: the first live
 // run against a deployed OpenVox installation on 2026-09-09 produced
-// nine of them comparing an environment with itself. They still leave
-// the comparison indeterminate, and an indeterminate comparison is still
-// a difference that cannot be ruled out, which is where the outcome
-// comes from; see model.ClassifyOutcome.
+// nine of them comparing an environment with itself, and one of them
+// stopped a capture from writing a snapshot. They still leave the
+// comparison indeterminate, and an indeterminate comparison is still a
+// difference that cannot be ruled out, which is where the outcome comes
+// from; see model.ClassifyOutcome.
 //
 // The second is an error. An invalid checksum in a compiled catalog, a
 // source path refused as unsafe, a retrieval that failed against a
 // configured retriever, and a missing environment are all reports about
 // this run rather than about the shape of the catalog.
-func evidenceSeverity(errs ...error) model.DiagnosticSeverity {
-	for _, err := range errs {
-		if err == nil {
-			continue
-		}
-		switch {
-		case errors.Is(err, ErrNonByteComparable),
-			errors.Is(err, errHistoricalEvidence),
-			errors.Is(err, errNoContentOrSource),
-			errors.Is(err, errUnsupportedSourceScheme):
-		default:
-			return model.SeverityError
-		}
+func classifyEvidenceError(err error) (string, model.DiagnosticSeverity) {
+	switch {
+	case errors.Is(err, ErrNonByteComparable):
+		return "directory, recursive or non-file source: byte-level content comparison is unsupported; recursive sourceselect rules are not evaluated", model.SeverityWarning
+	case errors.Is(err, errHistoricalEvidence):
+		return "historical catalog has no retained content digest; current environment bytes cannot verify historical content", model.SeverityWarning
+	case errors.Is(err, errUnsupportedSourceScheme):
+		return "content source is not an authority-free puppet:/// reference, so the compiler's file server cannot serve its bytes", model.SeverityWarning
+	case errors.Is(err, errNoContentOrSource):
+		return "resource names neither inline content nor a content source", model.SeverityWarning
+	case errors.Is(err, errInvalidChecksum):
+		return "invalid content checksum: expected a supported algorithm and a full hexadecimal digest", model.SeverityError
+	case errors.Is(err, errUnsafeSourcePath):
+		return "content source path was refused rather than resolved against the compiler", model.SeverityError
 	}
-	return model.SeverityWarning
+	return "content retrieval or comparison could not establish comparable bytes for this resource", model.SeverityError
 }
 
 // ResolveSide's order applies independently, so inline and captured/static
