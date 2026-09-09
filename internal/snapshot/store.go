@@ -125,13 +125,15 @@ func syncDirBestEffort(dir string) {
 	_ = d.Sync()
 }
 
-// Load reads path, decodes it as an Envelope, and verifies its
-// format_version and payload_checksum: "Reuse validates version, kind,
-// target, checksum, required metadata, and file decoding before it is
-// accepted." Load itself checks format_version and the checksum (the two
+// Load reads path, decodes it as an Envelope, and performs the
+// integrity check: "Reuse validates version, kind, target, checksum,
+// required metadata, and file decoding before it is accepted." Load
+// itself checks format_version and the payload checksum (the two
 // invariants that apply to every envelope regardless of caller intent);
-// Kind/target/required-metadata/baseline- environment checks depend on
-// what the caller expects and are Validate's job.
+// the attribution checks (kind, target, required metadata, provenance
+// consistency, baseline environment) depend on what the caller expects
+// and are Validate's job. See the package comment for why the two stay
+// separate.
 //
 // On any failure, Load returns a zero Envelope: it never returns a
 // partially-validated Envelope for a caller to accidentally use.
@@ -147,7 +149,13 @@ func Load(path string) (Envelope, error) {
 	}
 
 	if env.FormatVersion != FormatVersion {
-		return Envelope{}, fmt.Errorf("snapshot: %s: unsupported format_version %d, expected %d",
+		// Naming the remedy matters here more than in the other failures:
+		// an unsupported version is what an operator sees after upgrading
+		// PIACE with snapshots already in the repository, and the file is
+		// not damaged, only written against a schema this build no longer
+		// reads. Recapture is the fix, and the message says so rather than
+		// leaving it to be inferred from a version number.
+		return Envelope{}, fmt.Errorf("snapshot: %s: unsupported format_version %d, expected %d; recapture the snapshot with `piace capture`",
 			path, env.FormatVersion, FormatVersion)
 	}
 
@@ -166,18 +174,18 @@ func Load(path string) (Envelope, error) {
 	return env, nil
 }
 
-// Validate checks env against the caller's expectations before it is
-// reused: kind, source kind, envelope/payload target agreement, and, for a catalog envelope, the
-// catalog-only mandatory fields (RequestedEnvironment,
-// CompilerAPIVersion, InputFactsetIdentity) plus a well-formed
-// CapturedAt timestamp.
+// Validate is the attribution check (see the package comment): kind,
+// source kind, envelope/payload target agreement, and, for a catalog
+// envelope, the catalog-only mandatory fields (RequestedEnvironment,
+// Capture, InputFactsetIdentity), the internal consistency of the
+// capture provenance, and a well-formed CapturedAt timestamp.
 //
 // wantTarget is compared against env.Target exactly, case-sensitively, a
 // certname not being case-folded anywhere else in this codebase either.
 // Validate does not check env.FormatVersion or env.PayloadChecksum: Load
-// already enforces both unconditionally, and Validate is meant to be
-// callable on any Envelope Load has already returned rather than to
-// re-verify what Load guarantees.
+// already enforces both unconditionally as the integrity check, and
+// Validate is meant to be callable on any Envelope Load has already
+// returned rather than to re-verify what Load guarantees.
 func Validate(env Envelope, wantKind Kind, wantTarget string) error {
 	if env.Kind != wantKind {
 		return fmt.Errorf("snapshot: target %q: envelope kind %q does not match expected kind %q",
@@ -214,12 +222,60 @@ func Validate(env Envelope, wantKind Kind, wantTarget string) error {
 		if env.RequestedEnvironment == "" {
 			return fmt.Errorf("snapshot: target %q: catalog envelope is missing requested_environment", wantTarget)
 		}
-		if env.CompilerAPIVersion != CompilerAPIv3 && env.CompilerAPIVersion != CompilerAPIv4 {
-			return fmt.Errorf("snapshot: target %q: catalog envelope has missing or unsupported compiler_api", wantTarget)
-		}
 		if env.InputFactsetIdentity == "" {
 			return fmt.Errorf("snapshot: target %q: catalog envelope is missing input_factset_identity", wantTarget)
 		}
+		if err := validateCaptureProvenance(env.Capture, wantTarget); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateCaptureProvenance checks a catalog envelope's capture
+// provenance for internal consistency. The relationships it enforces are
+// the ones the compiler adapter can actually produce, so a snapshot
+// whose provenance describes a request sequence that cannot have
+// happened is rejected as inconsistent rather than reused as an audit
+// record of something else:
+//
+//   - both API values are supported (v3 or v4);
+//   - fell_back_from_v4 means exactly what it says, a v4 request that
+//     ended up compiling through v3, so it requires requested v4 and
+//     effective v3;
+//   - a requested v3 stays v3, PIACE never upgrading a request;
+//   - without a fallback, the effective API is the requested one;
+//   - trusted_facts_source is a v4 concept (v3 has no trusted-fact
+//     request field), so it is required for an effective-v4 capture, one
+//     of the two supported values, and absent for v3;
+//   - fact_source names one of the two supported fact sources.
+func validateCaptureProvenance(p *CaptureProvenance, wantTarget string) error {
+	if p == nil {
+		return fmt.Errorf("snapshot: target %q: catalog envelope is missing capture provenance", wantTarget)
+	}
+	supportedAPI := func(api CompilerAPI) bool { return api == CompilerAPIv3 || api == CompilerAPIv4 }
+	if !supportedAPI(p.RequestedAPI) || !supportedAPI(p.EffectiveAPI) {
+		return fmt.Errorf("snapshot: target %q: catalog envelope capture provenance has missing or unsupported requested_api/effective_api", wantTarget)
+	}
+	switch {
+	case p.FellBackFromV4 && (p.RequestedAPI != CompilerAPIv4 || p.EffectiveAPI != CompilerAPIv3):
+		return fmt.Errorf("snapshot: target %q: catalog envelope records fell_back_from_v4 without a v4 request compiled through v3", wantTarget)
+	case !p.FellBackFromV4 && p.RequestedAPI != p.EffectiveAPI:
+		return fmt.Errorf("snapshot: target %q: catalog envelope records requested_api %q and effective_api %q without a recorded fallback",
+			wantTarget, p.RequestedAPI, p.EffectiveAPI)
+	}
+	switch p.EffectiveAPI {
+	case CompilerAPIv4:
+		if p.TrustedFactsSource != TrustedFactsProvided && p.TrustedFactsSource != TrustedFactsCompilerLookup {
+			return fmt.Errorf("snapshot: target %q: catalog envelope has missing or unsupported trusted_facts_source for a v4 capture", wantTarget)
+		}
+	case CompilerAPIv3:
+		if p.TrustedFactsSource != "" {
+			return fmt.Errorf("snapshot: target %q: catalog envelope records trusted_facts_source for a v3 capture, which has no trusted-fact request field", wantTarget)
+		}
+	}
+	if p.FactSource != FactSourcePuppetDB && p.FactSource != FactSourceFile {
+		return fmt.Errorf("snapshot: target %q: catalog envelope capture provenance has missing or unsupported fact_source", wantTarget)
 	}
 	return nil
 }

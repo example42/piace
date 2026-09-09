@@ -7,6 +7,7 @@ import (
 
 	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/config/resolve"
+	"github.com/example42/piace/internal/filecontent"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/snapshot"
 )
@@ -49,7 +50,8 @@ func NewFileSource() *FileSource { return &FileSource{} }
 // bytes came from, not what the fields mean. The envelope's own
 // CapturedAt and Source fields, for a captured payload that does not
 // repeat that information, stay available on the Envelope for a caller
-// that wants capture provenance specifically (see LoadEnvelope), and are
+// that wants capture provenance specifically (snapshot.Load returns the
+// whole envelope), and are
 // not folded into SourceProvenance, which is a fact or catalog *content*
 // provenance record.
 func (f *FileSource) Load(ctx context.Context, target resolve.Target) (Factset, model.SourceProvenance, *model.Diagnostic) {
@@ -153,6 +155,22 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 			fmt.Sprintf("baseline catalog snapshot %s is inconsistent: envelope requested_environment %q does not match payload environment %q",
 				target.Baseline.File, env.RequestedEnvironment, cat.Environment))
 		return Catalog{}, model.SourceProvenance{}, &diag
+	}
+
+	// Captured content evidence is the one part of the payload a later
+	// comparison consumes as evidence rather than as catalog data, so its
+	// shape is checked here, at load, alongside the envelope's other
+	// metadata/payload relationships. A malformed digest reaching
+	// comparison would otherwise surface as indeterminate content, which
+	// describes a snapshot that recorded no evidence, not one that
+	// recorded evidence PIACE cannot use.
+	for title, digest := range cat.CapturedContent {
+		if err := filecontent.ValidateContentDigest(digest); err != nil {
+			diag := snapshotDiagnostic(model.OperationLoadBaseline, target.Certname,
+				fmt.Sprintf("baseline catalog snapshot %s records unusable captured content evidence for File[%s]: %s",
+					target.Baseline.File, title, err))
+			return Catalog{}, model.SourceProvenance{}, &diag
+		}
 	}
 
 	prov := model.SourceProvenance{

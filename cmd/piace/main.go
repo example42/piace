@@ -548,7 +548,11 @@ func reportCaptureOutcomes(stdout, stderr *os.File, label string, outcomes []cap
 			fmt.Fprintf(stderr, "piace %s: %s: warning: %s\n", label, o.Certname, warning)
 		}
 		if o.Candidate != nil {
-			fmt.Fprintf(stdout, "piace %s: %s: effective catalog API %s\n", label, o.Certname, o.Candidate.EffectiveAPI)
+			fmt.Fprintf(stdout, "piace %s: %s: requested catalog API %s, effective catalog API %s%s\n",
+				label, o.Certname, o.Candidate.RequestedAPI, o.Candidate.EffectiveAPI, fallbackNote(*o.Candidate))
+			if o.Candidate.TrustedFactsSource != "" {
+				fmt.Fprintf(stdout, "piace %s: %s: trusted facts from %s\n", label, o.Certname, o.Candidate.TrustedFactsSource)
+			}
 			if o.Candidate.V3Warning != "" {
 				fmt.Fprintln(stderr, o.Candidate.V3Warning)
 			}
@@ -567,6 +571,19 @@ func reportCaptureOutcomes(stdout, stderr *os.File, label string, outcomes []cap
 		return exitcode.OperationalError
 	}
 	return exitcode.Success
+}
+
+// fallbackNote annotates the effective API line when a permitted
+// v4-to-v3 fallback executed. Requested and effective API are printed
+// unconditionally, since an operator reading a capture log has no other
+// way to tell a configured v3 capture from a v4 capture that ended up on
+// v3, and both wrote a snapshot with v3's trust and persistence
+// consequences.
+func fallbackNote(p model.CandidateProvenance) string {
+	if !p.FellBackFromV4 {
+		return ""
+	}
+	return " (fell back from v4)"
 }
 
 // explainFlags holds the parsed `explain` flags.

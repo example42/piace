@@ -80,7 +80,7 @@ func freezeBaseline(t *testing.T, h *harness, name string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := snapshot.Envelope{FormatVersion: snapshot.FormatVersion, Kind: snapshot.KindCatalog, Target: name, Source: snapshot.Source{Kind: "compiler"}, CapturedAt: fixedTimestamp.Format(time.RFC3339), RequestedEnvironment: "production", CompilerAPIVersion: snapshot.CompilerAPIv4, InputFactsetIdentity: "fixture-facts", PayloadChecksum: sum, Payload: payload}
+	env := snapshot.Envelope{FormatVersion: snapshot.FormatVersion, Kind: snapshot.KindCatalog, Target: name, Source: snapshot.Source{Kind: "compiler"}, CapturedAt: fixedTimestamp.Format(time.RFC3339), RequestedEnvironment: "production", Capture: capturedV4Provenance(), InputFactsetIdentity: "fixture-facts", PayloadChecksum: sum, Payload: payload}
 	if err := snapshot.Write(h.path("snapshots/"+name+".json"), env, false); err != nil {
 		t.Fatal(err)
 	}
@@ -153,6 +153,20 @@ func TestAcceptance_CaptureRetainsHistoricalSourceDigest(t *testing.T) {
 	if !strings.Contains(string(env.Payload), contentHash("historical-bytes")) {
 		t.Fatal("capture omitted digest")
 	}
+	// The evidence and the provenance describing how it was obtained
+	// travel together: a captured digest is only usable as historical
+	// evidence if the snapshot also says which API and fact source
+	// produced the catalog it belongs to.
+	if env.Capture == nil || env.Capture.RequestedAPI != snapshot.CompilerAPIv4 ||
+		env.Capture.EffectiveAPI != snapshot.CompilerAPIv4 || env.Capture.FellBackFromV4 {
+		t.Fatalf("capture provenance = %+v, want an unqualified v4 capture", env.Capture)
+	}
+	if env.Capture.TrustedFactsSource != snapshot.TrustedFactsProvided || env.Capture.FactSource != snapshot.FactSourcePuppetDB {
+		t.Fatalf("capture provenance = %+v, want provided trusted facts from PuppetDB", env.Capture)
+	}
+	if env.InputFactsetIdentity == "" {
+		t.Fatal("capture recorded no input factset identity")
+	}
 	h.compiler.catalogs[name] = compilerCatalog(name, "feature-123", resources, nil)
 	h.compiler.fileContent["modules/app/config"] = "current-bytes"
 	got := h.compare(t)
@@ -189,8 +203,24 @@ func TestAcceptance_CaptureReportsEffectiveV3AndPersistence(t *testing.T) {
 			t.Fatalf("capture hid v3 effects: %s %s", out, errout)
 		}
 		env, err := snapshot.Load(h.path("snapshots/" + name + ".json"))
-		if err != nil || env.CompilerAPIVersion != snapshot.CompilerAPIv3 {
+		if err != nil || env.Capture == nil || env.Capture.EffectiveAPI != snapshot.CompilerAPIv3 {
 			t.Fatalf("capture API attribution: %v %+v", err, env)
+		}
+		// A fallback capture records both APIs: the snapshot has v3's
+		// trust and persistence semantics whatever the target asked for,
+		// and an auditor needs to see that the request asked for v4.
+		wantRequested, wantFallback := snapshot.CompilerAPIv3, false
+		if fallback {
+			wantRequested, wantFallback = snapshot.CompilerAPIv4, true
+		}
+		if env.Capture.RequestedAPI != wantRequested || env.Capture.FellBackFromV4 != wantFallback {
+			t.Fatalf("capture provenance = %+v, want requested %q and fallback %v", env.Capture, wantRequested, wantFallback)
+		}
+		if fallback && !strings.Contains(out, "fell back from v4") {
+			t.Fatalf("capture did not report the fallback: %s", out)
+		}
+		if env.Capture.TrustedFactsSource != "" {
+			t.Fatalf("a v3 capture recorded a trusted-fact source: %+v", env.Capture)
 		}
 	}
 }

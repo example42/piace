@@ -416,8 +416,10 @@ defaults:
     file: snapshots/catalogs/{certname}.json
 ```
 
-`capture catalog` uses the configured API and reports the effective API and
-warnings, including failed v3 attempts. Its snapshot records the effective API.
+`capture catalog` uses the configured API and reports the requested and
+effective API and warnings, including failed v3 attempts. Its snapshot records
+both, plus the fallback, so a v4 request served by v3 cannot be read later as a
+v4 capture.
 Capture is allowed to use v3, but its trusted identity is still the reader's,
 not an agent's. v3 can persist submitted facts and catalogs even if the request
 ultimately fails. Prefer v4 capture to disable both persistence operations.
@@ -508,11 +510,35 @@ phase 3 of [the 0.5.0 plan](docs/plan-0.5.0.md).
 
 `piace capture` writes PIACE envelopes, not bare Puppet payloads: format
 version, target identity, source, capture timestamp, SHA-256 payload checksum,
-and, for catalogs, requested environment, compiler API version, and input
-factset identity. Files are written atomically at `0600` and are never
-overwritten without `--replace`. On reuse, version, kind, target, checksum,
-required metadata, envelope/payload certname agreement, and baseline environment
-are all validated before the catalog is diffed.
+and, for catalogs, requested environment, input factset identity, and a
+`capture` block recording the requested API, the API that actually answered,
+whether a permitted v4-to-v3 fallback executed, the trusted-fact source of a v4
+request, and the fact source of the input factset. Configuration is never
+stamped into that block: it describes the request the compiler reported.
+
+The checksum covers the payload alone, captured content evidence included,
+since capture stores that evidence inside the payload. Envelope metadata sits
+outside the checksum and is checked a different way: its claims must agree with
+the payload they describe, and its capture provenance must describe a request
+sequence that can actually occur (a fallback means a v4 request compiled
+through v3; a v3 capture carries no trusted-fact source). Files are written
+atomically at `0600` and are never overwritten without `--replace`.
+
+Reuse applies two separate checks. Integrity: a supported format version and a
+payload matching its checksum. Attribution: kind, target, source kind,
+envelope/payload certname and environment agreement, required metadata,
+consistent capture provenance, usable captured content evidence, and the
+configured baseline environment. An intact snapshot of the wrong node fails the
+second while passing the first, which is why they are not one check.
+
+A snapshot payload is a validated PIACE projection, not the original service
+response. It retains what the comparison contract needs: identity, environment,
+resources with parameters and sensitivity metadata, edges, static and recursive
+content metadata, captured digests, and catalog identity fields. A compiler
+catalog's `tags`, `classes`, and `catalog_format` are outside the projection, as
+is any service field PIACE does not consume. A captured catalog is a compiler
+document, so PuppetDB's `hash`, `producer`, and `producer_timestamp` appear in
+captured factsets, not in captured catalogs.
 
 Fact inputs require a `facts` object with a `data` array. An explicit empty
 array is valid. Missing or null collections, malformed entries, missing values,

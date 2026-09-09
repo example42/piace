@@ -48,6 +48,15 @@ func writeFactsetSnapshot(t *testing.T, path, certname, environment string) {
 
 func writeCatalogSnapshot(t *testing.T, path, certname, environment string) {
 	t.Helper()
+	writeCatalogSnapshotWithContent(t, path, certname, environment, nil)
+}
+
+// writeCatalogSnapshotWithContent writes a catalog snapshot carrying
+// captured content evidence, so a test can put evidence of a shape the
+// comparison could never use into an otherwise intact, correctly
+// checksummed snapshot.
+func writeCatalogSnapshotWithContent(t *testing.T, path, certname, environment string, captured map[string]model.ContentDigest) {
+	t.Helper()
 	cat := Catalog{
 		Certname:          certname,
 		Environment:       environment,
@@ -56,6 +65,7 @@ func writeCatalogSnapshot(t *testing.T, path, certname, environment string) {
 		Hash:              "cafebabe",
 		Resources:         json.RawMessage(`[]`),
 		Edges:             json.RawMessage(`[]`),
+		CapturedContent:   captured,
 	}
 	payload, err := json.Marshal(cat)
 	if err != nil {
@@ -72,7 +82,12 @@ func writeCatalogSnapshot(t *testing.T, path, certname, environment string) {
 		Source:               snapshot.Source{Kind: "compiler"},
 		CapturedAt:           "2026-08-24T00:00:00Z",
 		RequestedEnvironment: environment,
-		CompilerAPIVersion:   snapshot.CompilerAPIv4,
+		Capture: &snapshot.CaptureProvenance{
+			RequestedAPI:       snapshot.CompilerAPIv4,
+			EffectiveAPI:       snapshot.CompilerAPIv4,
+			TrustedFactsSource: snapshot.TrustedFactsProvided,
+			FactSource:         snapshot.FactSourcePuppetDB,
+		},
 		InputFactsetIdentity: "sha256:abc",
 		PayloadChecksum:      sum,
 		Payload:              payload,
@@ -217,5 +232,55 @@ func tamperFileContent(t *testing.T, path, old, newStr string) {
 	tampered := strings.Replace(string(data), old, newStr, 1)
 	if err := os.WriteFile(path, []byte(tampered), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
+	}
+}
+
+// TestFileSource_LoadBaseline_RejectsUnusableCapturedContent verifies
+// captured content evidence is shape-checked when the snapshot is
+// loaded. A digest PIACE cannot use is a defect in the snapshot; letting
+// it through would surface at comparison time as indeterminate content,
+// which describes a snapshot that recorded no evidence at all.
+func TestFileSource_LoadBaseline_RejectsUnusableCapturedContent(t *testing.T) {
+	cases := map[string]model.ContentDigest{
+		"unsupported algorithm": {Algorithm: "crc32", Digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+		"truncated digest":      {Algorithm: "sha256", Digest: "0123456789abcdef"},
+		"non-hexadecimal":       {Algorithm: "sha256", Digest: strings.Repeat("z", 64)},
+		"empty digest":          {Algorithm: "sha256", Digest: ""},
+	}
+	for name, digest := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "web-01-catalog.json")
+			writeCatalogSnapshotWithContent(t, path, "web-01.example.test", "production",
+				map[string]model.ContentDigest{"/etc/motd": digest})
+
+			_, _, diag := NewFileSource().LoadBaseline(context.Background(),
+				fileTarget("web-01.example.test", "", path, "production"))
+			if diag == nil {
+				t.Fatal("accepted captured content evidence the comparison could never use")
+			}
+			if !strings.Contains(diag.Message, "/etc/motd") {
+				t.Errorf("the diagnostic does not identify the file it came from: %q", diag.Message)
+			}
+		})
+	}
+}
+
+// TestFileSource_LoadBaseline_AcceptsSupportedCapturedContent keeps the
+// check above from becoming a blanket rejection of captured evidence.
+func TestFileSource_LoadBaseline_AcceptsSupportedCapturedContent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "web-01-catalog.json")
+	digest := model.ContentDigest{Algorithm: "sha256", Digest: strings.Repeat("ab", 32)}
+	writeCatalogSnapshotWithContent(t, path, "web-01.example.test", "production",
+		map[string]model.ContentDigest{"/etc/motd": digest})
+
+	cat, _, diag := NewFileSource().LoadBaseline(context.Background(),
+		fileTarget("web-01.example.test", "", path, "production"))
+	if diag != nil {
+		t.Fatalf("LoadBaseline returned diagnostic: %+v", diag)
+	}
+	if got := cat.CapturedContent["/etc/motd"]; got != digest {
+		t.Errorf("captured content = %+v, want %+v", got, digest)
 	}
 }

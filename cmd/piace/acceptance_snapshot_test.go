@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/example42/piace/internal/exitcode"
+	"github.com/example42/piace/internal/snapshot"
 )
 
 // snapshotDefaults selects file-backed fact and baseline sources, whose
@@ -66,7 +67,7 @@ func TestAcceptance_SnapshotCaptureAndReuse(t *testing.T) {
 	// catalog-snapshot metadata.
 	assertEnvelope(t, factSnapshot, "factset", certname, nil)
 	assertEnvelope(t, catalogSnapshot, "catalog", certname,
-		[]string{"requested_environment", "compiler_api", "input_factset_identity"})
+		[]string{"requested_environment", "capture", "input_factset_identity"})
 
 	// A catalog snapshot's requested_environment must describe the catalog
 	// it actually holds. `capture catalog --environment ENV` once recorded
@@ -155,6 +156,13 @@ func TestAcceptance_InvalidSnapshotIsRejected(t *testing.T) {
 		{"a baseline from another environment is rejected", func(e map[string]any) {
 			e["requested_environment"] = "some-other-env"
 		}, "environment"},
+		{"capture provenance that cannot have happened is rejected", func(e map[string]any) {
+			provenance, _ := e["capture"].(map[string]any)
+			provenance["fell_back_from_v4"] = true
+		}, "fell_back_from_v4"},
+		{"a snapshot without capture provenance is rejected", func(e map[string]any) {
+			delete(e, "capture")
+		}, "capture provenance"},
 	}
 
 	for _, tc := range cases {
@@ -226,5 +234,17 @@ func assertEnvelope(t *testing.T, path, kind, target string, extraFields []strin
 	}
 	if checksum, _ := envelope["payload_checksum"].(string); !strings.HasPrefix(checksum, "sha256:") {
 		t.Errorf("%s payload_checksum = %q, want a sha256: prefix", path, checksum)
+	}
+}
+
+// capturedV4Provenance is the capture provenance of an ordinary v4
+// capture, for tests that hand-build a snapshot envelope instead of
+// running `capture catalog` to produce one.
+func capturedV4Provenance() *snapshot.CaptureProvenance {
+	return &snapshot.CaptureProvenance{
+		RequestedAPI:       snapshot.CompilerAPIv4,
+		EffectiveAPI:       snapshot.CompilerAPIv4,
+		TrustedFactsSource: snapshot.TrustedFactsProvided,
+		FactSource:         snapshot.FactSourcePuppetDB,
 	}
 }
