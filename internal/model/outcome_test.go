@@ -116,11 +116,50 @@ func TestTargetResult_ClassifyOutcome(t *testing.T) {
 			want:   exitcode.OutcomeOperationalError,
 		},
 		{
-			name: "indeterminate file content is never clean",
+			// A File whose content could not be verified may have
+			// changed, so it is reported as a difference and the
+			// target's policy decides the rest.
+			name: "indeterminate file content is a difference",
 			target: TargetResult{
 				Config: &ConfigProvenance{},
 				NodeDiff: &NodeDiff{
 					HasDifference: true,
+					ResourceChanges: []ResourceChange{{
+						Kind:        ChangeParameterChanged,
+						Identity:    ResourceIdentity{Type: "File", Title: "/etc/motd"},
+						Parameter:   "content",
+						FileContent: &FileContentEvidence{State: FileContentIndeterminate},
+					}},
+				},
+			},
+			want: exitcode.OutcomeDifferencesAllowed,
+		},
+		{
+			name: "indeterminate file content under fail_on_diff",
+			target: TargetResult{
+				Config: &ConfigProvenance{FailOnDiff: true},
+				NodeDiff: &NodeDiff{
+					HasDifference: true,
+					ResourceChanges: []ResourceChange{{
+						Kind:        ChangeParameterChanged,
+						Identity:    ResourceIdentity{Type: "File", Title: "/etc/motd"},
+						Parameter:   "content",
+						FileContent: &FileContentEvidence{State: FileContentIndeterminate},
+					}},
+				},
+			},
+			want: exitcode.OutcomePolicyDisallowedDifference,
+		},
+		{
+			// The invariant the old mapping existed to protect: a
+			// differ that produced indeterminate evidence for a change
+			// it did not report has contradicted itself, and that is
+			// not a comparison result.
+			name: "indeterminate file content can never be clean",
+			target: TargetResult{
+				Config: &ConfigProvenance{},
+				NodeDiff: &NodeDiff{
+					HasDifference: false,
 					ResourceChanges: []ResourceChange{{
 						Kind:        ChangeParameterChanged,
 						Identity:    ResourceIdentity{Type: "File", Title: "/etc/motd"},

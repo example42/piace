@@ -58,8 +58,18 @@
 // Added and removed resources resolve only the existing catalog side. Verified
 // evidence uses resource_added/resource_removed states; these describe catalog
 // membership, not filesystem creation or deletion. Missing historical digests,
-// failed retrievals and unsupported byte evidence remain indeterminate errors,
+// failed retrievals and unsupported byte evidence all remain indeterminate,
 // including when an exclusion later suppresses the resource change.
+//
+// The diagnostic severity separates evidence that was never obtainable from an
+// attempt that failed. A historical baseline retaining no digest, a directory
+// or recursive source, a bare local path the compiler's file server does not
+// serve, and a resource naming neither content nor source are warnings: they
+// describe the catalog, not the run, and they are ordinary. An invalid
+// checksum, a refused traversal path, a failed retrieval and a missing
+// environment are errors. Either way the state stays indeterminate, which is
+// what keeps a clean result off the table; see model.ClassifyOutcome for how
+// that reaches the exit code.
 //
 // Wire provenance: compiler/testdata/static-catalog.json is reduced from
 // Puppet's published static catalog example, not a live capture. Source-array

@@ -24,15 +24,21 @@ func TestMembershipEvidenceResolvesOnlyExistingSide(t *testing.T) {
 	}
 }
 
+// The severity separates evidence that was never obtainable from an
+// attempt that failed; the indeterminate state, which is what keeps a
+// clean result off the table, is the same either way.
 func TestMembershipEvidenceDisclosesMissingOrUnsupportedEvidence(t *testing.T) {
-	for _, params := range []map[string]any{
-		{"source": "puppet:///modules/app/file"},
-		{"source": "puppet:///modules/app/dir", "recurse": true},
-		{"checksum_value": "invalid-secret"},
+	for _, tc := range []struct {
+		params map[string]any
+		want   model.DiagnosticSeverity
+	}{
+		{map[string]any{"source": "puppet:///modules/app/file"}, model.SeverityWarning},
+		{map[string]any{"source": "puppet:///modules/app/dir", "recurse": true}, model.SeverityWarning},
+		{map[string]any{"checksum_value": "invalid-secret"}, model.SeverityError},
 	} {
-		side := Side{Resource: model.Resource{Identity: model.ResourceIdentity{Type: "File", Title: "/app"}, Parameters: params}, Context: model.ContentContext{Historical: true}}
+		side := Side{Resource: model.Resource{Identity: model.ResourceIdentity{Type: "File", Title: "/app"}, Parameters: tc.params}, Context: model.ContentContext{Historical: true}}
 		e, d := ResolveMembershipEvidence(context.Background(), "node", model.ChangeResourceRemoved, side, nil)
-		if d == nil || d.Severity != model.SeverityError || e.State != model.FileContentIndeterminate || e.Before.Verified || e.BeforeDigest != "" || e.After != nil {
+		if d == nil || d.Severity != tc.want || e.State != model.FileContentIndeterminate || e.Before.Verified || e.BeforeDigest != "" || e.After != nil {
 			t.Fatalf("unsupported evidence claimed verified: %+v %+v", e, d)
 		}
 	}

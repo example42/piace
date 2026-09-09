@@ -512,8 +512,12 @@ func TestResolveFileContentEvidence_DirectoryUnchangedSource_Indeterminate(t *te
 	if evidence.State != model.FileContentIndeterminate {
 		t.Errorf("State = %q, want %q", evidence.State, model.FileContentIndeterminate)
 	}
-	if diag == nil || diag.Severity != model.SeverityError {
-		t.Fatalf("want an error-severity diagnostic, got %+v", diag)
+	// A warning, not an error: a directory has no single set of bytes
+	// to hash, which is a property of the catalog rather than a
+	// failure of this run. The indeterminate state above is what keeps
+	// it out of a clean result.
+	if diag == nil || diag.Severity != model.SeverityWarning {
+		t.Fatalf("want a warning-severity diagnostic, got %+v", diag)
 	}
 }
 

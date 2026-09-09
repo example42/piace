@@ -109,7 +109,14 @@ func TestAcceptance_UnchangedSourceUsesHistoricalEvidence(t *testing.T) {
 			}
 			change := report.Targets[0].NodeDiff.ResourceChanges[0].FileContent
 			if evidence == "missing" {
-				if got.code != exitcode.OperationalError || change.State != model.FileContentIndeterminate {
+				// Indeterminate, reported as a difference, never
+				// clean: today's environment bytes cannot verify what
+				// the historical catalog held. See
+				// model.ClassifyOutcome for why this is a difference
+				// rather than an operational error.
+				if change.State != model.FileContentIndeterminate ||
+					report.Outcome != exitcode.OutcomeDifferencesAllowed ||
+					!report.Targets[0].NodeDiff.HasDifference {
 					t.Fatalf("historical evidence silently invented: %s", got.stdout)
 				}
 			} else if got.code != exitcode.Success || change.State != model.FileContentChanged || !change.Before.Verified {
@@ -269,7 +276,10 @@ func TestAcceptance_DirectoryRecursiveAndMixedContent(t *testing.T) {
 		h := newHarness(t)
 		before := map[string]any{"source": "puppet:///modules/app/old"}
 		after := map[string]any{"source": "puppet:///modules/app/old"}
-		want := exitcode.OperationalError
+		// An unsupported byte comparison is a difference PIACE cannot
+		// rule out, not a failed run: the state below is what carries
+		// that, and fail_on_diff is off here.
+		want := exitcode.Success
 		switch kind {
 		case "directory":
 			before["ensure"] = "directory"
@@ -302,11 +312,78 @@ func TestAcceptance_DirectoryRecursiveAndMixedContent(t *testing.T) {
 			if !strings.Contains(got.stdout, "byte-level content comparison is unsupported") {
 				t.Fatal("directory limitation hidden")
 			}
+			if kind != "recursive reference" && !strings.Contains(got.json, `"state":"content_indeterminate"`) {
+				t.Fatalf("%s: an unsupported byte comparison was not reported as indeterminate: %s", kind, got.json)
+			}
+			if !strings.Contains(got.json, `"has_difference":true`) {
+				t.Fatalf("%s: an unsupported byte comparison collapsed into a clean node diff: %s", kind, got.json)
+			}
 			for _, p := range h.compiler.sortedPaths() {
 				if strings.Contains(p, "file_content") {
 					t.Fatal("directory source fetched as a file")
 				}
 			}
 		}
+	}
+}
+
+// The exit-code half of the finding the first live run produced on
+// 2026-09-09. A source-backed File compared against a PuppetDB baseline
+// is indeterminate, because the historical catalog retains no digest for
+// it and today's environment bytes cannot verify what it held. That is
+// the ordinary case in a real catalog, not an exceptional one: nine of
+// the ten differences left in a comparison of one environment with
+// itself were this. Making it an operational error made every real
+// comparison exit 30, which left the exit code unable to distinguish a
+// broken run from a working one.
+//
+// It is still a difference, so it is still reported, it still sets
+// has_difference, and fail_on_diff still turns it into exit 10.
+func TestAcceptance_UnverifiableContentIsADifferenceNotAFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		failOnDiff  bool
+		wantCode    exitcode.Code
+		wantOutcome exitcode.Outcome
+	}{
+		{"differences allowed", false, exitcode.Success, exitcode.OutcomeDifferencesAllowed},
+		{"fail on diff", true, exitcode.PolicyDisallowedDifference, exitcode.OutcomePolicyDisallowedDifference},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			name := "web-01.example.test"
+			params := map[string]any{"source": "puppet:///modules/app/config"}
+			h.seedTarget(name,
+				[]resourceSpec{{Type: "File", Title: "/app", Parameters: params}},
+				[]resourceSpec{{Type: "File", Title: "/app", Parameters: params}}, nil)
+			h.compiler.fileContent["modules/app/config"] = "module content"
+
+			defaults := defaultDefaults
+			if tc.failOnDiff {
+				defaults = strings.Replace(defaults, "fail_on_diff: false", "fail_on_diff: true", 1)
+			}
+			h.writeConfigs(t, targetsYAML(defaults, target(name)))
+			got := h.compare(t)
+
+			if got.code != tc.wantCode {
+				t.Fatalf("exit %d, want %d:\n%s", got.code, tc.wantCode, got.stdout)
+			}
+			var report model.Result
+			if err := json.Unmarshal([]byte(got.json), &report); err != nil {
+				t.Fatal(err)
+			}
+			if report.Outcome != tc.wantOutcome {
+				t.Errorf("outcome = %q, want %q", report.Outcome, tc.wantOutcome)
+			}
+			if !report.Targets[0].NodeDiff.HasDifference {
+				t.Error("an unverifiable File did not set has_difference")
+			}
+			if state := report.Targets[0].NodeDiff.ResourceChanges[0].FileContent.State; state != model.FileContentIndeterminate {
+				t.Errorf("state = %q, want %q", state, model.FileContentIndeterminate)
+			}
+			if !strings.Contains(got.stdout, "WARNING [verify_content]") {
+				t.Errorf("evidence that was never obtainable was not a warning:\n%s", got.stdout)
+			}
+		})
 	}
 }
