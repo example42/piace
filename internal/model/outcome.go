@@ -66,14 +66,27 @@ func OutcomeForDiagnostic(d Diagnostic) (exitcode.Outcome, bool) {
 //     with no diagnostic would mean the pipeline abandoned a target
 //     silently; that is reported as an operational error rather than
 //     folded into a clean run.
+//
 //   - A surviving FileContentIndeterminate classification means content
-//     evidence was never established. internal/filecontent always pairs
-//     that state with an error-severity verify_content diagnostic today,
-//     so this branch is redundant with the diagnostic scan above. But it
-//     is the invariant everything else depends on, that an indeterminate
-//     comparison cannot silently collapse into an unchanged file, and it
-//     is enforced here rather than left resting on a
-//     cross-package pairing no single package's tests cover.
+//     evidence was never established, so a File that may have changed
+//     cannot be said not to have. That is a difference PIACE cannot rule
+//     out, and it reaches the outcome as one: the change is in the node
+//     diff, so HasDifference is set and fail_on_diff decides the rest.
+//     Reaching this point with an indeterminate classification and no
+//     difference recorded would mean the differ produced evidence for a
+//     change it did not report, and that is an internal inconsistency
+//     rather than a comparison result, so it is an operational error.
+//
+//     Until 2026-09-09 an indeterminate classification was itself an
+//     operational error. The first live run against a deployed OpenVox
+//     installation is what changed it: a historical baseline retains no
+//     digest for a source-backed File, which is the ordinary case rather
+//     than an exceptional one, so every real comparison exited 30 and
+//     the exit code stopped distinguishing a broken run from a normal
+//     one. The invariant that motivated the old mapping, that an
+//     indeterminate comparison must never collapse into a clean result,
+//     is preserved: it needs a non-clean outcome, not that particular
+//     one.
 func (t *TargetResult) ClassifyOutcome() {
 	worst := exitcode.Outcome("")
 	for _, d := range t.Diagnostics {
@@ -96,7 +109,7 @@ func (t *TargetResult) ClassifyOutcome() {
 		t.Outcome = exitcode.OutcomeOperationalError
 		return
 	}
-	if hasIndeterminateContent(*t.NodeDiff) {
+	if hasIndeterminateContent(*t.NodeDiff) && !t.NodeDiff.HasDifference {
 		t.Outcome = exitcode.OutcomeOperationalError
 		return
 	}

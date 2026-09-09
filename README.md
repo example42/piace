@@ -381,7 +381,15 @@ accepting any certificate signed by the CA, depending on the installation.
 
 Precedence is `30 > 20 > 10 > differences_allowed > clean`. A run is never
 `clean` while any target has an unreported retrieval, compilation, or
-normalization failure, an indeterminate File-content comparison included.
+normalization failure.
+
+A File whose content could not be verified may have changed, so it is
+reported as a difference and the target's `fail_on_diff` decides the exit
+code, exactly as any other difference does. It is never folded into a clean
+result. A retrieval that was attempted and failed is a separate thing and
+still exits `30`: the distinction is between evidence PIACE could not have
+had, such as a historical baseline that retains no digest or a directory
+that has no single set of bytes, and an attempt that went wrong.
 
 `piace explain` and `piace change-context` exit `0` or `30` only.
 
@@ -565,7 +573,10 @@ File content also suppresses derived digests while retaining the comparison
 state. Additions and removals publish the existing side's redacted parameter
 map. File content-bearing parameters are replaced by markers, with separate
 one-sided content evidence. Missing or unsupported File evidence remains
-indeterminate and produces an operational diagnostic.
+indeterminate and produces a diagnostic; see the exit-code table above for
+which severity that carries. A File the catalog asks Puppet to remove, or to
+manage as a symlink, manages no bytes: that is `not_managed`, reported without
+evidence and without a diagnostic.
 
 Aggregate groups combine the most restrictive member disclosure policy.
 File summaries retain state, sources and verification without digests or

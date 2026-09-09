@@ -68,7 +68,7 @@ func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.
 		} else if errors.Is(err, errInvalidChecksum) {
 			reason = "resource membership changed; invalid content checksum"
 		}
-		d := verifyContentDiagnostic(model.SeverityError, certname, side.Resource.Identity, reason)
+		d := verifyContentDiagnostic(evidenceSeverity(err), certname, side.Resource.Identity, reason)
 		return e, &d
 	}
 	e.Algorithm = digest.Algorithm
@@ -99,11 +99,10 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 		ReferenceChanged: referenceChanged,
 	}
 	if nonByteComparable(before.Resource, bp) || nonByteComparable(after.Resource, ap) {
-		severity := model.SeverityError
 		if referenceChanged {
-			e.State, severity = model.FileContentReferenceChanged, model.SeverityWarning
+			e.State = model.FileContentReferenceChanged
 		}
-		d := verifyContentDiagnostic(severity, certname, identity, "directory, recursive or non-file source: byte-level content comparison is unsupported; recursive sourceselect rules are not evaluated")
+		d := verifyContentDiagnostic(model.SeverityWarning, certname, identity, "directory, recursive or non-file source: byte-level content comparison is unsupported; recursive sourceselect rules are not evaluated")
 		return e, &d
 	}
 	b, bs, be := ResolveSide(ctx, certname, before, retriever)
@@ -128,8 +127,44 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 	} else if errors.Is(be, errInvalidChecksum) || errors.Is(ae, errInvalidChecksum) {
 		reason = "invalid content checksum: expected a supported algorithm and a full hexadecimal digest"
 	}
-	d := verifyContentDiagnostic(model.SeverityError, certname, identity, reason)
+	d := verifyContentDiagnostic(evidenceSeverity(be, ae), certname, identity, reason)
 	return e, &d
+}
+
+// evidenceSeverity separates evidence PIACE could never have had from an
+// attempt that failed.
+//
+// The first is a warning. A historical baseline retains no digest for a
+// source-backed File, a directory or recursive source has no single set
+// of bytes to hash, a bare local path is served from the agent's own
+// filesystem rather than the compiler's file server, and a resource may
+// name neither content nor source. None of those is something a run did
+// wrong, and all of them are ordinary in a real catalog: the first live
+// run against a deployed OpenVox installation on 2026-09-09 produced
+// nine of them comparing an environment with itself. They still leave
+// the comparison indeterminate, and an indeterminate comparison is still
+// a difference that cannot be ruled out, which is where the outcome
+// comes from; see model.ClassifyOutcome.
+//
+// The second is an error. An invalid checksum in a compiled catalog, a
+// source path refused as unsafe, a retrieval that failed against a
+// configured retriever, and a missing environment are all reports about
+// this run rather than about the shape of the catalog.
+func evidenceSeverity(errs ...error) model.DiagnosticSeverity {
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		switch {
+		case errors.Is(err, ErrNonByteComparable),
+			errors.Is(err, errHistoricalEvidence),
+			errors.Is(err, errNoContentOrSource),
+			errors.Is(err, errUnsupportedSourceScheme):
+		default:
+			return model.SeverityError
+		}
+	}
+	return model.SeverityWarning
 }
 
 // ResolveSide's order applies independently, so inline and captured/static
