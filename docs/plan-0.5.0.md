@@ -604,7 +604,20 @@ that a stored document is a complete, internally consistent comparison.
   `BenchmarkCanonicalNumberString`), `internal/assess/request_test.go` (whole-
   request budget, shedding order, retry room, context crowding),
   `internal/diff/diff_test.go` (`BenchmarkDiff_LargeCatalog`, 5,000 resources),
-  and two acceptance cases (adversarial number, oversized snapshot). Local macOS
+  and two acceptance cases (adversarial number, oversized snapshot). The
+  end-to-end half of the third acceptance bullet is
+  `TestAcceptance_LargeComparisonProducesABoundedRequest` in
+  `cmd/piace/acceptance_phase4_test.go`: a comparison carrying six 200 KiB
+  values reaches the stub inference service as a request inside the budget,
+  and the written artifact reports the omissions. Two accounting corrections
+  came out of it. A group whose values were omitted and which was then dropped
+  entirely no longer counts as a group reviewed without its values
+  (`TestBuildRequest_CountsOnlyGroupsItStillSends`, which fails against the
+  previous accounting with `ValuesOmitted = 200` over `GroupsAssessed = 121`),
+  and the explain stub's group-id pattern did not match the indented payload,
+  so every explain acceptance case had been asserting against a silently
+  degraded assessment; the pattern now tolerates the indentation and the
+  success case asserts the id round trip. Local macOS
   verification passed: `go test ./...`, `go test -race ./...`, `go vet ./...`,
   `go build ./...`, `gofmt -l`, and `git diff --check`.
 

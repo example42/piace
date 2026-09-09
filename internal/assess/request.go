@@ -304,6 +304,11 @@ type impactPayload struct {
 // the context is loaded, so this is a sum rather than a bound; it exists
 // so the payload budget accounts for text that is going into the same
 // request.
+//
+// It is a lower bound, not an exact size: buildUserMessage writes the
+// context as labelled JSON, whose punctuation and keys cost more than
+// the field bytes counted here. checkRequestSize is the guarantee; this
+// only keeps the payload budget from ignoring the context entirely.
 func changeContextBytes(cc ChangeContext) int {
 	if !cc.Present {
 		return 0
@@ -479,7 +484,17 @@ func fitPayload(doc payloadDoc, budget int) ([]byte, RequestScope, error) {
 		}
 	}
 
+	// Groups go from the tail, which PlanGroups ranked last, so what
+	// survives is a prefix of the plan. Produce relies on that to
+	// re-slice its own plan by count, and Interpret resolves returned
+	// ids against the result.
 	for len(doc.Groups) > 0 {
+		last := doc.Groups[len(doc.Groups)-1]
+		// A group that leaves entirely is not a group assessed without
+		// its values, so it stops being counted as one.
+		if last.Before == OmittedForSize {
+			doc.ValuesOmitted--
+		}
 		doc.Groups = doc.Groups[:len(doc.Groups)-1]
 		doc.GroupsAssessed = len(doc.Groups)
 		doc.GroupsTruncated = true

@@ -685,6 +685,33 @@ func TestBuildRequest_ShedsValuesBeforeGroups(t *testing.T) {
 	}
 }
 
+// TestBuildRequest_CountsOnlyGroupsItStillSends: values are shed before
+// whole groups, so a group can have its values omitted and then be
+// dropped entirely. Counting it as a group reviewed without its values
+// would describe a review of evidence that was never sent, and would let
+// values_omitted exceed groups_assessed.
+func TestBuildRequest_CountsOnlyGroupsItStillSends(t *testing.T) {
+	// Identities large enough that omitting every value still leaves the
+	// payload over budget, which forces the second shedding pass.
+	r := largeResult(200, 8*1024)
+	for i := range r.Aggregate.Groups {
+		title := fmt.Sprintf("/etc/%s-%03d.conf", strings.Repeat("t", 8*1024), i)
+		r.Aggregate.Groups[i].Key.Identity.Title = title
+	}
+
+	_, _, scope, err := BuildRequest(r, ChangeContext{}, testConfig())
+	if err != nil {
+		t.Fatalf("BuildRequest: %v", err)
+	}
+	if !scope.GroupsTruncated {
+		t.Fatalf("dropped no groups, so the accounting under test never ran: %+v", scope)
+	}
+	if scope.ValuesOmitted > scope.GroupsAssessed {
+		t.Errorf("ValuesOmitted = %d over GroupsAssessed = %d: a group that was never sent is counted as one reviewed without its values",
+			scope.ValuesOmitted, scope.GroupsAssessed)
+	}
+}
+
 // TestBuildRequest_LeavesRoomForARetry: a retry appends a message to the
 // request rather than replacing it, so a request built to exactly the
 // limit could not be retried.
