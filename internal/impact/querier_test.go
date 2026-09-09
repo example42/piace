@@ -358,3 +358,29 @@ func TestEstimate_DistinguishesAbsentFromEmptyCertname(t *testing.T) {
 		})
 	}
 }
+
+// A body of `null` decodes into a nil slice without error, so without
+// the shape check it would arrive as "no node is affected". An impact
+// estimate reporting zero nodes is a claim a reader acts on, and it must
+// not be produced by a response that said nothing.
+//
+// A deployed PuppetDB 8.15.0, measured on 2026-09-09, returns `[]` with
+// HTTP 200 for a query matching nothing, so this rejects a body that
+// service does not send rather than one it does.
+func TestEstimate_NullBodyIsMalformedNotEmpty(t *testing.T) {
+	for _, body := range []string{"null", " null ", `{"certname":"web-01"}`, `"[]"`, ""} {
+		var captured capturedRequest
+		q := serveRows(t, &captured, body)
+
+		estimate, diag := q.Estimate(context.Background(), nginx(), limits(10))
+		if diag == nil {
+			t.Errorf("body %q produced no diagnostic", body)
+		}
+		if estimate.Status != model.ImpactStatusFailed {
+			t.Errorf("body %q: status = %s, want failed", body, estimate.Status)
+		}
+		if estimate.ResultCount != 0 || len(estimate.Certnames) != 0 {
+			t.Errorf("body %q: a malformed response produced an estimate: %+v", body, estimate)
+		}
+	}
+}
