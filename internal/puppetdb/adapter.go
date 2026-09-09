@@ -226,6 +226,10 @@ func (a *Adapter) LoadBaseline(ctx context.Context, target resolve.Target) (Cata
 		return Catalog{}, model.SourceProvenance{}, &diag
 	}
 
+	// Everything PuppetDB stores went through the terminus, so this is
+	// unconditional for this adapter.
+	cat.StringifiedRich = true
+
 	prov := model.SourceProvenance{
 		Kind:              model.SourceKindPuppetDB,
 		Certname:          cat.Certname,

@@ -83,6 +83,11 @@ type NormalizedCatalog struct {
 	Resources      []Resource     `json:"resources"`
 	Edges          []Edge         `json:"edges"`
 	ContentContext ContentContext `json:"-"`
+	// StringifiedRich carries the source catalog's rich-data fidelity
+	// through normalization, because comparing two catalogs of
+	// different fidelities is not the same operation as comparing two
+	// of the same. See ProjectStringifiedRich.
+	StringifiedRich bool `json:"-"`
 }
 
 // ContentContext identifies the catalog whose desired bytes are being checked.

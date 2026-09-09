@@ -44,6 +44,7 @@ func diffResources(
 	beforeContext, afterContext model.ContentContext,
 	beforeResources, afterResources map[model.ResourceIdentity]model.Resource,
 	retriever filecontent.ContentRetriever,
+	f fidelity,
 ) ([]rawResourceChange, []model.Diagnostic) {
 	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
@@ -68,7 +69,7 @@ func diffResources(
 			}
 		default:
 			paramChanges, diags := diffParameters(ctx, certname, identity,
-				filecontent.Side{Resource: beforeRes, Context: beforeContext}, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever)
+				filecontent.Side{Resource: beforeRes, Context: beforeContext}, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever, f)
 			changes = append(changes, paramChanges...)
 			diagnostics = append(diagnostics, diags...)
 		}
@@ -106,6 +107,7 @@ func diffParameters(
 	identity model.ResourceIdentity,
 	beforeSide, afterSide filecontent.Side,
 	retriever filecontent.ContentRetriever,
+	f fidelity,
 ) ([]rawResourceChange, []model.Diagnostic) {
 	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
@@ -136,6 +138,11 @@ func diffParameters(
 		// to render.
 		if reflect.DeepEqual(bv, av) {
 			continue
+		}
+		if equal, unmeasured := f.equal(bv, av); equal {
+			continue
+		} else if unmeasured != "" {
+			diagnostics = append(diagnostics, fidelityDiagnostic(certname, identity, name, unmeasured))
 		}
 		changes = append(changes, rawResourceChange{
 			Kind:      model.ChangeParameterChanged,

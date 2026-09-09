@@ -1034,3 +1034,92 @@ func TestDiff_EnsureChangeIsReportedWithoutContentEvidence(t *testing.T) {
 		t.Errorf("want a bare ensure change, got %+v", got)
 	}
 }
+
+// stringifiedCatalog marks a catalog as holding the lossy strings
+// Puppet's PuppetDB terminus stores in place of rich values.
+func stringifiedCatalog(c model.NormalizedCatalog) model.NormalizedCatalog {
+	c.StringifiedRich = true
+	return c
+}
+
+func pcoreRegexp(pattern string) model.Value {
+	return map[string]model.Value{"__ptype": "Regexp", "__pvalue": pattern}
+}
+
+// The exact parameter that produced this finding on 2026-09-09: a
+// PuppetDB baseline holding ToStringifiedConverter's output compared
+// against a compiled candidate holding Pcore rich data. The two describe
+// the same regular expression.
+func TestDiff_RichAndStringifiedRegexpAreTheSameValue(t *testing.T) {
+	pattern := `^(.*uptime.*|system_uptime|memoryfree.*)$`
+	before := stringifiedCatalog(catalog([]model.Resource{
+		resource("Class", "Psick::Puppet", map[string]model.Value{"facts_file_exclude_regex": "/" + pattern + "/"}),
+	}, nil))
+	after := catalog([]model.Resource{
+		resource("Class", "Psick::Puppet", map[string]model.Value{"facts_file_exclude_regex": pcoreRegexp(pattern)}),
+	}, nil)
+
+	nd, diags := run(t, target(nil, nil), before, after, nil)
+	if nd.HasDifference {
+		t.Errorf("one regular expression at two fidelities was reported as changed: %+v", nd.ResourceChanges)
+	}
+	if len(diags) != 0 {
+		t.Errorf("unexpected diagnostics: %+v", diags)
+	}
+}
+
+// A real change still is one. The projection compares values; it does
+// not make them equal.
+func TestDiff_ChangedRegexpAcrossFidelitiesIsStillAChange(t *testing.T) {
+	before := stringifiedCatalog(catalog([]model.Resource{
+		resource("Class", "X", map[string]model.Value{"pattern": `/^old$/`}),
+	}, nil))
+	after := catalog([]model.Resource{
+		resource("Class", "X", map[string]model.Value{"pattern": pcoreRegexp(`^new$`)}),
+	}, nil)
+
+	nd, _ := run(t, target(nil, nil), before, after, nil)
+	if !nd.HasDifference {
+		t.Fatal("a changed regular expression was hidden by the fidelity projection")
+	}
+}
+
+// Reading Puppet's Ruby is not measuring a deployment, so an unmeasured
+// rich type is reported as a difference with a warning saying it may not
+// be one. Assuming it away would be a false clean result.
+func TestDiff_UnmeasuredRichTypeIsReportedWithItsLimitation(t *testing.T) {
+	before := stringifiedCatalog(catalog([]model.Resource{
+		resource("Class", "X", map[string]model.Value{"when": "2026-09-09T00:00:00.000000000 UTC"}),
+	}, nil))
+	after := catalog([]model.Resource{
+		resource("Class", "X", map[string]model.Value{
+			"when": map[string]model.Value{"__ptype": "Timestamp", "__pvalue": "2026-09-09T00:00:00.000000000 UTC"},
+		}),
+	}, nil)
+
+	nd, diags := run(t, target(nil, nil), before, after, nil)
+	if !nd.HasDifference {
+		t.Fatal("an unmeasured rich type was assumed unchanged")
+	}
+	if len(diags) != 1 || diags[0].Severity != model.SeverityWarning ||
+		!strings.Contains(diags[0].Message, "Timestamp") {
+		t.Fatalf("the fidelity limitation was not reported: %+v", diags)
+	}
+}
+
+// Two catalogs of the same fidelity are compared exactly. Projecting
+// them would compare a lossy form of both and could call two different
+// values equal.
+func TestDiff_SameFidelityComparesExactly(t *testing.T) {
+	before := catalog([]model.Resource{
+		resource("Class", "X", map[string]model.Value{"pattern": pcoreRegexp(`^a$`)}),
+	}, nil)
+	after := catalog([]model.Resource{
+		resource("Class", "X", map[string]model.Value{"pattern": `/^a$/`}),
+	}, nil)
+
+	nd, _ := run(t, target(nil, nil), before, after, nil)
+	if !nd.HasDifference {
+		t.Fatal("a rich value and a plain string compared equal between two rich catalogs")
+	}
+}

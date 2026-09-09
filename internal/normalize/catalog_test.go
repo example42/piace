@@ -614,9 +614,9 @@ func TestCatalog_DropsSynthesizedRelationshipEdges(t *testing.T) {
 	}
 }
 
-// A snapshot captured from a PuppetDB baseline is written in the
-// compiler's plain-array edge shape but keeps the relationship it was
-// stored with, so the filter has to apply to that shape too.
+// The filter applies to the compiler's plain-array edge shape too, so a
+// catalog carrying stored edges cannot escape it by being written in
+// that shape.
 func TestCatalog_DropsSynthesizedEdgesInEitherShape(t *testing.T) {
 	compiled := `[
 		{"source":{"type":"Class","title":"main"},"target":{"type":"Service","title":"nginx"},"relationship":"contains"},

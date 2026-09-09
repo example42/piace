@@ -174,9 +174,8 @@ func (s *resourceSpecWire) UnmarshalJSON(data []byte) error {
 // `{"source": <vertex>, "target": <vertex>, "relationship":
 // <relationship>}`, where each vertex is either form resourceSpecWire
 // accepts. A live compiler response carries no relationship field at
-// all; it is decoded here so a snapshot captured from a PuppetDB
-// baseline is filtered by the same rule whichever shape it was written
-// in. See containmentRelationship.
+// all; it is decoded here so the filter cannot be escaped by writing a
+// stored catalog's edges in this shape. See containmentRelationship.
 type compilerEdgeEntry struct {
 	Source       resourceSpecWire `json:"source"`
 	Target       resourceSpecWire `json:"target"`

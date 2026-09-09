@@ -15,6 +15,15 @@
 // parameter to be masked. Normalization rejects malformed sensitivity metadata
 // and Sensitive wrappers without __pvalue before comparison.
 //
+// Two catalogs can hold one value at two fidelities. A compiler response
+// carries Pcore rich data; a catalog read back from PuppetDB carries the lossy
+// strings Puppet's terminus stores in its place. When exactly one side is
+// stringified, a pair that is not identical is compared again with the rich
+// side projected to its stringified form. Only Regexp's projection is measured;
+// any other rich type is reported as a difference carrying a warning that says
+// it may be representation rather than change. Two catalogs of the same
+// fidelity are compared exactly. See model.ProjectStringifiedRich.
+//
 // Source-backed content is evaluated even when references are unchanged. Each
 // catalog supplies its own explicit content context; historical sides cannot
 // use live retrieval. Exclusions do not cancel requested evidence resolution.
