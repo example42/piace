@@ -2,6 +2,7 @@ package normalize
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -510,5 +511,70 @@ func TestCatalog_RejectsUnparseableResourceReference(t *testing.T) {
 		if diag.Operation != model.OperationNormalize {
 			t.Errorf("ref %q: Operation = %q, want %q", ref, diag.Operation, model.OperationNormalize)
 		}
+	}
+}
+
+// The exact resource that produced this finding, from a comparison of
+// one node's production environment with itself against a deployed
+// OpenVox 8.15.2 installation on 2026-09-09. PuppetDB's terminus sorts
+// Puppet's UnorderedMetaparams before storing a catalog; the compiler
+// returns them in declaration order. Both sides sort here, so the two
+// agree.
+func TestCatalog_UnorderedMetaparameterArraysCompareEqualInAnyOrder(t *testing.T) {
+	stored := `[{"type":"Service","title":"pabawi","parameters":{"require":[` +
+		`"Concat[pabawi_env_file]","Exec[docker_pull_pabawi]",` +
+		`"Exec[systemd_reload_pabawi]","File[/etc/systemd/system/pabawi.service]"]}}]`
+	compiled := `[{"type":"Service","title":"pabawi","parameters":{"require":[` +
+		`"File[/etc/systemd/system/pabawi.service]","Exec[docker_pull_pabawi]",` +
+		`"Exec[systemd_reload_pabawi]","Concat[pabawi_env_file]"]}}]`
+
+	baseline, diag := Catalog(pdbShapedCatalog("web-01.example.test", "production", stored, `[]`))
+	if diag != nil {
+		t.Fatalf("baseline diagnostic: %+v", diag)
+	}
+	candidate, diag := Catalog(compilerShapedCatalog("web-01.example.test", "production", compiled, `[]`))
+	if diag != nil {
+		t.Fatalf("candidate diagnostic: %+v", diag)
+	}
+	if !reflect.DeepEqual(baseline.Resources[0].Parameters, candidate.Resources[0].Parameters) {
+		t.Errorf("the same relationship set compared unequal:\n baseline: %+v\ncandidate: %+v",
+			baseline.Resources[0].Parameters, candidate.Resources[0].Parameters)
+	}
+}
+
+// Every parameter Puppet's own UnorderedMetaparams list names, minus
+// `alias`, which is dropped before the sort can see it.
+func TestCatalog_EveryUnorderedMetaparameterIsSorted(t *testing.T) {
+	for _, name := range []string{"audit", "before", "check", "notify", "require", "subscribe", "tag"} {
+		t.Run(name, func(t *testing.T) {
+			raw := pdbShapedCatalog("web-01.example.test", "production",
+				`[{"type":"Notify","title":"x","parameters":{"`+name+`":["c","a","b"]}}]`, `[]`)
+			got, diag := Catalog(raw)
+			if diag != nil {
+				t.Fatalf("unexpected diagnostic: %+v", diag)
+			}
+			want := []model.Value{"a", "b", "c"}
+			if !reflect.DeepEqual(got.Resources[0].Parameters[name], want) {
+				t.Errorf("%s = %+v, want %+v", name, got.Resources[0].Parameters[name], want)
+			}
+		})
+	}
+}
+
+// A File source array is ordered: its order decides which source is
+// retrieved first, and phase 2's selection depends on it. Sorting every
+// array-valued parameter would silently undo that, so the sort is
+// confined to the seven parameters Puppet calls unordered.
+func TestCatalog_OrderedParametersKeepTheirOrder(t *testing.T) {
+	raw := pdbShapedCatalog("web-01.example.test", "production",
+		`[{"type":"File","title":"/etc/motd","parameters":{"source":[`+
+			`"puppet:///modules/site/motd.$hostname","puppet:///modules/site/motd"]}}]`, `[]`)
+	got, diag := Catalog(raw)
+	if diag != nil {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+	want := []model.Value{"puppet:///modules/site/motd.$hostname", "puppet:///modules/site/motd"}
+	if !reflect.DeepEqual(got.Resources[0].Parameters["source"], want) {
+		t.Errorf("source = %+v, want the declared order preserved", got.Resources[0].Parameters["source"])
 	}
 }
