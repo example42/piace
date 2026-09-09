@@ -36,8 +36,39 @@
 //
 // PuppetDB input requests are reads. Compiler v4 requests disable persistence;
 // v3 requests can persist facts and catalogs. Capture reports the effective API
-// and v3 effects, including after a failed request. Snapshot compiler_api records
-// the effective API, including fallback.
+// and v3 effects, including after a failed request.
+//
+// # Recorded provenance
+//
+// A catalog envelope's provenance describes the request that actually
+// happened, not the one configuration asked for. Every value in
+// snapshot.CaptureProvenance comes from the model.CandidateProvenance the
+// compiler adapter returned: requested API, effective API, whether a permitted
+// v4-to-v3 fallback executed, the trusted-fact source of a v4 request, and
+// which fact source supplied the input factset, whose identity is recorded
+// alongside it as input_factset_identity. Reading the target's configured
+// catalog_api instead is what let a fallback capture publish a snapshot
+// claiming v4: only the adapter knows what answered.
+//
+// The v3 trusted-fact and persistence warning is not copied into the file.
+// model.V3TrustedFactWarning is single-sourced, and a reader derives the
+// warning from an effective API of v3, so the wording can change without
+// contradicting snapshots already on disk.
+//
+// # Snapshot fidelity
+//
+// A snapshot payload is a validated PIACE projection of the service response,
+// not the response itself. It retains everything the comparison contract
+// needs: target identity, environment, resources with their parameters and
+// sensitivity metadata, edges, static and recursive content metadata, captured
+// content digests, and the catalog identity fields (version, code_id,
+// catalog_uuid, transaction_uuid). Fields PIACE does not consume are dropped
+// by the typed carriers rather than stored: a compiler catalog's tags,
+// classes, and catalog_format, and any field a supported service adds that
+// internal/puppetdb's Factset and Catalog carriers do not promote. A captured
+// catalog is a compiler document, so the PuppetDB query-API fields hash,
+// producer, and producer_timestamp are absent from it; they are present in a
+// captured factset, which is a PuppetDB document.
 //
 // Catalog capture resolves single-file sources while the requested environment
 // is live and puts their locally computed digests inside the checksummed

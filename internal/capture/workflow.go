@@ -182,12 +182,6 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		d := model.Diagnostic{Certname: target.Certname, Operation: model.OperationLoadFacts, Severity: model.SeverityError, Message: err.Error()}
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
-	factsetIdentity, err := puppetdb.FactsetIdentity(fs)
-	if err != nil {
-		d := snapshotDiagnostic(target.Certname, err)
-		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
-	}
-
 	cat, provenance, warnings, diag := w.Compiler.RequestCandidate(ctx, candidateEnvironmentView(target, environment), fs)
 	defer func() {
 		if provenance.EffectiveAPI != "" {
@@ -206,12 +200,11 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		warnings = append(warnings, d.Message)
 	}
 
-	env, err := buildCatalogEnvelope(target, cat, environment, factsetIdentity, nowUTCRFC3339(w.Now))
+	env, err := buildCatalogEnvelope(target.Certname, cat, environment, provenance, nowUTCRFC3339(w.Now))
 	if err != nil {
 		d := snapshotDiagnostic(target.Certname, err)
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
-	env.CompilerAPIVersion = snapshot.CompilerAPI(provenance.EffectiveAPI)
 
 	if err := snapshot.Validate(env, snapshot.KindCatalog, target.Certname); err != nil {
 		d := snapshotDiagnostic(target.Certname, err)
@@ -255,9 +248,15 @@ func buildFactsetEnvelope(certname string, fs puppetdb.Factset, capturedAt strin
 
 // buildCatalogEnvelope marshals cat as the envelope payload and
 // constructs a catalog Envelope with its mandatory
-// requested_environment/compiler_api/input_factset_identity fields
-// populated.
-func buildCatalogEnvelope(target resolve.Target, cat puppetdb.Catalog, environment, factsetIdentity, capturedAt string) (snapshot.Envelope, error) {
+// requested_environment/capture/input_factset_identity fields populated.
+//
+// Every provenance value comes from provenance, the record the compiler
+// adapter returned for the request it actually issued, and none from the
+// target's configuration. Reading target.Candidate.CatalogAPI here is
+// what let a v4-to-v3 fallback capture publish a snapshot claiming
+// compiler_api v4: configuration says what was asked for, and only the
+// adapter knows what answered.
+func buildCatalogEnvelope(certname string, cat puppetdb.Catalog, environment string, provenance model.CandidateProvenance, capturedAt string) (snapshot.Envelope, error) {
 	payload, err := json.Marshal(cat)
 	if err != nil {
 		return snapshot.Envelope{}, fmt.Errorf("encoding catalog payload: %w", err)
@@ -269,15 +268,33 @@ func buildCatalogEnvelope(target resolve.Target, cat puppetdb.Catalog, environme
 	return snapshot.Envelope{
 		FormatVersion:        snapshot.FormatVersion,
 		Kind:                 snapshot.KindCatalog,
-		Target:               target.Certname,
+		Target:               certname,
 		Source:               snapshot.Source{Kind: "compiler", Producer: cat.Producer},
 		CapturedAt:           capturedAt,
 		RequestedEnvironment: environment,
-		CompilerAPIVersion:   snapshot.CompilerAPI(target.Candidate.CatalogAPI),
-		InputFactsetIdentity: factsetIdentity,
+		Capture:              captureProvenance(provenance),
+		InputFactsetIdentity: provenance.FactsetIdentity,
 		PayloadChecksum:      sum,
 		Payload:              payload,
 	}, nil
+}
+
+// captureProvenance projects the compiler adapter's
+// model.CandidateProvenance onto the persisted snapshot contract. The
+// two are deliberately separate types (see snapshot.CaptureProvenance):
+// this projection drops the parts that describe the request rather than
+// the payload, the candidate environment (the envelope records the
+// requested environment itself) and the v3 warning text (derived from
+// the effective API by every reader, from the single-sourced
+// model.V3TrustedFactWarning constant).
+func captureProvenance(p model.CandidateProvenance) *snapshot.CaptureProvenance {
+	return &snapshot.CaptureProvenance{
+		RequestedAPI:       snapshot.CompilerAPI(p.RequestedAPI),
+		EffectiveAPI:       snapshot.CompilerAPI(p.EffectiveAPI),
+		FellBackFromV4:     p.FellBackFromV4,
+		TrustedFactsSource: snapshot.TrustedFactsSource(p.TrustedFactsSource),
+		FactSource:         snapshot.FactSourceKind(p.FactSource),
+	}
 }
 
 // snapshotDiagnostic wraps a local envelope-construction or write failure

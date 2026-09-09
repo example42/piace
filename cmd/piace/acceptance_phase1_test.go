@@ -108,7 +108,7 @@ func TestAcceptance_ChecksummedWrongSnapshotIdentityStopsCompilation(t *testing.
 				t.Fatal(err)
 			}
 			if kind == snapshot.KindCatalog {
-				catalog := snapshot.Envelope{FormatVersion: snapshot.FormatVersion, Kind: snapshot.KindCatalog, Target: certname, Source: snapshot.Source{Kind: "compiler"}, CapturedAt: fixedTimestamp.Format(time.RFC3339), RequestedEnvironment: "production", CompilerAPIVersion: snapshot.CompilerAPIv4, InputFactsetIdentity: facts.PayloadChecksum, Payload: json.RawMessage(`{"certname":"different-node","environment":"production","resources":[],"edges":[]}`)}
+				catalog := snapshot.Envelope{FormatVersion: snapshot.FormatVersion, Kind: snapshot.KindCatalog, Target: certname, Source: snapshot.Source{Kind: "compiler"}, CapturedAt: fixedTimestamp.Format(time.RFC3339), RequestedEnvironment: "production", Capture: capturedV4Provenance(), InputFactsetIdentity: facts.PayloadChecksum, Payload: json.RawMessage(`{"certname":"different-node","environment":"production","resources":[],"edges":[]}`)}
 				catalog.PayloadChecksum, err = snapshot.Checksum(catalog.Payload)
 				if err != nil {
 					t.Fatal(err)

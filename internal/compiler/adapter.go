@@ -53,7 +53,19 @@ func (a *Adapter) RequestCandidate(ctx context.Context, target resolve.Target, f
 	if target.Facts.Source == config.FactSourceFile {
 		factSourceKind = model.SourceKindFile
 	}
-	factsetIdentity := facts.Hash
+	// puppetdb.FactsetIdentity, not facts.Hash: Hash is PuppetDB's own
+	// server-side value, absent from a file-backed factset entirely, so
+	// using it here would report an identity for one fact source and an
+	// empty string for the other. It would also disagree with the identity
+	// `capture catalog` records in the snapshot envelope, which is built
+	// from this provenance record; one algorithm for both, per
+	// FactsetIdentity's own documented contract.
+	factsetIdentity, err := puppetdb.FactsetIdentity(facts)
+	if err != nil {
+		diag := operationalLocalDiagnostic(target.Certname, host,
+			"computing input factset identity: "+err.Error())
+		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
+	}
 
 	baseProvenance := model.CandidateProvenance{
 		RequestedAPI:    target.Candidate.CatalogAPI,

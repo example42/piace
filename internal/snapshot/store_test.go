@@ -235,7 +235,7 @@ func TestValidate_RejectsTargetMismatch(t *testing.T) {
 }
 
 // TestValidate_RejectsMissingCatalogMetadata verifies a catalog envelope
-// missing its mandatory requested_environment/compiler_api/
+// missing its mandatory requested_environment/capture/
 // input_factset_identity fields is rejected.
 func TestValidate_RejectsMissingCatalogMetadata(t *testing.T) {
 	payload := json.RawMessage(`{"certname":"web-01.example.test"}`)
@@ -251,7 +251,7 @@ func TestValidate_RejectsMissingCatalogMetadata(t *testing.T) {
 		CapturedAt:      "2026-08-24T00:00:00Z",
 		PayloadChecksum: sum,
 		Payload:         payload,
-		// RequestedEnvironment/CompilerAPIVersion/InputFactsetIdentity
+		// RequestedEnvironment/Capture/InputFactsetIdentity
 		// intentionally left empty.
 	}
 	if err := Validate(env, KindCatalog, "web-01.example.test"); err == nil {

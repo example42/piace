@@ -164,6 +164,16 @@ payloads: they record source, target, environment where applicable, capture
 metadata, input identity, and an integrity checksum. A PuppetDB baseline whose
 environment differs from the configured baseline environment is rejected.
 
+A snapshot payload is a validated projection of the service response, retaining
+what a comparison needs (identity, environment, resources with their parameters
+and sensitivity metadata, edges, content metadata and captured digests) and
+dropping what PIACE does not consume. A catalog envelope also records how it
+was obtained: the API requested, the API that answered, any permitted v4-to-v3
+fallback, and the trusted-fact and fact sources. That distinction is the point.
+A capture that fell back to v3 has v3's trust semantics regardless of what the
+target file asked for, and a snapshot that recorded only the requested API
+would misdescribe its own contents for the rest of its life.
+
 ### The change assessment stays out of the result document
 
 The result document is canonically encoded and `schema_version`-tagged so that

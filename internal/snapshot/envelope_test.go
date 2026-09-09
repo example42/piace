@@ -6,7 +6,7 @@ import (
 )
 
 // TestEnvelope_JSONRoundTrip_Catalog verifies a catalog snapshot
-// envelope (with its mandatory requested_environment/compiler_api/
+// envelope (with its mandatory requested_environment/capture/
 // input_factset_identity fields) marshals and unmarshals via
 // encoding/json without field loss.
 func TestEnvelope_JSONRoundTrip_Catalog(t *testing.T) {
@@ -17,7 +17,7 @@ func TestEnvelope_JSONRoundTrip_Catalog(t *testing.T) {
 		Source:               Source{Kind: "compiler", Producer: "puppetserver-8.5.0"},
 		CapturedAt:           "2026-08-24T00:00:00Z",
 		RequestedEnvironment: "production",
-		CompilerAPIVersion:   CompilerAPIv4,
+		Capture:              validCaptureProvenance(),
 		InputFactsetIdentity: "sha256:deadbeef",
 		PayloadChecksum:      "sha256:cafebabe",
 		Payload:              json.RawMessage(`{"resources":[]}`),
@@ -42,8 +42,8 @@ func TestEnvelope_JSONRoundTrip_Catalog(t *testing.T) {
 	if decoded.RequestedEnvironment != "production" {
 		t.Errorf("RequestedEnvironment = %q", decoded.RequestedEnvironment)
 	}
-	if decoded.CompilerAPIVersion != CompilerAPIv4 {
-		t.Errorf("CompilerAPIVersion = %q", decoded.CompilerAPIVersion)
+	if decoded.Capture == nil || *decoded.Capture != *original.Capture {
+		t.Errorf("Capture = %+v, want %+v", decoded.Capture, original.Capture)
 	}
 	if decoded.InputFactsetIdentity != original.InputFactsetIdentity {
 		t.Errorf("InputFactsetIdentity = %q", decoded.InputFactsetIdentity)
@@ -78,7 +78,7 @@ func TestEnvelope_JSONRoundTrip_Factset(t *testing.T) {
 	if err := json.Unmarshal(data, &asMap); err != nil {
 		t.Fatalf("Unmarshal to map: %v", err)
 	}
-	for _, absent := range []string{"requested_environment", "compiler_api", "input_factset_identity"} {
+	for _, absent := range []string{"requested_environment", "capture", "input_factset_identity"} {
 		if _, ok := asMap[absent]; ok {
 			t.Errorf("factset envelope JSON unexpectedly contains %q", absent)
 		}

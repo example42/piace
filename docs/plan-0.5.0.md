@@ -1,7 +1,7 @@
 # PIACE 0.5.0 implementation plan
 
 Status: Phase 1 verified; Phase 2 implemented with the real-wire fixture gate
-in 2.2 still open; steps 3.1 and 3.2 verified. Updated 2026-09-09. Based on the
+in 2.2 still open; phase 3 verified. Updated 2026-09-09. Based on the
 codebase review of commit `e2b5090` on 2026-09-08.
 
 PIACE is published but has no deployments. Treat 0.5.0 as the first deployment
@@ -364,7 +364,28 @@ assessment even though edge-only comparisons are supported.
 
 ### 3.3 Record actual capture provenance and define snapshot fidelity
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Snapshot format version 2 replaces
+  `compiler_api` with a `capture` provenance block built entirely from the
+  compiler adapter's returned record: requested API, effective API, fallback,
+  trusted-fact source, and fact source. The compiler adapter now reports the
+  same factset identity the envelope stores, `puppetdb.FactsetIdentity`, instead
+  of PuppetDB's server-side hash, which a file-backed factset does not carry.
+  Load performs the integrity check and Validate the attribution check,
+  including capture-provenance consistency; captured content evidence is
+  shape-checked when a baseline snapshot is loaded. Synthetic regressions in
+  `internal/snapshot/identity_test.go`, `internal/capture/workflow_test.go`,
+  `internal/puppetdb/filesource_test.go`, `cmd/piace/acceptance_phase2_test.go`
+  and `cmd/piace/acceptance_snapshot_test.go` cover fallback provenance,
+  reported factset identity, impossible request sequences, unusable captured
+  digests, incomplete provenance, and the capture/compare round trip. Format
+  version 1 snapshots are rejected with a recapture instruction rather than
+  reinterpreted. Local macOS verification passed:
+  `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./...`,
+  `gofmt -l`, and `git diff --check`. No live service evidence was added; the
+  2.2/5.1 fixture gate remains open. Deferred to 5.2: a comparison against a
+  file baseline still does not surface that baseline's capture-time v3 trust
+  semantics in the result document, whose scope is a result-schema change
+  rather than a capture change.
 
 **Finding: medium severity.** Capture discards compiler provenance and warnings,
 then stamps the requested API into the envelope. A v4-to-v3 capture can therefore

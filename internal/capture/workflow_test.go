@@ -37,10 +37,17 @@ func (f *fakeFactSource) Load(ctx context.Context, target resolve.Target) (puppe
 }
 
 // fakeCompiler is a CompilerCatalogRequester test double keyed by
-// certname.
+// certname. It reports the same provenance shape internal/compiler's
+// Adapter reports, since the envelope this package builds is now
+// assembled entirely from that record: a double that returned a bare
+// effective API would let a capture test pass against provenance the
+// real adapter never produces.
 type fakeCompiler struct {
 	catalogs map[string]puppetdb.Catalog
 	fail     map[string]bool
+	// fallback names the targets whose v4 request is answered through a
+	// permitted v4-to-v3 fallback.
+	fallback map[string]bool
 }
 
 func (f *fakeCompiler) RequestCandidate(ctx context.Context, target resolve.Target, facts puppetdb.Factset) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic) {
@@ -53,7 +60,35 @@ func (f *fakeCompiler) RequestCandidate(ctx context.Context, target resolve.Targ
 		diag := model.Diagnostic{Severity: model.SeverityError, Operation: model.OperationRequestCandidate, Certname: target.Certname, Message: "no catalog configured for target"}
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
 	}
-	return cat, model.CandidateProvenance{EffectiveAPI: target.Candidate.CatalogAPI, RequestedAPI: target.Candidate.CatalogAPI}, nil, nil
+	identity, err := puppetdb.FactsetIdentity(facts)
+	if err != nil {
+		diag := model.Diagnostic{Severity: model.SeverityError, Operation: model.OperationRequestCandidate, Certname: target.Certname, Message: err.Error()}
+		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
+	}
+	factSource := model.SourceKindPuppetDB
+	if target.Facts.Source == config.FactSourceFile {
+		factSource = model.SourceKindFile
+	}
+	provenance := model.CandidateProvenance{
+		RequestedAPI:    target.Candidate.CatalogAPI,
+		EffectiveAPI:    target.Candidate.CatalogAPI,
+		Environment:     target.Candidate.Environment,
+		FactSource:      factSource,
+		FactsetIdentity: identity,
+	}
+	var warnings []string
+	switch {
+	case f.fallback[target.Certname]:
+		provenance.EffectiveAPI = config.CatalogAPIv3
+		provenance.FellBackFromV4 = true
+		provenance.V3Warning = model.V3TrustedFactWarning
+		warnings = []string{"v4 returned a generic 404; explicit fallback policy permitted v3"}
+	case target.Candidate.CatalogAPI == config.CatalogAPIv3:
+		provenance.V3Warning = model.V3TrustedFactWarning
+	default:
+		provenance.TrustedFactsSource = model.TrustedFactsProvided
+	}
+	return cat, provenance, warnings, nil
 }
 
 func fixedClock() func() time.Time {
@@ -261,8 +296,11 @@ func TestWorkflow_CaptureCatalog_WritesSnapshotWithWorkingCompiler(t *testing.T)
 	if env.RequestedEnvironment != "production" {
 		t.Errorf("RequestedEnvironment = %q", env.RequestedEnvironment)
 	}
-	if env.CompilerAPIVersion != snapshot.CompilerAPIv4 {
-		t.Errorf("CompilerAPIVersion = %q", env.CompilerAPIVersion)
+	if env.Capture == nil || env.Capture.RequestedAPI != snapshot.CompilerAPIv4 || env.Capture.EffectiveAPI != snapshot.CompilerAPIv4 {
+		t.Errorf("Capture = %+v, want a v4 request served by v4", env.Capture)
+	}
+	if env.Capture != nil && env.Capture.TrustedFactsSource != snapshot.TrustedFactsProvided {
+		t.Errorf("TrustedFactsSource = %q, want %q", env.Capture.TrustedFactsSource, snapshot.TrustedFactsProvided)
 	}
 	if env.InputFactsetIdentity == "" {
 		t.Error("InputFactsetIdentity is empty, want a computed factset identity")
@@ -327,4 +365,162 @@ func TestWorkflow_CaptureCatalog_PerTargetErrorIsolation(t *testing.T) {
 	if _, err := os.Stat(pathB); err != nil {
 		t.Errorf("expected a snapshot written for the succeeded target: %v", err)
 	}
+}
+
+// TestWorkflow_CaptureCatalog_RecordsFallbackProvenance is the finding
+// this envelope's capture provenance exists to close: a v4 request
+// answered through a permitted v4-to-v3 fallback used to publish a
+// snapshot stamped `compiler_api: v4`, because the envelope was built
+// from the target's configuration rather than from what the compiler
+// reported. The captured snapshot must record the effective v3, keep the
+// requested v4 alongside it, and expose the fallback and its warnings.
+func TestWorkflow_CaptureCatalog_RecordsFallbackProvenance(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "web-01-catalog.json")
+	certname := "web-01.example.test"
+
+	fakeFacts := &fakeFactSource{factsets: map[string]puppetdb.Factset{
+		certname: {Certname: certname, Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
+	}}
+	fakeCompilerImpl := &fakeCompiler{
+		catalogs: map[string]puppetdb.Catalog{
+			certname: {Certname: certname, Environment: "production", Producer: "compiler-01", Hash: "c", Resources: json.RawMessage(`[]`), Edges: json.RawMessage(`[]`)},
+		},
+		fallback: map[string]bool{certname: true},
+	}
+	w := &Workflow{PuppetDBFacts: fakeFacts, FileFacts: puppetdb.NewFileSource(), Compiler: fakeCompilerImpl, Now: fixedClock()}
+
+	outcomes := w.CaptureCatalog(context.Background(), []resolve.Target{
+		catalogTarget(certname, path, "v4", "puppetdb", ""),
+	}, "production")
+	if len(outcomes) != 1 || outcomes[0].Failed() {
+		t.Fatalf("outcomes = %+v", outcomes)
+	}
+	if len(outcomes[0].Warnings) == 0 {
+		t.Error("the fallback capture reported no warnings")
+	}
+	if outcomes[0].Candidate == nil || outcomes[0].Candidate.V3Warning == "" {
+		t.Errorf("Candidate = %+v, want the reported v3 trusted-fact warning", outcomes[0].Candidate)
+	}
+
+	env, err := snapshot.Load(path)
+	if err != nil {
+		t.Fatalf("snapshot.Load: %v", err)
+	}
+	if err := snapshot.Validate(env, snapshot.KindCatalog, certname); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if env.Capture == nil {
+		t.Fatal("the snapshot recorded no capture provenance")
+	}
+	if env.Capture.EffectiveAPI != snapshot.CompilerAPIv3 {
+		t.Errorf("EffectiveAPI = %q, want %q", env.Capture.EffectiveAPI, snapshot.CompilerAPIv3)
+	}
+	if env.Capture.RequestedAPI != snapshot.CompilerAPIv4 {
+		t.Errorf("RequestedAPI = %q, want %q", env.Capture.RequestedAPI, snapshot.CompilerAPIv4)
+	}
+	if !env.Capture.FellBackFromV4 {
+		t.Error("the snapshot does not record that the request fell back from v4")
+	}
+	if env.Capture.TrustedFactsSource != "" {
+		t.Errorf("TrustedFactsSource = %q, want none for a v3 capture", env.Capture.TrustedFactsSource)
+	}
+	if env.Capture.FactSource != snapshot.FactSourcePuppetDB {
+		t.Errorf("FactSource = %q, want %q", env.Capture.FactSource, snapshot.FactSourcePuppetDB)
+	}
+}
+
+// TestWorkflow_CaptureCatalog_RecordsReportedFactsetIdentity verifies the
+// envelope's input_factset_identity is the identity the compiler
+// reported for the factset it compiled, not one this package recomputes
+// from the factset it happened to load. Two independently computed
+// identities can disagree; one of them is then wrong, and the snapshot
+// has no way to say which.
+func TestWorkflow_CaptureCatalog_RecordsReportedFactsetIdentity(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "web-01-catalog.json")
+	certname := "web-01.example.test"
+	facts := puppetdb.Factset{Certname: certname, Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)}
+
+	fakeFacts := &fakeFactSource{factsets: map[string]puppetdb.Factset{certname: facts}}
+	fakeCompilerImpl := &fakeCompiler{catalogs: map[string]puppetdb.Catalog{
+		certname: {Certname: certname, Environment: "production", Producer: "compiler-01", Hash: "c", Resources: json.RawMessage(`[]`), Edges: json.RawMessage(`[]`)},
+	}}
+	w := &Workflow{PuppetDBFacts: fakeFacts, FileFacts: puppetdb.NewFileSource(), Compiler: fakeCompilerImpl, Now: fixedClock()}
+
+	outcomes := w.CaptureCatalog(context.Background(), []resolve.Target{
+		catalogTarget(certname, path, "v4", "puppetdb", ""),
+	}, "production")
+	if len(outcomes) != 1 || outcomes[0].Failed() {
+		t.Fatalf("outcomes = %+v", outcomes)
+	}
+	want, err := puppetdb.FactsetIdentity(facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, err := snapshot.Load(path)
+	if err != nil {
+		t.Fatalf("snapshot.Load: %v", err)
+	}
+	if env.InputFactsetIdentity != want {
+		t.Errorf("InputFactsetIdentity = %q, want the reported identity %q", env.InputFactsetIdentity, want)
+	}
+}
+
+// TestWorkflow_CaptureCatalog_RejectsIncompleteProvenance verifies the
+// envelope's provenance validation is load-bearing rather than
+// decorative. Since the envelope is now assembled entirely from what the
+// compiler adapter reports, an adapter that reports an incomplete record
+// must fail the capture, not publish a snapshot whose provenance
+// describes nothing.
+func TestWorkflow_CaptureCatalog_RejectsIncompleteProvenance(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "web-01-catalog.json")
+	certname := "web-01.example.test"
+
+	fakeFacts := &fakeFactSource{factsets: map[string]puppetdb.Factset{
+		certname: {Certname: certname, Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
+	}}
+	w := &Workflow{
+		PuppetDBFacts: fakeFacts,
+		FileFacts:     puppetdb.NewFileSource(),
+		Compiler: incompleteProvenanceCompiler{catalog: puppetdb.Catalog{
+			Certname: certname, Environment: "production", Producer: "compiler-01",
+			Resources: json.RawMessage(`[]`), Edges: json.RawMessage(`[]`),
+		}},
+		Now: fixedClock(),
+	}
+
+	outcomes := w.CaptureCatalog(context.Background(), []resolve.Target{
+		catalogTarget(certname, path, "v4", "puppetdb", ""),
+	}, "production")
+	if len(outcomes) != 1 || !outcomes[0].Failed() {
+		t.Fatalf("outcomes = %+v, want a reported failure", outcomes)
+	}
+	if outcomes[0].Diagnostic.Operation != model.OperationSnapshot {
+		t.Errorf("Operation = %q, want %q", outcomes[0].Diagnostic.Operation, model.OperationSnapshot)
+	}
+	if _, err := os.Stat(path); err == nil {
+		t.Error("a snapshot was published with provenance describing nothing")
+	}
+}
+
+// incompleteProvenanceCompiler reports a successful compilation with a
+// provenance record missing its fact source, standing in for a future
+// adapter path that forgets to populate one.
+type incompleteProvenanceCompiler struct{ catalog puppetdb.Catalog }
+
+func (c incompleteProvenanceCompiler) RequestCandidate(ctx context.Context, target resolve.Target, facts puppetdb.Factset) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic) {
+	identity, err := puppetdb.FactsetIdentity(facts)
+	if err != nil {
+		diag := model.Diagnostic{Severity: model.SeverityError, Operation: model.OperationRequestCandidate, Certname: target.Certname, Message: err.Error()}
+		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
+	}
+	return c.catalog, model.CandidateProvenance{
+		RequestedAPI:       config.CatalogAPIv4,
+		EffectiveAPI:       config.CatalogAPIv4,
+		Environment:        target.Candidate.Environment,
+		FactsetIdentity:    identity,
+		TrustedFactsSource: model.TrustedFactsProvided,
+	}, nil, nil
 }

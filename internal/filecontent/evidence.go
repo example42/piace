@@ -19,6 +19,24 @@ type Side struct {
 	Context  model.ContentContext
 }
 
+// ValidateContentDigest reports whether d is a digest this package could
+// have produced: a supported algorithm and a full hexadecimal value of
+// that algorithm's length, optionally carrying Puppet's matching
+// `{algorithm}` prefix.
+//
+// It is exported for the snapshot reader (internal/puppetdb's
+// FileSource), which has to reject captured content evidence of an
+// unsupported shape when a snapshot is loaded rather than when the
+// resource it belongs to is eventually compared: a stored digest that
+// can never become evidence is a defect in the snapshot, and reporting
+// it as "indeterminate content" at comparison time would describe it as
+// missing evidence instead. Validation lives here so there is one
+// definition of a supported digest rather than one per reader.
+func ValidateContentDigest(d model.ContentDigest) error {
+	_, err := validateDigest(d.Algorithm, d.Digest)
+	return err
+}
+
 // NeedsEvidence also selects unchanged references: a source string is not an
 // identity for the bytes served from an environment.
 func NeedsEvidence(r model.Resource) bool {
