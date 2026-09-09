@@ -235,7 +235,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	cfg, err := resolve.Load(f.targets, f.services, resolve.Overrides{
+	cfg, err := resolve.Load(resolve.CommandCompare, f.targets, f.services, resolve.Overrides{
 		CandidateEnvironment: f.candidateEnvironment,
 	})
 	if err != nil {
@@ -278,39 +278,46 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 // compiler adapter `capture` uses. Capture catalog and comparison share
 // one adapter and one policy.
 //
-// The compiler and PuppetDB clients are built independently from their
-// own resolved endpoints so neither service's credentials can reach the
-// other.
+// One client per service, not one per use. The compiler client serves
+// both the candidate-catalog adapter and file-content retrieval, and the
+// PuppetDB client both the fact/baseline adapter and the impact
+// estimate: they are the same endpoint, the same credentials, and the
+// same hardened transport, so a second client to the same service buys
+// nothing but a second connection pool. The two services still get
+// wholly separate clients, which is the isolation that matters: neither
+// service's credentials can reach the other.
+//
+// The PuppetDB client is built only when cfg says this run needs one.
+// A comparison of file-backed facts against a file-backed baseline with
+// the impact estimate disabled contacts PuppetDB not at all, and must
+// not require a PuppetDB identity to start.
 func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*compare.Workflow, error) {
-	puppetDBAdapter, err := newPuppetDBAdapter(cfg, debugOpts)
-	if err != nil {
-		return nil, err
-	}
-	compilerAdapter, err := newCompilerAdapter(cfg, debugOpts)
-	if err != nil {
-		return nil, err
-	}
 	compilerClient, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("building compiler content client: %w", err)
-	}
-	puppetDBClient, err := transport.NewClient(cfg.Services.PuppetDB, debugOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("building puppetdb impact client: %w", err)
+		return nil, fmt.Errorf("building compiler client: %w", err)
 	}
 
 	fileSource := puppetdb.NewFileSource()
-	return &compare.Workflow{
-		PuppetDBFacts:    puppetDBAdapter,
+	w := &compare.Workflow{
 		FileFacts:        fileSource,
-		PuppetDBBaseline: puppetDBAdapter,
 		FileBaseline:     fileSource,
-		Compiler:         compilerAdapter,
+		Compiler:         compiler.NewAdapter(compilerClient, cfg.Services.Compiler.URL),
 		ContentRetriever: filecontent.NewCompilerContentResolver(compilerClient, cfg.Services.Compiler.URL),
-		ImpactQuerier:    impact.NewQuerier(puppetDBClient, cfg.Services.PuppetDB.URL),
 		ToolVersion:      toolVersion,
 		Now:              clock,
-	}, nil
+	}
+
+	if cfg.Required.PuppetDB {
+		puppetDBClient, err := transport.NewClient(cfg.Services.PuppetDB, debugOpts...)
+		if err != nil {
+			return nil, fmt.Errorf("building puppetdb client: %w", err)
+		}
+		adapter := puppetdb.NewAdapter(puppetDBClient, cfg.Services.PuppetDB.URL)
+		w.PuppetDBFacts = adapter
+		w.PuppetDBBaseline = adapter
+		w.ImpactQuerier = impact.NewQuerier(puppetDBClient, cfg.Services.PuppetDB.URL)
+	}
+	return w, nil
 }
 
 // writeReports emits the requested artifacts. Text goes to stdout when
@@ -422,7 +429,7 @@ func runCaptureFacts(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
-	cfg, err := resolve.Load(f.targets, f.services, resolve.Overrides{})
+	cfg, err := resolve.Load(resolve.CommandCaptureFacts, f.targets, f.services, resolve.Overrides{})
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture facts: %s\n", err)
 		return exitcode.OperationalError
@@ -471,7 +478,7 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 	// override: it names the environment to snapshot, which is a
 	// different thing from the candidate environment under test and
 	// typically the opposite one. See capture.candidateEnvironmentView.
-	cfg, err := resolve.Load(f.targets, f.services, resolve.Overrides{})
+	cfg, err := resolve.Load(resolve.CommandCaptureCatalog, f.targets, f.services, resolve.Overrides{})
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
@@ -481,31 +488,33 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
 	}
-	contentClient, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
-	if err != nil {
-		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
-		return exitcode.OperationalError
-	}
-
-	puppetDBFacts, err := newPuppetDBAdapter(cfg, debugOpts)
-	if err != nil {
-		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
-		return exitcode.OperationalError
-	}
-
-	compilerAdapter, err := newCompilerAdapter(cfg, debugOpts)
+	// One compiler client for both the catalog request and the file-content
+	// retrieval capture performs while the environment is live; see
+	// newCompareWorkflow for why a service gets one client rather than one
+	// per use.
+	compilerClient, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
 	}
 
 	w := &capture.Workflow{
-		PuppetDBFacts:    puppetDBFacts,
 		FileFacts:        puppetdb.NewFileSource(),
-		Compiler:         compilerAdapter,
-		ContentRetriever: filecontent.NewCompilerContentResolver(contentClient, cfg.Services.Compiler.URL),
+		Compiler:         compiler.NewAdapter(compilerClient, cfg.Services.Compiler.URL),
+		ContentRetriever: filecontent.NewCompilerContentResolver(compilerClient, cfg.Services.Compiler.URL),
 		Replace:          f.replace,
 		Now:              clock,
+	}
+	// Only targets whose facts come from PuppetDB need the fact adapter;
+	// a run capturing catalogs entirely from file-backed factsets needs
+	// no PuppetDB identity at all.
+	if cfg.Required.PuppetDB {
+		puppetDBFacts, err := newPuppetDBAdapter(cfg, debugOpts)
+		if err != nil {
+			fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
+			return exitcode.OperationalError
+		}
+		w.PuppetDBFacts = puppetDBFacts
 	}
 	outcomes := w.CaptureCatalog(context.Background(), cfg.Targets, f.environment)
 	return reportCaptureOutcomes(stdout, stderr, "capture catalog", outcomes)
@@ -520,19 +529,6 @@ func newPuppetDBAdapter(cfg resolve.Config, debugOpts []transport.Option) (*pupp
 		return nil, fmt.Errorf("building puppetdb client: %w", err)
 	}
 	return puppetdb.NewAdapter(client, cfg.Services.PuppetDB.URL), nil
-}
-
-// newCompilerAdapter builds the compiler-backed v3/v4 candidate catalog
-// adapter from cfg's resolved compiler service endpoint, on the hardened
-// mTLS transport. `capture catalog` and `compare` both build their
-// compiler adapter this way, so they share the exact same request and
-// policy implementation.
-func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*compiler.Adapter, error) {
-	client, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("building compiler client: %w", err)
-	}
-	return compiler.NewAdapter(client, cfg.Services.Compiler.URL), nil
 }
 
 // reportCaptureOutcomes prints one line per target outcome and returns

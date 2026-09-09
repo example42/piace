@@ -25,27 +25,42 @@
 //
 // # Design decisions made where nothing else settles the question
 //
-//  1. Default per-request timeout: nothing names a default request
-//     deadline. What is defined is only how a target's impact-estimate
-//     timeout composes with an unspecified "service deadline", and
-//     resolve.go's package comment documents that gap explicitly. This
-//     package defines
-//     DefaultTimeout = 30 * time.Second as a documented, reasonable
-//     default for compiler/PuppetDB requests and applies it both as a
-//     context.WithTimeout per request and as the *http.Client.Timeout
-//     (defense in depth: Client.Timeout also bounds the full
-//     redirect-following/response-read sequence as one deadline, not just
-//     connection setup). A caller with a smaller effective deadline (e.g.
-//     resolve.Target.ImpactEstimate.Timeout) passes it explicitly to
-//     NewRequest/Do instead of this default.
+//  1. Request deadline precedence. Three sources can name a deadline,
+//     and they compose in this order, most specific first:
+//
+//     a. the deadline a caller passes to Do for one request, which is
+//     how a target's impact-estimate timeout reaches the transport;
+//     b. the service's configured `timeout` (services.<section>.timeout,
+//     resolved into resolve.Endpoint.Timeout);
+//     c. DefaultTimeout = 30 * time.Second, this package's documented
+//     default for compiler/PuppetDB requests, since nothing upstream
+//     names one.
+//
+//     The chosen deadline is applied as a context.WithTimeout around the
+//     request, and that context is the only deadline: *http.Client.Timeout
+//     stays zero. It reads as defense in depth but is not, because it is
+//     one value for every request a client makes: with it set to 30
+//     seconds, a target asking for a 90-second impact-estimate deadline
+//     received 30 and a timeout diagnostic quoting a deadline that was
+//     never in force. The context deadline covers the same ground per
+//     request (dial, handshake, redirects, and Do's own body read), so
+//     nothing is lost by removing the cap.
+//
+//     A caller may therefore both shorten and lengthen the configured
+//     default, which is the point: it knows what it is asking for. What
+//     it cannot do is remove the deadline, since a non-positive value
+//     means "use the client's default" rather than "wait forever".
+//
 //  2. Default maximum response body size: neither document names a body
 //     size limit. This package defines DefaultMaxResponseBodyBytes = 64
 //     MiB. Puppet catalog JSON documents are typically well under this for
 //     even large infrastructures, while 64 MiB is small enough to bound
 //     memory use against a misbehaving or compromised endpoint.
+//
 //  3. Redirect authority equality is judged on scheme+host (net/http's
 //     url.URL.Host already includes an explicit port), which is what "no
 //     redirects to another authority" means here.
+//
 //  4. Error classification: every error this package itself produces
 //     (TLS/CA/cert load failure, non-https construction, TLS handshake
 //     failure, dial/DNS failure, context deadline exceeded, redirect

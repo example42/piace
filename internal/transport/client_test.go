@@ -329,3 +329,62 @@ func TestClients_AreIndependentEvenWithIdenticalCertFiles(t *testing.T) {
 		t.Error("compiler and puppetdb share the same *tls.Config")
 	}
 }
+
+// TestClient_LongerCallerDeadlineIsNotCapped covers the precedence
+// documented in doc.go decision 1. A caller's per-request deadline is
+// authoritative in both directions: a response that arrives after the
+// client's own configured default must still be waited for when the
+// caller asked for longer. The reverse case, a shorter caller deadline
+// winning, is TestClient_RequestDeadlineTriggersOperationalError.
+func TestClient_LongerCallerDeadlineIsNotCapped(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("late but valid"))
+	})
+
+	ep := fixture.endpointFor(t, srv.URL)
+	ep.Timeout = 30 * time.Millisecond
+	client, err := NewClient(ep)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	req, err := client.NewRequest(context.Background(), http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := client.Do(req, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Do: %v, want the caller's longer deadline to be honored", err)
+	}
+	if string(resp.Body) != "late but valid" {
+		t.Errorf("Body = %q", resp.Body)
+	}
+}
+
+// TestNewClient_ConfiguredTimeoutIsTheDefault verifies the service's
+// configured deadline applies to a request that names none of its own.
+func TestNewClient_ConfiguredTimeoutIsTheDefault(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	ep := fixture.endpointFor(t, srv.URL)
+	ep.Timeout = 20 * time.Millisecond
+	client, err := NewClient(ep)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	req, err := client.NewRequest(context.Background(), http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	if _, err := client.Do(req, 0); err == nil {
+		t.Fatal("expected the configured service timeout to apply, got no error")
+	} else if te, ok := err.(*Error); !ok || te.Kind != KindTimeout {
+		t.Fatalf("error = %v, want a timeout error", err)
+	}
+}

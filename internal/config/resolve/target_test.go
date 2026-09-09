@@ -66,7 +66,7 @@ func TestResolveTargets_ValidFullResolution(t *testing.T) {
 		},
 	}
 
-	targets, err := ResolveTargets(tf, "/config/dir")
+	targets, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err != nil {
 		t.Fatalf("ResolveTargets: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestResolveTargets_UnsupportedVersion(t *testing.T) {
 		Defaults: validDefaults(),
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error for unsupported version, got nil")
 	}
@@ -177,7 +177,7 @@ func TestResolveTargets_MissingValues(t *testing.T) {
 				Defaults: defaults,
 				Targets:  []config.Target{{Certname: "web-01.example.test"}},
 			}
-			_, err := ResolveTargets(tf, "/config/dir")
+			_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
@@ -197,7 +197,7 @@ func TestResolveTargets_DuplicateCertnames(t *testing.T) {
 			{Certname: "web-01.example.test"},
 		},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error for duplicate certname, got nil")
 	}
@@ -221,7 +221,7 @@ func TestResolveTargets_InvalidCertnameCharacters(t *testing.T) {
 				Defaults: validDefaults(),
 				Targets:  []config.Target{{Certname: certname}},
 			}
-			_, err := ResolveTargets(tf, "/config/dir")
+			_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 			if err == nil {
 				t.Fatalf("expected error for certname %q, got nil", certname)
 			}
@@ -239,7 +239,7 @@ func TestResolveTargets_InvalidGlobPattern(t *testing.T) {
 		Defaults: defaults,
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error for invalid glob pattern, got nil")
 	}
@@ -263,7 +263,7 @@ func TestResolveTargets_MalformedRedactionSelector(t *testing.T) {
 				Defaults: defaults,
 				Targets:  []config.Target{{Certname: "web-01.example.test"}},
 			}
-			_, err := ResolveTargets(tf, "/config/dir")
+			_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 			if err == nil {
 				t.Fatalf("expected error for redact selector %+v, got nil", sel)
 			}
@@ -326,7 +326,7 @@ func TestResolveTargets_BadDurationsAndLimits(t *testing.T) {
 				Defaults: defaults,
 				Targets:  []config.Target{{Certname: "web-01.example.test"}},
 			}
-			_, err := ResolveTargets(tf, "/config/dir")
+			_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
@@ -345,7 +345,7 @@ func TestResolveTargets_ImpactEstimateDisabledSkipsValidation(t *testing.T) {
 		Defaults: defaults,
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	targets, err := ResolveTargets(tf, "/config/dir")
+	targets, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err != nil {
 		t.Fatalf("ResolveTargets: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestResolveTargets_V3WithAllowFallbackRejected(t *testing.T) {
 		Defaults: defaults,
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error for allow_v3_fallback with catalog_api v3, got nil")
 	}
@@ -387,7 +387,7 @@ func TestResolveTargets_V4WithAllowFallbackAccepted(t *testing.T) {
 		Defaults: defaults,
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	targets, err := ResolveTargets(tf, "/config/dir")
+	targets, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err != nil {
 		t.Fatalf("ResolveTargets: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestResolveTargets_InvalidCatalogAPI(t *testing.T) {
 		Defaults: defaults,
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error for invalid catalog_api, got nil")
 	}
@@ -421,7 +421,7 @@ func TestResolveTargets_PuppetDBSourceRejectsFile(t *testing.T) {
 		Defaults: defaults,
 		Targets:  []config.Target{{Certname: "web-01.example.test"}},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error for facts.file set with puppetdb source, got nil")
 	}
@@ -451,7 +451,7 @@ func TestResolveTargets_TemplatePathTraversalRejected(t *testing.T) {
 				Defaults: defaults,
 				Targets:  []config.Target{{Certname: "web-01.example.test"}},
 			}
-			_, err := ResolveTargets(tf, "/config/dir")
+			_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 			if err == nil {
 				t.Fatalf("expected error for file %q, got nil", tc.file)
 			}
@@ -489,7 +489,7 @@ func TestResolveTargets_ValidTemplatePathVariants(t *testing.T) {
 				Defaults: defaults,
 				Targets:  []config.Target{{Certname: "web-01.example.test"}},
 			}
-			targets, err := ResolveTargets(tf, "/config/dir")
+			targets, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 			if err != nil {
 				t.Fatalf("ResolveTargets: %v", err)
 			}
@@ -527,7 +527,7 @@ func TestResolveTargets_AppendOnlyMergeWithDuplicateRetention(t *testing.T) {
 		},
 	}
 
-	targets, err := ResolveTargets(tf, "/config/dir")
+	targets, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err != nil {
 		t.Fatalf("ResolveTargets: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestResolveTargets_AccumulatesMultipleErrors(t *testing.T) {
 			},
 		},
 	}
-	_, err := ResolveTargets(tf, "/config/dir")
+	_, err := ResolveTargets(tf, "/config/dir", CommandCompare)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

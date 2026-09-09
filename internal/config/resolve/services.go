@@ -3,14 +3,21 @@ package resolve
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/example42/piace/internal/config"
 )
 
 // ResolveServices validates a `--services` file: version 1, and for each
-// of compiler/puppetdb, a non-empty https endpoint URL and exactly one
+// endpoint named in need, a non-empty https endpoint URL and exactly one
 // usable reference to each of the CA bundle, client certificate and
 // private key.
+//
+// A section outside need is not validated and comes back as a zero
+// Endpoint. That is what lets a comparison of file-backed facts against
+// a file-backed baseline, with the impact estimate disabled, run from a
+// services file that names no PuppetDB at all: PIACE should not demand
+// an identity for a service it will not contact.
 //
 // dir is the services file's directory. A relative path written in the file
 // resolves against it, because every file path named in a config file
@@ -25,20 +32,25 @@ import (
 //
 // Like ResolveTargets, it accumulates every problem it finds into a
 // single error rather than failing on the first one.
-func ResolveServices(sf config.ServicesFile, dir string) (Services, error) {
+func ResolveServices(sf config.ServicesFile, dir string, need ServiceSet) (Services, error) {
 	var c errorCollector
 
 	if sf.Version != config.ServicesFileVersion {
 		c.addf("services file: unsupported version %d, expected %d", sf.Version, config.ServicesFileVersion)
 	}
 
-	compiler := resolveEndpoint("compiler", sf.Compiler, dir, &c)
-	puppetdb := resolveEndpoint("puppetdb", sf.PuppetDB, dir, &c)
+	var services Services
+	if need.Compiler {
+		services.Compiler = resolveEndpoint("compiler", sf.Compiler, dir, &c)
+	}
+	if need.PuppetDB {
+		services.PuppetDB = resolveEndpoint("puppetdb", sf.PuppetDB, dir, &c)
+	}
 
 	if c.hasErrors() {
 		return Services{}, c.result()
 	}
-	return Services{Compiler: compiler, PuppetDB: puppetdb}, nil
+	return services, nil
 }
 
 func resolveEndpoint(section string, ep config.ServiceEndpoint, dir string, c *errorCollector) Endpoint {
@@ -51,7 +63,29 @@ func resolveEndpoint(section string, ep config.ServiceEndpoint, dir string, c *e
 		CABundle:   resolveTLSPath(section, "ca_bundle", ep.CABundle, ep.CABundleEnv, dir, c),
 		ClientCert: resolveTLSPath(section, "client_cert", ep.ClientCert, ep.ClientCertEnv, dir, c),
 		PrivateKey: resolveTLSPath(section, "private_key", ep.PrivateKey, ep.PrivateKeyEnv, dir, c),
+		Timeout:    resolveServiceTimeout(section, ep.Timeout, c),
 	}
+}
+
+// resolveServiceTimeout parses an optional service-level request
+// deadline. An unset value resolves to zero, meaning the transport's own
+// default; a present one must be a valid, positive duration, since a
+// zero or negative deadline written on purpose would read as "no
+// timeout" and there is no such mode.
+func resolveServiceTimeout(section, raw string, c *errorCollector) time.Duration {
+	if raw == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		c.addf("services.%s.timeout: %q is not a valid duration", section, raw)
+		return 0
+	}
+	if d <= 0 {
+		c.addf("services.%s.timeout: must be positive, got %q", section, raw)
+		return 0
+	}
+	return d
 }
 
 // resolveTLSPath reads one TLS file location from exactly one of the two

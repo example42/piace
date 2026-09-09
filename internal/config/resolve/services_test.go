@@ -27,7 +27,7 @@ func validServicesFile() config.ServicesFile {
 }
 
 func TestResolveServices_Valid(t *testing.T) {
-	svc, err := ResolveServices(validServicesFile(), "/etc/piace")
+	svc, err := ResolveServices(validServicesFile(), "/etc/piace", ServiceSet{Compiler: true, PuppetDB: true})
 	if err != nil {
 		t.Fatalf("ResolveServices: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestResolveServices_Valid(t *testing.T) {
 func TestResolveServices_UnsupportedVersion(t *testing.T) {
 	sf := validServicesFile()
 	sf.Version = 2
-	_, err := ResolveServices(sf, "/etc/piace")
+	_, err := ResolveServices(sf, "/etc/piace", ServiceSet{Compiler: true, PuppetDB: true})
 	if err == nil {
 		t.Fatal("expected error for unsupported version, got nil")
 	}
@@ -65,7 +65,7 @@ func TestResolveServices_NonHTTPSEndpointRejected(t *testing.T) {
 		t.Run(endpoint, func(t *testing.T) {
 			sf := validServicesFile()
 			sf.Compiler.Endpoint = endpoint
-			_, err := ResolveServices(sf, "/etc/piace")
+			_, err := ResolveServices(sf, "/etc/piace", ServiceSet{Compiler: true, PuppetDB: true})
 			if err == nil {
 				t.Fatalf("expected error for endpoint %q, got nil", endpoint)
 			}
@@ -86,7 +86,7 @@ func TestResolveServices_EmptyTLSPathsRejected(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			sf := validServicesFile()
 			tc.mutate(&sf.Compiler)
-			_, err := ResolveServices(sf, "/etc/piace")
+			_, err := ResolveServices(sf, "/etc/piace", ServiceSet{Compiler: true, PuppetDB: true})
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}
@@ -98,7 +98,7 @@ func TestResolveServices_AccumulatesErrorsAcrossBothSections(t *testing.T) {
 	sf := validServicesFile()
 	sf.Compiler.Endpoint = "http://insecure.example.test"
 	sf.PuppetDB.CABundle = ""
-	_, err := ResolveServices(sf, "/etc/piace")
+	_, err := ResolveServices(sf, "/etc/piace", ServiceSet{Compiler: true, PuppetDB: true})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -120,7 +120,7 @@ func TestResolveServices_RelativePathsResolveAgainstTheServicesFile(t *testing.T
 	sf.Compiler.CABundle = "ca.pem"
 	sf.Compiler.ClientCert = "tls/reader.pem"
 
-	svc, err := ResolveServices(sf, "/srv/ci/piace")
+	svc, err := ResolveServices(sf, "/srv/ci/piace", ServiceSet{Compiler: true, PuppetDB: true})
 	if err != nil {
 		t.Fatalf("ResolveServices: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestResolveServices_EnvNamedTLSPaths(t *testing.T) {
 	sf.Compiler.CABundle = ""
 	sf.Compiler.CABundleEnv = "PIACE_CA_BUNDLE"
 
-	svc, err := ResolveServices(sf, "/srv/ci/piace")
+	svc, err := ResolveServices(sf, "/srv/ci/piace", ServiceSet{Compiler: true, PuppetDB: true})
 	if err != nil {
 		t.Fatalf("ResolveServices: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestResolveServices_TLSReferenceErrors(t *testing.T) {
 			}
 			sf := validServicesFile()
 			tc.mutate(&sf.Compiler)
-			_, err := ResolveServices(sf, "/etc/piace")
+			_, err := ResolveServices(sf, "/etc/piace", ServiceSet{Compiler: true, PuppetDB: true})
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}

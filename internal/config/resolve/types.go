@@ -10,8 +10,13 @@ import (
 // Target is the complete, validated per-target model: every field is
 // fully resolved from global defaults and per-target overrides, and
 // every invariant has already been checked. Nothing downstream of
-// ResolveTargets or Load needs to re-check presence, source or API enum
-// validity, glob syntax, duration or limit positivity, or path safety.
+// ResolveTargets or Load needs to re-check source or API enum validity,
+// glob syntax, duration or limit positivity, or path safety.
+//
+// Presence is the one thing scoped to the command that resolved it (see
+// Command): a field the running command does not read may legitimately
+// be empty, and is documented as such on the field. Everything that is
+// present has been validated, whichever command asked.
 type Target struct {
 	Certname       string
 	Candidate      Candidate
@@ -26,8 +31,14 @@ type Target struct {
 // Candidate is the resolved candidate-compilation configuration for one
 // target.
 type Candidate struct {
+	// Environment is empty for a command that does not compile a
+	// candidate for the target's own environment: `capture catalog` names
+	// the environment to snapshot on the command line, and `capture
+	// facts` compiles nothing at all.
 	Environment string
-	CatalogAPI  config.CatalogAPI
+	// CatalogAPI is empty only for `capture facts`, which issues no
+	// catalog request.
+	CatalogAPI config.CatalogAPI
 	// AllowV3Fallback is always false when CatalogAPI is v3; resolution
 	// rejects the combination CatalogAPI=v3, AllowV3Fallback=true.
 	AllowV3Fallback bool
@@ -49,7 +60,11 @@ type Facts struct {
 // Baseline is the resolved baseline-catalog configuration for one target.
 // File is resolved the same way as Facts.File.
 type Baseline struct {
-	Source      config.BaselineSourceKind
+	// Source is empty only for `capture facts`, which has no baseline.
+	Source config.BaselineSourceKind
+	// Environment is empty for both capture commands: only a comparison
+	// reads a baseline catalog and checks the environment it came from.
+	// `capture catalog` uses Source and File as a destination.
 	Environment string
 	File        string
 }
@@ -75,9 +90,18 @@ type Endpoint struct {
 	CABundle   string
 	ClientCert string
 	PrivateKey string
+	// Timeout is this service's configured default per-request deadline,
+	// already parsed and checked for positivity. It is zero when the
+	// services file did not name one, which the transport reads as "use
+	// transport.DefaultTimeout": this package resolves configuration and
+	// does not own the transport's default.
+	Timeout time.Duration
 }
 
-// Services is the resolved, validated `--services` configuration.
+// Services is the resolved, validated `--services` configuration. An
+// endpoint the running command does not need (see Config.Required) is
+// zero: it was neither required nor validated, and no client is built
+// from it.
 type Services struct {
 	Compiler Endpoint
 	PuppetDB Endpoint
@@ -90,4 +114,8 @@ type Services struct {
 type Config struct {
 	Targets  []Target
 	Services Services
+	// Required names the endpoints this command needs, given what its
+	// targets select. Only these were validated, only these are populated
+	// in Services, and only these should have clients built for them.
+	Required ServiceSet
 }

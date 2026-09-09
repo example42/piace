@@ -17,9 +17,10 @@ import (
 	"github.com/example42/piace/internal/safemeta"
 )
 
-// DefaultTimeout is the per-request deadline applied when a caller does
-// not supply a smaller one. See doc.go decision 1: nothing else names a
-// default, so this value is a documented assumption.
+// DefaultTimeout is the per-request deadline applied when neither the
+// caller nor the service's configuration names one. See doc.go decision
+// 1 for the full precedence: a caller's explicit per-request deadline
+// wins, then the service's configured `timeout`, then this value.
 const DefaultTimeout = 30 * time.Second
 
 // DefaultMaxResponseBodyBytes bounds a single response body. See doc.go
@@ -54,13 +55,14 @@ type Client struct {
 // construction path.
 type Option func(*Client)
 
-// WithTimeout overrides DefaultTimeout for both the per-request context
-// deadline and the underlying *http.Client.Timeout.
+// WithTimeout overrides this client's default per-request deadline. It
+// does not set *http.Client.Timeout: that field is a single deadline for
+// every request the client will ever make, so setting it would cap a
+// caller that legitimately asks Do for a longer one.
 func WithTimeout(d time.Duration) Option {
 	return func(c *Client) {
 		if d > 0 {
 			c.timeout = d
-			c.httpClient.Timeout = d
 		}
 	}
 }
@@ -134,15 +136,27 @@ func NewClient(ep resolve.Endpoint, opts ...Option) (*Client, error) {
 		// A dedicated *http.Transport per Client: two Clients never share a
 		// connection pool or session cache, even if their tlsConfig values
 		// were built from identical certificate files.
-		Transport:     &http.Transport{TLSClientConfig: tlsConfig},
-		Timeout:       DefaultTimeout,
+		Transport: &http.Transport{TLSClientConfig: tlsConfig},
+		// Timeout is deliberately left zero. It is one deadline for every
+		// request a client ever makes, so a value here silently shortens
+		// any longer per-request deadline Do is asked for: a target
+		// configured with a 90-second impact-estimate timeout used to get
+		// 30 seconds and a timeout diagnostic naming a deadline it never
+		// had. Do applies a context deadline to every request instead,
+		// which bounds the whole exchange (dial, TLS handshake, redirects,
+		// and the body read Do performs before returning) and is
+		// per-request rather than per-client.
 		CheckRedirect: checkRedirect,
 	}
 
+	timeout := DefaultTimeout
+	if ep.Timeout > 0 {
+		timeout = ep.Timeout
+	}
 	c := &Client{
 		httpClient:   httpClient,
 		host:         host,
-		timeout:      DefaultTimeout,
+		timeout:      timeout,
 		maxBodyBytes: DefaultMaxResponseBodyBytes,
 	}
 	for _, opt := range opts {
@@ -213,11 +227,12 @@ func (c *Client) NewRequest(ctx context.Context, method, url string, body io.Rea
 // error) on any failure.
 //
 // Deadline: Do wraps req's context in context.WithTimeout using timeout,
-// or the Client's configured default when timeout <= 0. This is applied in
-// addition to the *http.Client.Timeout set at construction (defense in
-// depth: Client.Timeout also bounds the full redirect-following/response-
-// read sequence as a single deadline, not only connection setup; see
-// doc.go decision 1).
+// or the Client's configured default when timeout <= 0. That context is
+// the only deadline (see NewClient for why *http.Client.Timeout stays
+// zero), and it bounds the whole exchange: dial, TLS handshake, allowed
+// redirects, and the response-body read Do performs before returning.
+// The precedence is caller, then the service's configured `timeout`,
+// then DefaultTimeout; see doc.go decision 1.
 //
 // Authorization: any Authorization header on req is deleted before the
 // request is sent. See the note in checkRedirect.

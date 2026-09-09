@@ -36,7 +36,7 @@ func TestLoadTargetFile_CandidateEnvironmentOverrideWinsEverywhere(t *testing.T)
 	dir := t.TempDir()
 	path := writeTempFile(t, dir, "targets.yaml", overridableTargetsYAML)
 
-	targets, err := LoadTargetFile(path, Overrides{CandidateEnvironment: "pr-441"})
+	targets, err := LoadTargetFile(path, CommandCompare, Overrides{CandidateEnvironment: "pr-441"})
 	if err != nil {
 		t.Fatalf("LoadTargetFile: %v", err)
 	}
@@ -64,7 +64,7 @@ func TestLoadTargetFile_ZeroOverridesLeavesTheFileAlone(t *testing.T) {
 	path := writeTempFile(t, dir, "targets.yaml",
 		strings.TrimSuffix(overridableTargetsYAML, "  - certname: web-03.example.test\n    candidate:\n      catalog_api: v3\n"))
 
-	targets, err := LoadTargetFile(path, Overrides{})
+	targets, err := LoadTargetFile(path, CommandCompare, Overrides{})
 	if err != nil {
 		t.Fatalf("LoadTargetFile: %v", err)
 	}
@@ -98,13 +98,13 @@ targets:
 	dir := t.TempDir()
 	path := writeTempFile(t, dir, "targets.yaml", noEnvironmentYAML)
 
-	if _, err := LoadTargetFile(path, Overrides{}); err == nil {
+	if _, err := LoadTargetFile(path, CommandCompare, Overrides{}); err == nil {
 		t.Fatal("expected candidate.environment to be required without an override, got nil")
 	} else if !strings.Contains(err.Error(), "candidate.environment is required") {
 		t.Errorf("error = %v, want it to name the missing candidate.environment", err)
 	}
 
-	targets, err := LoadTargetFile(path, Overrides{CandidateEnvironment: "pr-441"})
+	targets, err := LoadTargetFile(path, CommandCompare, Overrides{CandidateEnvironment: "pr-441"})
 	if err != nil {
 		t.Fatalf("LoadTargetFile with an override: %v", err)
 	}

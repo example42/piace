@@ -191,6 +191,14 @@ rejected** in both: a typo is a load error, not a silently ignored setting.
 Complete, loadable, heavily commented samples are in
 [`examples/`](examples/). This section is the reference for what the keys mean.
 
+**Each command reads what it needs.** One target file and one services file
+serve every command, but they do not read the same fields, and a field a command
+never reads is not required to be present for it. `capture facts` needs a
+certname and a `facts.file` destination; `capture catalog` needs a fact source,
+a catalog API and a `baseline.file` destination, taking its environment from
+`--environment`; `compare` needs all of it. Whatever *is* present is validated
+identically for every command: only presence is scoped, never validity.
+
 **One path rule.** Every relative path in a config file resolves against the
 directory of the file that names it. `facts.file` and `baseline.file` resolve
 against the target file; the TLS paths, `token_file` and `policy_notes_file`
@@ -260,11 +268,14 @@ prepended to per-target ones rather than replaced.
 ### `services.yaml`
 
 One file for every subcommand. The `compiler:`, `puppetdb:` and `inference:`
-sections load independently: `compare` and `capture` read the first two and
-never look at `inference:`, and `explain` reads `inference:` and builds no
-compiler or PuppetDB client. A file carrying only `version:` and `inference:`
-is valid for `explain`, so an assessment needs no Puppet infrastructure named
-at all.
+sections load independently, and each is required only by the commands that
+actually contact it. `explain` reads `inference:` alone, so a file carrying only
+`version:` and `inference:` is valid for it. `capture facts` retrieves from
+PuppetDB and compiles nothing, so it needs no `compiler:`. A comparison of
+file-backed facts against a file-backed baseline with the impact estimate
+disabled contacts PuppetDB nowhere, so it needs no `puppetdb:`. PIACE does not
+ask you to provision an identity for a service the run will never speak to; the
+requirement returns the moment a target selects that service.
 
 ```yaml
 version: 1
@@ -286,6 +297,13 @@ Naming both forms of one credential is an error. The `_env` form is what lets a
 committed services file be read in place by a CI job whose credential directory
 did not exist when the file was written; see
 [docs/ci.md](docs/ci.md#why-nothing-is-rendered).
+
+**Request deadlines.** Each service section takes an optional `timeout` (a Go
+duration such as `45s`), the default deadline for requests to that service; 30
+seconds when unset. A request that names its own deadline uses that instead, in
+both directions: a target's `impact_estimate.timeout` of `90s` gets 90 seconds
+even where the service default is shorter, and a caller asking for less than the
+service default gets less. There is no way to configure "no deadline".
 
 Using one identity for both services is a deliberate choice rather than a
 default. Only `https` endpoints without URL userinfo are accepted. Compiler
@@ -396,6 +414,16 @@ So with `catalog_api: v3`:
 
 Puppet Server and OpenVox behave identically here: both serve v3 and v4, and
 both honour the v4 `persistence` field.
+
+**Every v4 request sets `options.prefer_requested_environment: true.`** Without
+it, a site whose node classifier assigns environments would have its candidate
+compiled in the classified environment rather than the one the target file
+names, and PIACE would reject the response, since the returned environment is
+validated against the requested one unconditionally. The consequence is worth
+being explicit about: the candidate is compiled in the environment you named,
+which is not necessarily the environment that node would receive on its next
+run. That is the right catalog for reviewing a branch and is not a prediction of
+what the classifier will hand the node.
 
 ### If you must use v3, compare against a captured file
 

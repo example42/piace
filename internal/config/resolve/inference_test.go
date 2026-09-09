@@ -166,7 +166,7 @@ inference:
   token_env: PIACE_TEST_TOKEN
 `)
 
-	svc, err := LoadServicesFile(path)
+	svc, err := LoadServicesFile(path, ServiceSet{Compiler: true, PuppetDB: true})
 	if err != nil {
 		t.Fatalf("LoadServicesFile: %v", err)
 	}

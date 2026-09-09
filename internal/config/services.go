@@ -33,6 +33,14 @@ type ServicesFile struct {
 type ServiceEndpoint struct {
 	Endpoint string `json:"endpoint" yaml:"endpoint"`
 
+	// Timeout is this service's default per-request deadline, written as
+	// a Go duration ("45s", "2m"). It is optional; an unset value means
+	// transport.DefaultTimeout. A caller that supplies its own deadline
+	// for one request, the impact estimate being the only one that does,
+	// uses that deadline instead: see internal/transport/doc.go for the
+	// full precedence.
+	Timeout string `json:"timeout" yaml:"timeout"`
+
 	CABundle      string `json:"ca_bundle" yaml:"ca_bundle"`
 	CABundleEnv   string `json:"ca_bundle_env" yaml:"ca_bundle_env"`
 	ClientCert    string `json:"client_cert" yaml:"client_cert"`

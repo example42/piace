@@ -590,3 +590,43 @@ func TestAdapter_RequestCandidate_V4NullCatalogMember(t *testing.T) {
 		t.Errorf("Message = %q, want the envelope-specific message", diag.Message)
 	}
 }
+
+// TestAdapter_RequestCandidate_V4PrefersRequestedEnvironment asserts the
+// encoded request body, not the decoded struct: the point of the option
+// is that it reaches the compiler under the exact member name the v4 API
+// documents, inside `options`. Without it, a site whose classifier
+// assigns environments compiles the candidate somewhere other than the
+// environment the target file names, and since the returned environment
+// is validated unconditionally, every such comparison fails.
+func TestAdapter_RequestCandidate_V4PrefersRequestedEnvironment(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	var raw map[string]json.RawMessage
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			t.Fatalf("decoding request body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(v4CatalogBody("web-01.example.test", "production"))
+	})
+	adapter := newAdapter(t, fixture, srv)
+
+	fs := factsetWithTrusted("web-01.example.test", "production", true)
+	if _, _, _, diag := adapter.RequestCandidate(context.Background(),
+		v4Target("web-01.example.test", "production", false, false), fs); diag != nil {
+		t.Fatalf("RequestCandidate returned diagnostic: %+v", diag)
+	}
+
+	options, ok := raw["options"]
+	if !ok {
+		t.Fatal("request body carries no options member")
+	}
+	var decoded struct {
+		PreferRequestedEnvironment *bool `json:"prefer_requested_environment"`
+	}
+	if err := json.Unmarshal(options, &decoded); err != nil {
+		t.Fatalf("decoding options: %v", err)
+	}
+	if decoded.PreferRequestedEnvironment == nil || !*decoded.PreferRequestedEnvironment {
+		t.Errorf("options.prefer_requested_environment = %v, want true", decoded.PreferRequestedEnvironment)
+	}
+}

@@ -113,6 +113,31 @@ type v4TrustedFactsField struct {
 	Values json.RawMessage `json:"values"`
 }
 
+// v4Options carries the request's `options` member. PIACE sets exactly
+// one option, and sets it unconditionally.
+//
+// prefer_requested_environment makes the supplied environment override
+// the one a node classifier would assign. Without it, the endpoint
+// honors the requested environment only if the classifier permits
+// agent-specified environments, so on a classifier-driven site a
+// candidate request for a feature-branch environment would compile in
+// the classified environment instead. PIACE's whole question is "what
+// does this branch change", which cannot be answered by a catalog
+// compiled from a different environment, and PIACE would in any case
+// reject the response: the returned environment is validated against the
+// requested one unconditionally, so without this option such a site
+// would see every v4 comparison fail rather than silently compare the
+// wrong thing.
+//
+// The consequence is worth stating plainly, and README does: PIACE's
+// candidate is compiled in the environment the target file names, which
+// is not necessarily the environment the node would actually receive.
+// That is correct for reviewing a change and is not a prediction of the
+// node's next run.
+type v4Options struct {
+	PreferRequestedEnvironment bool `json:"prefer_requested_environment"`
+}
+
 // v4Request is the POST /puppet/v4/catalog request body shape, per
 // doc.go's documented assumption from Puppet Server's v4 catalog API.
 type v4Request struct {
@@ -122,6 +147,7 @@ type v4Request struct {
 	Facts           v4FactsField         `json:"facts"`
 	TrustedFacts    *v4TrustedFactsField `json:"trusted_facts,omitempty"`
 	TransactionUUID string               `json:"transaction_uuid,omitempty"`
+	Options         v4Options            `json:"options"`
 }
 
 // v3Facts is the JSON value the v3 catalog request's form-encoded `facts`
