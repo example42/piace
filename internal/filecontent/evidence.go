@@ -121,13 +121,25 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 	if referenceChanged && retriever == nil {
 		e.State = model.FileContentReferenceChanged
 	}
-	reason := "content retrieval or comparison could not establish comparable bytes for this resource"
-	if errors.Is(be, errHistoricalEvidence) || errors.Is(ae, errHistoricalEvidence) {
+	reason, severity := "content retrieval or comparison could not establish comparable bytes for this resource", evidenceSeverity(be, ae)
+	switch {
+	case errors.Is(be, errHistoricalEvidence) || errors.Is(ae, errHistoricalEvidence):
 		reason = "historical catalog has no retained content digest; current environment bytes cannot verify historical content"
-	} else if errors.Is(be, errInvalidChecksum) || errors.Is(ae, errInvalidChecksum) {
+	case errors.Is(be, errInvalidChecksum) || errors.Is(ae, errInvalidChecksum):
 		reason = "invalid content checksum: expected a supported algorithm and a full hexadecimal digest"
+	case be == nil && ae == nil:
+		// Both sides produced valid evidence in different algorithms,
+		// which happens when one catalog carries a compiled
+		// `checksum => md5` value and the other's bytes were hashed
+		// here. Comparing two digests of different algorithms would be
+		// comparing two opaque strings, so the comparison is
+		// indeterminate. Nothing failed and nothing was refused, so
+		// this is a warning: it is the same class as a directory that
+		// has no single set of bytes.
+		reason = "the two catalogs carry content digests of different algorithms, which cannot be compared"
+		severity = model.SeverityWarning
 	}
-	d := verifyContentDiagnostic(evidenceSeverity(be, ae), certname, identity, reason)
+	d := verifyContentDiagnostic(severity, certname, identity, reason)
 	return e, &d
 }
 

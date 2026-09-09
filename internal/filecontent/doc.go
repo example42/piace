@@ -4,8 +4,9 @@
 // ResolveSide uses inline content, validated checksum_value, static metadata,
 // captured digests, then live compiler retrieval, in that order. Each side
 // records its environment, catalog source/identity, evidence source and whether
-// it was verified. Different digest algorithms are indeterminate; opaque digest
-// strings are never compared as if they used the same algorithm.
+// it was verified. Different digest algorithms are indeterminate, with a
+// warning: opaque digest strings are never compared as if they used the same
+// algorithm, and neither side failed to produce evidence.
 //
 // Both PuppetDB baselines and snapshot baselines are historical. A historical
 // source reference without retained evidence is indeterminate and is never
