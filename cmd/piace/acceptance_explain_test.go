@@ -48,7 +48,7 @@ type inferenceStub struct {
 // answers the ids it was actually sent rather than ids a test hard-coded,
 // so the success case exercises the real anchor round trip: what BuildRequest
 // wrote, what Interpret reads back.
-var groupIDPattern = regexp.MustCompile(`\\"id\\":\\"(g\d+)\\"`)
+var groupIDPattern = regexp.MustCompile(`\\"id\\":\s*\\"(g\d+)\\"`)
 
 func newInferenceStub(t *testing.T) *inferenceStub {
 	t.Helper()
@@ -221,6 +221,25 @@ func TestAcceptance_ExplainWritesBothArtifactsAndExitsZero(t *testing.T) {
 	}
 	if got, want := artifact["model_id"], "some-model-id"; got != want {
 		t.Errorf("model_id = %v, want %q", got, want)
+	}
+
+	// The stub answers the ids the request assigned, so a group carrying
+	// the risk it replied with is the anchor round trip working: what
+	// BuildRequest wrote is what Interpret resolved. An unknown here
+	// would mean the ids never matched and the assessment quietly
+	// degraded.
+	groups, _ := artifact["groups"].([]any)
+	if len(groups) == 0 {
+		t.Fatal("the change assessment carries no group judgements")
+	}
+	for _, g := range groups {
+		entry, _ := g.(map[string]any)
+		if entry["risk"] != "high" {
+			t.Errorf("group %v came back as %v, want the risk the service answered", entry["id"], entry["risk"])
+		}
+	}
+	if diags, ok := artifact["diagnostics"]; ok {
+		t.Errorf("a successful assessment recorded diagnostics: %v", diags)
 	}
 
 	// The assessment reached the report, and the report still carries the

@@ -589,3 +589,83 @@ func TestAcceptance_OversizedSnapshotFailsBeforeItIsRead(t *testing.T) {
 		t.Errorf("the diagnostic does not name the limit:\n%s", got.stdout)
 	}
 }
+
+// TestAcceptance_LargeComparisonProducesABoundedRequest is the end-to-end
+// half of the request budget: a comparison whose evidence is far larger
+// than one inference request may carry still produces a request inside
+// the budget, and the artifact says how much of the evidence went with
+// it instead of reading as a full review.
+//
+// The values are large rather than numerous on purpose. Group and node
+// counts are already budgeted before this point; the case the byte
+// budget exists for is a handful of groups carrying values nobody sized.
+func TestAcceptance_LargeComparisonProducesABoundedRequest(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+
+	const (
+		resources = 6
+		valueSize = 200 * 1024
+	)
+	baseline := make([]resourceSpec, 0, resources)
+	candidate := make([]resourceSpec, 0, resources)
+	for i := 0; i < resources; i++ {
+		title := fmt.Sprintf("payload-%02d", i)
+		baseline = append(baseline, resourceSpec{
+			Type: "Notify", Title: title,
+			Parameters: map[string]any{"message": strings.Repeat("b", valueSize)},
+		})
+		candidate = append(candidate, resourceSpec{
+			Type: "Notify", Title: title,
+			Parameters: map[string]any{"message": strings.Repeat("c", valueSize)},
+		})
+	}
+	h.seedTarget(certname, baseline, candidate, nil)
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(certname)))
+
+	stub := newInferenceStub(t)
+	got := h.explain(t, stub, h.storedReport(t))
+
+	if got.code != exitcode.Success {
+		t.Fatalf("explain exited %d, want %d\nstderr: %s", got.code, exitcode.Success, got.stderr)
+	}
+	if stub.count() != 1 {
+		t.Fatalf("explain made %d inference requests, want exactly 1", stub.count())
+	}
+	if sent := len(stub.requests[0]); sent > limits.InferenceRequest {
+		t.Errorf("the request body is %d bytes, past the %d-byte budget", sent, limits.InferenceRequest)
+	}
+	if !strings.Contains(stub.requests[0], "omitted: inference request size budget") {
+		t.Error("the request sheds evidence without saying so in the payload")
+	}
+
+	var assessment struct {
+		GroupsTotal     int  `json:"groups_total"`
+		GroupsAssessed  int  `json:"groups_assessed"`
+		GroupsTruncated bool `json:"groups_truncated"`
+		ValuesOmitted   int  `json:"values_omitted"`
+		Groups          []struct {
+			ID string `json:"id"`
+		} `json:"groups"`
+	}
+	if err := json.Unmarshal([]byte(got.assessment), &assessment); err != nil {
+		t.Fatalf("decoding the change assessment: %v", err)
+	}
+	if assessment.GroupsTotal != resources {
+		t.Errorf("groups_total = %d, want %d", assessment.GroupsTotal, resources)
+	}
+	if assessment.ValuesOmitted == 0 {
+		t.Error("the assessment claims a full review of evidence the request could not carry")
+	}
+	if assessment.ValuesOmitted > assessment.GroupsAssessed {
+		t.Errorf("values_omitted = %d over groups_assessed = %d; a group that was never sent is counted as one reviewed without its values",
+			assessment.ValuesOmitted, assessment.GroupsAssessed)
+	}
+	if len(assessment.Groups) != assessment.GroupsAssessed {
+		t.Errorf("the artifact carries %d group judgements for %d assessed groups",
+			len(assessment.Groups), assessment.GroupsAssessed)
+	}
+	if ids := groupIDsIn(stub.requests[0]); len(ids) != assessment.GroupsAssessed {
+		t.Errorf("the request carried %d groups, the artifact reports %d assessed", len(ids), assessment.GroupsAssessed)
+	}
+}

@@ -76,6 +76,11 @@ func Produce(ctx context.Context, c Completer, r model.Result, cc ChangeContext,
 	// planned: an assessment that reviewed fewer groups, or groups
 	// without their values, is a narrower review and says so.
 	truncated = truncated || scope.GroupsTruncated
+	// Re-slicing by count alone is only correct because shedding drops
+	// whole groups from the tail of the ranked plan, so what survives is
+	// a prefix. Interpret resolves the ids a service returns against
+	// this slice; if shedding ever dropped from the middle, an id would
+	// silently resolve to a different group's identity.
 	planned = planned[:scope.GroupsAssessed]
 	valuesOmitted = scope.ValuesOmitted
 	degraded = unknownAssessment(planned)
