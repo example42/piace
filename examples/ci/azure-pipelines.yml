@@ -37,6 +37,15 @@ pr:
 variables:
 - name: PIACE_VERSION
   value: '0.4.0'
+# cosign is downloaded rather than installed from a package mirror, so it is
+# pinned by version and by digest. That digest, reviewed in this file, is the
+# trust anchor for everything below it: it is what makes the signature check a
+# check rather than another unverified download. Take the value from
+# cosign_checksums.txt in the release you pin, not from here.
+- name: COSIGN_VERSION
+  value: '3.1.3'
+- name: COSIGN_SHA256
+  value: '4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71'
 
 jobs:
 - job: compare
@@ -56,9 +65,24 @@ jobs:
   - bash: |
       set -euo pipefail
       mkdir -p "$BIN_DIR"
+      # cosign first, pinned by digest, because it is what establishes where
+      # the PIACE binaries came from. A checksum manifest published beside
+      # the binaries it lists proves only that a download is intact.
+      curl -fsSL -o cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+      echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+      chmod 0755 cosign
+
       base="https://github.com/example42/piace/releases/download/v${VERSION}"
       curl -fsSLO "$base/piace-${VERSION}-linux-amd64"
       curl -fsSLO "$base/SHA256SUMS"
+      curl -fsSLO "$base/SHA256SUMS.sigstore.json"
+      # Origin first. The identity is the exact workflow, at the exact tag,
+      # that published this version: a signature from any other workflow,
+      # repository or ref fails here.
+      ./cosign verify-blob SHA256SUMS \
+        --bundle SHA256SUMS.sigstore.json \
+        --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v${VERSION}" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com
       # One line of the manifest, not the whole file: the other platforms
       # were not downloaded, and a line matching nothing on disk has to fail
       # rather than pass quietly.
@@ -67,6 +91,8 @@ jobs:
     env:
       BIN_DIR: $(Agent.TempDirectory)/piace-bin
       VERSION: $(PIACE_VERSION)
+      COSIGN_VERSION: $(COSIGN_VERSION)
+      COSIGN_SHA256: $(COSIGN_SHA256)
 
   # Agent.TempDirectory is per-job and outside the checkout, which is what
   # makes it the right home for a private key: nothing here reaches an
@@ -183,14 +209,31 @@ jobs:
   - bash: |
       set -euo pipefail
       mkdir -p "$BIN_DIR"
+      # cosign first, pinned by digest, because it is what establishes where
+      # the PIACE binaries came from. A checksum manifest published beside
+      # the binaries it lists proves only that a download is intact.
+      curl -fsSL -o cosign "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64"
+      echo "${COSIGN_SHA256}  cosign" | sha256sum -c -
+      chmod 0755 cosign
+
       base="https://github.com/example42/piace/releases/download/v${VERSION}"
       curl -fsSLO "$base/piace-${VERSION}-linux-amd64"
       curl -fsSLO "$base/SHA256SUMS"
+      curl -fsSLO "$base/SHA256SUMS.sigstore.json"
+      # Origin first. The identity is the exact workflow, at the exact tag,
+      # that published this version: a signature from any other workflow,
+      # repository or ref fails here.
+      ./cosign verify-blob SHA256SUMS \
+        --bundle SHA256SUMS.sigstore.json \
+        --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v${VERSION}" \
+        --certificate-oidc-issuer https://token.actions.githubusercontent.com
       grep " piace-${VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
       install -m 0755 "piace-${VERSION}-linux-amd64" "$BIN_DIR/piace"
     env:
       BIN_DIR: $(Agent.TempDirectory)/piace-bin
       VERSION: $(PIACE_VERSION)
+      COSIGN_VERSION: $(COSIGN_VERSION)
+      COSIGN_SHA256: $(COSIGN_SHA256)
 
   # continueOnError: a missing report means compare died before publishing,
   # and the guarded steps below then no-op rather than failing a job that can
@@ -222,14 +265,22 @@ jobs:
       set -euo pipefail
       test -f report/report.json || exit 0
       export PATH="$BIN_DIR:$PATH"
+      # Both refs, not only the base. A pull request build checks out a
+      # detached merge commit with no local branch for either side, and a
+      # bare branch name does not resolve there: git looks for
+      # refs/heads/NAME and refs/remotes/NAME, never
+      # refs/remotes/origin/NAME. `git merge-base` then fails with "Not a
+      # valid object name" and the assessment runs with no change context.
       export BASE_REF="origin/${TARGET_BRANCH#refs/heads/}"
-      git fetch origin "+refs/heads/${TARGET_BRANCH#refs/heads/}:refs/remotes/${BASE_REF}"
+      export HEAD_REF="origin/${SOURCE_BRANCH#refs/heads/}"
+      git fetch --no-tags origin \
+        "+refs/heads/${TARGET_BRANCH#refs/heads/}:refs/remotes/${BASE_REF}" \
+        "+refs/heads/${SOURCE_BRANCH#refs/heads/}:refs/remotes/${HEAD_REF}"
       curl -fsS -o pull-request.json \
         -H "Authorization: Bearer $SYSTEM_ACCESSTOKEN" \
         "${COLLECTION_URI}${PROJECT}/_apis/git/repositories/${REPOSITORY_ID}/pullrequests/${PR_ID}?api-version=6.0"
       jq -r '.title' pull-request.json > pr-title.txt
       jq -r '.description // ""' pull-request.json > pr-body.txt
-      export HEAD_REF="${SOURCE_BRANCH#refs/heads/}"
       piace change-context \
         --base-ref-env BASE_REF \
         --head-ref-env HEAD_REF \

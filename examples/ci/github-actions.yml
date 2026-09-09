@@ -54,6 +54,12 @@ jobs:
       # configuration management, or mirrored into an internal artifact
       # repository. Nothing here resolves a dependency at run time, so a
       # `piace` on PATH is the whole install.
+      # cosign is what makes the step below a verification of origin rather
+      # than only of integrity. A checksum manifest published beside the
+      # binaries it lists says nothing about where either came from: whoever
+      # could replace one could replace the other.
+      - uses: sigstore/cosign-installer@v3
+
       - name: Install piace
         run: |
           set -euo pipefail
@@ -62,17 +68,22 @@ jobs:
           base="https://github.com/example42/piace/releases/download/v${PIACE_VERSION}"
           curl -fsSLO "$base/piace-${PIACE_VERSION}-linux-amd64"
           curl -fsSLO "$base/SHA256SUMS"
-          # Verifying one line of the manifest rather than the whole file: the
-          # other platforms were not downloaded, and a manifest line that
-          # matches nothing on disk must fail rather than pass quietly.
+          curl -fsSLO "$base/SHA256SUMS.sigstore.json"
+          # Origin first. The identity is the exact workflow, at the exact
+          # tag, that published this version: a signature from any other
+          # workflow, repository or ref fails here, which is the point of
+          # pinning it rather than accepting any Sigstore certificate.
+          cosign verify-blob SHA256SUMS \
+            --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v${PIACE_VERSION}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          # Then integrity, against the manifest whose origin is now
+          # established. One line of it rather than the whole file: the other
+          # platforms were not downloaded, and a manifest line that matches
+          # nothing on disk must fail rather than pass quietly.
           grep " piace-${PIACE_VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
           install -m 0755 "piace-${PIACE_VERSION}-linux-amd64" piace
           echo "$RUNNER_TEMP/piace-bin" >> "$GITHUB_PATH"
-          # Where cosign is available, verify the signature first and treat
-          # the checksum as the second step rather than the only one:
-          #   cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
-          #     --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v${PIACE_VERSION}" \
-          #     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
       # $RUNNER_TEMP is per-job and outside the checkout, which is what makes
       # it the right home for a private key: nothing here reaches actions/cache,
@@ -165,6 +176,8 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: sigstore/cosign-installer@v3
+
       - name: Install piace
         run: |
           set -euo pipefail
@@ -173,6 +186,11 @@ jobs:
           base="https://github.com/example42/piace/releases/download/v${PIACE_VERSION}"
           curl -fsSLO "$base/piace-${PIACE_VERSION}-linux-amd64"
           curl -fsSLO "$base/SHA256SUMS"
+          curl -fsSLO "$base/SHA256SUMS.sigstore.json"
+          cosign verify-blob SHA256SUMS \
+            --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/example42/piace/.github/workflows/ci.yml@refs/tags/v${PIACE_VERSION}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
           grep " piace-${PIACE_VERSION}-linux-amd64\$" SHA256SUMS | sha256sum -c -
           install -m 0755 "piace-${PIACE_VERSION}-linux-amd64" piace
           echo "$RUNNER_TEMP/piace-bin" >> "$GITHUB_PATH"
@@ -209,11 +227,24 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          # --head-ref-env is not decoration here: a pull_request checkout is
-          # detached at a temporary merge commit, so asking git for the branch
-          # name yields the literal "HEAD" and the assessment never learns
-          # which branch it is reading.
-          BASE_REF="origin/$BASE_REF" piace change-context \
+          set -euo pipefail
+          # Both refs are fetched explicitly and named through their
+          # remote-tracking form. A pull_request checkout is detached at a
+          # temporary merge commit and has no local branch for either side,
+          # so a bare branch name does not resolve: git looks for
+          # refs/heads/NAME and refs/remotes/NAME, never
+          # refs/remotes/origin/NAME. `git merge-base` then fails with
+          # "Not a valid object name" and the assessment runs with no
+          # change context at all. fetch-depth: 0 above already puts these
+          # refs in place; fetching them by name costs one round trip and
+          # makes the step work under a checkout that did not.
+          git fetch --no-tags origin \
+            "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" \
+            "+refs/heads/${HEAD_REF}:refs/remotes/origin/${HEAD_REF}"
+          # --head-ref-env is not decoration either: without it, asking git
+          # for the checked-out branch name yields the literal "HEAD" and
+          # the assessment never learns which branch it is reading.
+          BASE_REF="origin/$BASE_REF" HEAD_REF="origin/$HEAD_REF" piace change-context \
             --base-ref-env BASE_REF \
             --head-ref-env HEAD_REF \
             --title-env PR_TITLE \
