@@ -15,8 +15,11 @@ func TestParsePuppetSourceURI(t *testing.T) {
 		wantErr   error
 	}{
 		{"puppet:///modules/example/data.txt", "modules/example/data.txt", nil},
-		{"puppet://compiler.example.test/modules/example/data.txt", "modules/example/data.txt", nil},
+		{"puppet://compiler.example.test/modules/example/data.txt", "", errUnsupportedSourceAuthority},
 		{"puppet:///modules/example/nested/dir/data.txt", "modules/example/nested/dir/data.txt", nil},
+		{"puppet:///modules/example/a%20b.txt", "modules/example/a b.txt", nil},
+		{"puppet:///modules/%2e%2e/%2e%2e/secret", "", errUnsafeSourcePath},
+		{"puppet:///modules/%252e%252e/secret", "", errUnsafeSourcePath},
 		{"puppet:///", "", errUnsupportedSourceScheme},
 		{"file:///etc/motd", "", errUnsupportedSourceScheme},
 		{"https://example.test/data.txt", "", errUnsupportedSourceScheme},
@@ -32,7 +35,7 @@ func TestParsePuppetSourceURI(t *testing.T) {
 		// handed, and net/http sends the request line as written.
 		{"puppet:///../../pdb/query/v4/catalogs/victim.example.test", "", errUnsafeSourcePath},
 		{"puppet:///modules/../../../puppet/v3/environments", "", errUnsafeSourcePath},
-		{"puppet://compiler.example.test/../../status/v1/services", "", errUnsafeSourcePath},
+		{"puppet://compiler.example.test/../../status/v1/services", "", errUnsupportedSourceAuthority},
 		{"puppet:///modules/./example/data.txt", "", errUnsafeSourcePath},
 		{"puppet:///modules//example/data.txt", "", errUnsafeSourcePath},
 		{"puppet:///modules/example/data.txt\x00.png", "", errUnsafeSourcePath},
@@ -47,6 +50,47 @@ func TestParsePuppetSourceURI(t *testing.T) {
 			t.Errorf("parsePuppetSourceURI(%q) = (%q, %v), want (%q, %v)",
 				tc.reference, gotPath, gotErr, tc.wantPath, tc.wantErr)
 		}
+	}
+}
+
+func TestSourceFallbackOverTLS(t *testing.T) {
+	for _, status := range []int{404, 401, 403, 500} {
+		fixture := newTLSFixture(t, "127.0.0.1")
+		var paths []string
+		srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.URL.Path)
+			if strings.HasSuffix(r.URL.Path, "/first") {
+				w.WriteHeader(status)
+				w.Write([]byte(`{"issue_kind":"RESOURCE_NOT_FOUND"}`))
+				return
+			}
+			w.Write([]byte("second file bytes"))
+		})
+		side := evidenceSide("production", false, map[string]any{"source": []any{"puppet:///modules/app/first", "puppet:///modules/app/second"}})
+		d, _, err := ResolveSide(context.Background(), "node", side, newResolver(t, fixture, srv))
+		if status == 404 {
+			if err != nil || d.Digest != hashLocalContent("second file bytes") || len(paths) != 2 {
+				t.Fatal("did not select second existing source")
+			}
+		} else if err == nil || len(paths) != 1 {
+			t.Fatal("retrieval failure hidden by fallback")
+		}
+	}
+}
+
+func TestSourceAuthoritiesAndGeneric404DoNotProduceEvidence(t *testing.T) {
+	fixture := newTLSFixture(t, "127.0.0.1")
+	calls := 0
+	srv := newMTLSTestServer(t, fixture, func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(404) })
+	r := newResolver(t, fixture, srv)
+	_, err := r.Digest(context.Background(), "puppet://other.example.test/modules/app/file", RetrievalContext{Environment: "production"})
+	if err == nil || calls != 0 {
+		t.Fatal("explicit authority was silently replaced")
+	}
+	side := evidenceSide("production", false, map[string]any{"source": []any{"puppet:///modules/app/first", "puppet:///modules/app/second"}})
+	_, _, err = ResolveSide(context.Background(), "node", side, r)
+	if err == nil || calls != 1 {
+		t.Fatal("generic 404 treated as verified source absence")
 	}
 }
 

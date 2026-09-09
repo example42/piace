@@ -187,29 +187,23 @@
 // fields where they exist and reports the v3 consequences where they do
 // not.
 //
-// # Verified-unsupported-v4 detection
+// # Explicit v4 fallback
 //
-// A v4-to-v3 fallback is permitted only for a documented
-// unsupported-endpoint or unsupported-version response, and forbidden
-// after authentication, authorization, timeout, malformed response, or
-// candidate identity or environment mismatch. Since a service error can
-// echo values back, this package makes that determination from HTTP
-// status code alone, never from response body content: only a 404 (the
-// /puppet/v4/catalog route itself does not exist on this compiler, as on
-// OpenVox or an older Puppet Server) or a 501 is treated as a verified
-// unsupported-v4 signal. Every other status code (400, 401, 403, 5xx
-// other than 501), a transport-layer failure (TLS, connect, timeout: see
-// internal/transport's doc.go decision 4, where those are always
-// operational errors this package never reclassifies as eligible for
-// fallback), a malformed or unparseable response body, or an identity or
-// environment mismatch is a plain compilation failure with no fallback.
+// Only an empty or plain "Not Found" HTTP 404 is eligible, and only with
+// AllowV3Fallback. This is an explicitly accepted ambiguity, not proof that v4
+// is unsupported: a proxy can generate the same response. A warning records
+// that limitation on fallback. 501 has no verified Puppet Server contract and
+// no longer triggers fallback. Structured errors, malformed bodies, HTML,
+// authentication failures and timeouts never trigger fallback.
 //
-// # No speculative version probing
+// Source inspection of Puppet Server master_core.clj shows v3/v4 route
+// registration and other uses of 404, including missing environments. Phase 2
+// tests are synthetic and do not establish every proxy or legacy server's
+// absent-route body. An unrecognized failure requires selecting v3 explicitly.
 //
-// PIACE does not probe alternate API versions speculatively. This
-// package only ever attempts v3 alone, v4 alone, or v4-then-v3
-// specifically because AllowV3Fallback is true and a
-// verified-unsupported-v4 response was observed on that exact request.
-// It never tries v4 to see if it works when v3 was configured, and never
-// retries a second v4 request with different parameters.
+// Every attempted v3 request returns effective API and persistence warnings,
+// even if transport or response validation fails. Comparison rejects any v3
+// policy with a PuppetDB baseline before network I/O; capture does not use that
+// comparison-only guard. Static metadata and recursive_metadata survive
+// compiler decoding for content evidence and snapshot capture.
 package compiler

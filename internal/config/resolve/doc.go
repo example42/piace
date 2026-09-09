@@ -17,4 +17,8 @@
 // a service-level deadline, so this package resolves and validates only
 // the target's own impact_estimate.timeout value. See resolve.go's
 // package comment for the assumptions this package documents.
+//
+// ValidateComparisonTargets is a separate command policy: compare rejects a
+// PuppetDB baseline whenever direct v3 or fallback can execute. Capture may use
+// those configurations and reports the API's actual effects.
 package resolve

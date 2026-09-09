@@ -61,7 +61,7 @@ type CandidateProvenance struct {
 // the shared result document, and every renderer present the exact same
 // wording. The same warning appearing in the shared result, text, JSON,
 // and HTML is only true if there is exactly one string to reuse.
-const V3TrustedFactWarning = "trusted-fact compatibility warning: this candidate catalog was compiled using the v3 catalog API authenticated by the catalog-reader certificate, not the target's own certificate. Puppet code or Hiera data that reads $trusted can observe the catalog-reader's identity rather than this target's identity. Review any $trusted-dependent logic before trusting this comparison."
+const V3TrustedFactWarning = "trusted-fact compatibility warning: a v3 catalog request was attempted using the catalog-reader certificate, not the target's own certificate. Puppet code or Hiera data that reads $trusted can observe the catalog-reader's identity rather than this target's identity. Persistence warning: v3 can store submitted facts and the compiled catalog in PuppetDB, including when the request ultimately fails. A file baseline protects comparison input, not other PuppetDB consumers. Review these effects before trusting this comparison."
 
 // ConfigProvenance is the redacted projection of resolved configuration
 // retained for reporting: source choices, paths, API selection, and

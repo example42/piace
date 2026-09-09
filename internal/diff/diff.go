@@ -39,7 +39,7 @@ func Diff(
 
 	// Pass 1: full graph diff, computed with no knowledge of exclusion
 	// or redaction configuration.
-	resourceChanges, diagnostics := diffResources(ctx, target.Certname, after.Environment,
+	resourceChanges, diagnostics := diffResources(ctx, target.Certname, before.ContentContext, after.ContentContext,
 		beforeResources, afterResources, retriever)
 	edgeChanges := diffEdges(before.Edges, after.Edges)
 

@@ -1,6 +1,8 @@
 # PIACE 0.5.0 implementation plan
 
-Status: planned. Based on the codebase review of commit `e2b5090` on 2026-09-08.
+Status: Phase 1 verified; Phase 2 implemented with the real-wire fixture gate
+in 2.2 still open. Updated 2026-09-09. Based on the codebase review of commit
+`e2b5090` on 2026-09-08.
 
 PIACE is published but has no deployments. Treat 0.5.0 as the first deployment
 target: choose the correct interfaces, configuration, and artifact formats
@@ -36,7 +38,9 @@ must be distinguished from synthetic test results.
 
 ### 1.1 Preserve sensitivity through comparison and publication
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Synthetic compiler/PuppetDB
+  sensitivity fixtures cover publication, debug output, and inference;
+  `go test -race ./...` passes. Deployment representation coverage remains 5.1.
 
 **Finding: high severity, reproduced.** `internal/normalize/wire.go` drops
 resource-level `sensitive_parameters`. `internal/diff/redact.go` recognizes
@@ -69,7 +73,9 @@ report and the inference request.
 
 ### 1.2 Reject URL credentials and constrain observable metadata
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Local TLS and adversarial metadata
+  tests cover credential rejection, authority enforcement, and safe diagnostics;
+  `go test -race ./...` passes.
 
 **Finding: high severity, reproduced.** HTTPS endpoint validation accepts
 userinfo. Deleting `Authorization` before sending does not prevent Go from
@@ -102,7 +108,9 @@ that header and observed a plaintext password in the debug event URL.
 
 ### 1.3 Validate identities and required input structure consistently
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Synthetic wrong-target responses,
+  snapshot envelopes, malformed factsets, and trusted-fact inputs are rejected;
+  `go test -race ./...` passes.
 
 **Finding: high severity.** PuppetDB factsets and baselines are not checked
 against the requested certname. Snapshot envelopes are checked, but payload
@@ -140,7 +148,12 @@ containing a payload for `different-node` was accepted.
 
 ### 2.1 Give each side of a File comparison its own evidence identity
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. `acceptance_phase2_test.go` and
+  `internal/filecontent/phase2_test.go` cover independent contexts, unchanged
+  sources, missing historical evidence, capture/reuse, static metadata, mixed
+  representations, and directory/recursive limitations. Existing diff tests
+  retain excluded content diagnostics. `go test -race ./...` passes. Static
+  fixtures are documentation-derived, not live deployment captures.
 
 **Finding: high severity, reproduced.** The differ resolves file content only
 when a content-bearing parameter changes. Identical `source` strings cause
@@ -184,7 +197,13 @@ candidate environment and can incorrectly compare equal.
 
 ### 2.2 Implement source selection and checksum validation faithfully
 
-- [ ] Implement and verify.
+- [ ] Real-wire verification pending; implementation and synthetic regressions
+  pass as of 2026-09-09. Ordered missing-source fallback, fail-closed errors,
+  authority rejection, traversal checks, supported digest lengths/prefixes,
+  and invalid-checksum disclosure are covered by `go test -race ./...`.
+  `internal/compiler/testdata/README.md` records the static fixture's origin:
+  a reduced published Puppet example, not a live capture. Acquire reproducible
+  supported-version wire fixtures under 5.1 before closing this checkbox.
 
 **Findings:** source arrays use the first element instead of the first existing
 source; explicit source authorities are ignored; arbitrary nonempty strings
@@ -214,7 +233,13 @@ are accepted as compiled checksums. The checksum probe published
 
 ### 2.3 Block v3 configurations that invalidate the baseline
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. Local TLS/CLI tests reject direct-v3
+  and fallback PuppetDB baselines before network activity; successful and failed
+  v3 comparison/capture paths expose effective API and persistence warnings.
+  Existing request tests assert v4 disables both persistence operations.
+  `go test -race ./...` passes. Fallback is explicit policy for empty-body or
+  literal `Not Found` HTTP 404 only, with an ambiguity warning. Neither that
+  response nor HTTP 501 is claimed to prove v4 unsupported; 501 never falls back.
 
 **Finding: high severity, confirmed by code inspection and already acknowledged
 for direct v3 in README.md.** Both direct v3 and permitted v4-to-v3 fallback
@@ -241,6 +266,19 @@ facts and catalogs, affecting later comparisons and other PuppetDB consumers.
 - Invalid direct-v3 and fallback configurations fail before network activity.
 - Every accepted v4 request disables both fact and catalog persistence.
 - Every executed v3 path exposes effective API and persistence consequences.
+
+### Phase 2 verification record
+
+On 2026-09-09, local macOS verification passed: `go vet ./...`,
+`go build ./...`, and `go test -race ./...`. Formatting was applied with
+`gofmt -w cmd/piace internal`. Tests use local TLS servers and synthetic
+infrastructure values. No live Puppet/OpenVox deployment was changed or used
+for these new tests; the supported-version conformance matrix remains open.
+
+Phase 2 necessarily implements part of 3.3: capture reports actual compiler
+effects, stores the effective API, and retains static/captured content evidence
+inside the payload checksum. The full requested/effective/fallback provenance
+envelope and snapshot-fidelity audit in 3.3 are still outstanding.
 
 ## Phase 3: aggregation, assessment, and provenance
 

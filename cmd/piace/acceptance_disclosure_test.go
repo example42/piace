@@ -33,7 +33,8 @@ func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 			"content": inlineFileBytes,
 		}},
 		{Type: "File", Title: "/etc/app.conf", Parameters: map[string]any{
-			"source": "puppet:///modules/app/app.conf",
+			"source":         "puppet:///modules/app/app.conf",
+			"checksum_value": contentHash(managedFileBytes),
 		}},
 	}
 	candidate := []resourceSpec{
@@ -112,22 +113,22 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 
 	baseline := []resourceSpec{
 		// 1: inline content on both sides.
-		{Type: "File", Title: "/inline", Parameters: map[string]any{"content": "before"}},
+		{Type: "File", Title: "/inline", Parameters: map[string]any{"content": "inline-before-sentinel"}},
 		// 2: a recognized compiled checksum on both sides.
 		{Type: "File", Title: "/checksum", Parameters: map[string]any{
-			"checksum": "sha256", "checksum_value": "aaaa"}},
+			"checksum": "sha256", "checksum_value": strings.Repeat("a", 64)}},
 		// 3: a source reference retrievable through the compiler.
 		{Type: "File", Title: "/retrieved", Parameters: map[string]any{
-			"source": "puppet:///modules/app/one"}},
+			"source": "puppet:///modules/app/one", "checksum_value": contentHash("one-bytes")}},
 		// 4: a source reference the compiler cannot serve, so no
 		// comparable bytes can be established.
 		{Type: "File", Title: "/indeterminate", Parameters: map[string]any{
 			"source": "puppet:///modules/app/missing"}},
 	}
 	candidate := []resourceSpec{
-		{Type: "File", Title: "/inline", Parameters: map[string]any{"content": "after"}},
+		{Type: "File", Title: "/inline", Parameters: map[string]any{"content": "inline-after-sentinel"}},
 		{Type: "File", Title: "/checksum", Parameters: map[string]any{
-			"checksum": "sha256", "checksum_value": "bbbb"}},
+			"checksum": "sha256", "checksum_value": strings.Repeat("b", 64)}},
 		{Type: "File", Title: "/retrieved", Parameters: map[string]any{
 			"source": "puppet:///modules/app/two"}},
 		{Type: "File", Title: "/indeterminate", Parameters: map[string]any{
@@ -151,7 +152,7 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	for _, want := range []string{
 		"~ File[/inline] content: changed (via inline_content)",
 		"~ File[/checksum] content: changed (via compiled_checksum)",
-		"~ File[/retrieved] content: changed (via compiler_retrieval)",
+		"~ File[/retrieved] content: changed (via mixed)",
 		"~ File[/indeterminate] content: content_indeterminate",
 	} {
 		if !strings.Contains(got.stdout, want) {
@@ -160,7 +161,7 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	}
 	// No format renders managed content bytes.
 	for artifactName, artifact := range got.all() {
-		for _, bytes := range []string{"one-bytes", "two-bytes", "before", "after"} {
+		for _, bytes := range []string{"one-bytes", "two-bytes", "inline-before-sentinel", "inline-after-sentinel"} {
 			if strings.Contains(artifact, `"`+bytes+`"`) {
 				t.Errorf("the %s artifact rendered managed File content %q", artifactName, bytes)
 			}

@@ -54,7 +54,7 @@ func TestResolveFileContentEvidence_Step1_InlineContentMatch(t *testing.T) {
 	before := fileParams(map[string]model.Value{"content": sampleContentBytes})
 	after := fileParams(map[string]model.Value{"content": sampleContentBytes})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/motd"}, before, after, nil)
 
 	if diag != nil {
@@ -79,7 +79,7 @@ func TestResolveFileContentEvidence_Step1_InlineContentMismatch(t *testing.T) {
 	before := fileParams(map[string]model.Value{"content": sampleContentBytes})
 	after := fileParams(map[string]model.Value{"content": sampleContentBytes + "-modified"})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/motd"}, before, after, nil)
 
 	if diag != nil {
@@ -103,15 +103,15 @@ func TestResolveFileContentEvidence_Step2_ChecksumMatch(t *testing.T) {
 	before := fileParams(map[string]model.Value{
 		"source":         "puppet:///modules/example/data.txt",
 		"checksum":       "sha256",
-		"checksum_value": "aaaabbbbccccdddd",
+		"checksum_value": strings.Repeat("a", 64),
 	})
 	after := fileParams(map[string]model.Value{
 		"source":         "puppet:///modules/example/data.txt",
 		"checksum":       "sha256",
-		"checksum_value": "aaaabbbbccccdddd",
+		"checksum_value": strings.Repeat("a", 64),
 	})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, nil)
 
 	if diag != nil {
@@ -132,15 +132,15 @@ func TestResolveFileContentEvidence_Step2_ChecksumMismatch(t *testing.T) {
 	before := fileParams(map[string]model.Value{
 		"source":         "puppet:///modules/example/data.txt",
 		"checksum":       "md5",
-		"checksum_value": "aaaa",
+		"checksum_value": strings.Repeat("a", 32),
 	})
 	after := fileParams(map[string]model.Value{
 		"source":         "puppet:///modules/example/data.txt",
 		"checksum":       "md5",
-		"checksum_value": "bbbb",
+		"checksum_value": strings.Repeat("b", 32),
 	})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, nil)
 
 	if diag != nil {
@@ -171,7 +171,7 @@ func TestResolveFileContentEvidence_Step2_UnrecognizedAlgorithmFallsThrough(t *t
 		"checksum_value": "sametimestamp",
 	})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, nil)
 
 	if diag == nil {
@@ -209,10 +209,10 @@ func TestResolveFileContentEvidence_Step3_RetrievalSuccess_Unchanged(t *testing.
 	after := fileParams(map[string]model.Value{"source": "puppet:///modules/example/data.txt"})
 
 	retriever := &fakeRetriever{digests: map[string]DigestEvidence{
-		"puppet:///modules/example/data.txt": {Algorithm: "sha256", Digest: "same-digest-value"},
+		"puppet:///modules/example/data.txt": {Algorithm: "sha256", Digest: hashLocalContent("same-digest-value")},
 	}}
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, retriever)
 
 	if diag != nil {
@@ -224,7 +224,7 @@ func TestResolveFileContentEvidence_Step3_RetrievalSuccess_Unchanged(t *testing.
 	if evidence.EvidenceSource != model.FileContentEvidenceCompilerRetrieval {
 		t.Errorf("EvidenceSource = %q, want %q", evidence.EvidenceSource, model.FileContentEvidenceCompilerRetrieval)
 	}
-	if evidence.BeforeDigest != "same-digest-value" || evidence.AfterDigest != "same-digest-value" {
+	if evidence.BeforeDigest != hashLocalContent("same-digest-value") || evidence.AfterDigest != hashLocalContent("same-digest-value") {
 		t.Errorf("digests = %q/%q, want same-digest-value/same-digest-value", evidence.BeforeDigest, evidence.AfterDigest)
 	}
 }
@@ -234,11 +234,11 @@ func TestResolveFileContentEvidence_Step3_RetrievalSuccess_Changed(t *testing.T)
 	after := fileParams(map[string]model.Value{"source": "puppet:///modules/example/b.txt"})
 
 	retriever := &fakeRetriever{digests: map[string]DigestEvidence{
-		"puppet:///modules/example/a.txt": {Algorithm: "sha256", Digest: "digest-a"},
-		"puppet:///modules/example/b.txt": {Algorithm: "sha256", Digest: "digest-b"},
+		"puppet:///modules/example/a.txt": {Algorithm: "sha256", Digest: hashLocalContent("digest-a")},
+		"puppet:///modules/example/b.txt": {Algorithm: "sha256", Digest: hashLocalContent("digest-b")},
 	}}
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, retriever)
 
 	if diag != nil {
@@ -263,7 +263,7 @@ func TestResolveFileContentEvidence_Step3_OneSideLiteralOneSideRetrieved(t *test
 		"puppet:///modules/example/data.txt": {Algorithm: "sha256", Digest: hashLocalContent(sampleContentBytes)},
 	}}
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, retriever)
 
 	if diag != nil {
@@ -281,7 +281,7 @@ func TestResolveFileContentEvidence_Step4a_ReferenceChangedNoRetriever(t *testin
 	before := fileParams(map[string]model.Value{"source": "puppet:///modules/example/a.txt"})
 	after := fileParams(map[string]model.Value{"source": "puppet:///modules/example/b.txt"})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, nil)
 
 	if diag == nil {
@@ -308,7 +308,7 @@ func TestResolveFileContentEvidence_Step4b_RetrievalFailure(t *testing.T) {
 		"puppet:///modules/example/data.txt": errors.New("simulated network failure"),
 	}}
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, retriever)
 
 	if diag == nil {
@@ -334,7 +334,7 @@ func TestResolveFileContentEvidence_Step4b_SameReferenceNoRetriever(t *testing.T
 	before := fileParams(map[string]model.Value{"source": "puppet:///modules/example/data.txt"})
 	after := fileParams(map[string]model.Value{"source": "puppet:///modules/example/data.txt"})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 		model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, before, after, nil)
 
 	if diag == nil {
@@ -393,7 +393,7 @@ func TestResolveFileContentEvidence_NeverLeaksContentAcrossAllStates(t *testing.
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "production",
+			evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "production",
 				model.ResourceIdentity{Type: "File", Title: "/etc/example.txt"}, tc.before, tc.after, tc.retriever)
 			assertNoRawContentLeak(t, sampleContentBytes, evidence, diag)
 		})
@@ -462,7 +462,7 @@ func TestResolveFileContentEvidence_DirectoryRecursiveSource_ReferenceChangedWit
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			retriever := &countingRetriever{t: t}
-			evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "upstream",
+			evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "upstream",
 				model.ResourceIdentity{Type: "File", Title: "info scripts"},
 				fileParams(tc.beforeOverride), fileParams(tc.afterOverride), retriever)
 
@@ -503,7 +503,7 @@ func TestResolveFileContentEvidence_DirectoryUnchangedSource_Indeterminate(t *te
 		"source": "puppet:///modules/tp/run_info/",
 	})
 
-	evidence, diag := ResolveFileContentEvidence(context.Background(), "web-01", "upstream",
+	evidence, diag := resolveEvidenceTest(context.Background(), "web-01", "upstream",
 		model.ResourceIdentity{Type: "File", Title: "info scripts"}, before, after, retriever)
 
 	if retriever.calls != 0 {
@@ -543,4 +543,9 @@ func TestIsDirectoryOrRecursive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func resolveEvidenceTest(ctx context.Context, certname, environment string, identity model.ResourceIdentity, before, after map[string]model.Value, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
+	c := model.ContentContext{Source: "compiler", Environment: environment}
+	return ResolveFileContentEvidence(ctx, certname, identity, Side{Resource: model.Resource{Identity: identity, Parameters: before}, Context: c}, Side{Resource: model.Resource{Identity: identity, Parameters: after}, Context: c}, retriever)
 }

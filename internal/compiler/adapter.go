@@ -84,21 +84,21 @@ func (a *Adapter) requestV3(ctx context.Context, target resolve.Target, flatFact
 		diag := operationalLocalDiagnostic(target.Certname, a.client.Host(), "building v3 candidate catalog request")
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, &diag
 	}
+	prov := base
+	prov.EffectiveAPI = config.CatalogAPIv3
+	prov.V3Warning = model.V3TrustedFactWarning
 
 	resp, err := a.client.Do(req, 0)
 	if err != nil {
 		diag := diagnosticFromTransportError(target.Certname, err)
-		return puppetdb.Catalog{}, model.CandidateProvenance{}, &diag
+		return puppetdb.Catalog{}, prov, &diag
 	}
 
 	cat, diag := processResponse(resp, a.client.Host(), target.Certname, target.Candidate.Environment, config.CatalogAPIv3)
 	if diag != nil {
-		return puppetdb.Catalog{}, model.CandidateProvenance{}, diag
+		return puppetdb.Catalog{}, prov, diag
 	}
 
-	prov := base
-	prov.EffectiveAPI = config.CatalogAPIv3
-	prov.V3Warning = model.V3TrustedFactWarning
 	return cat, prov, nil
 }
 
@@ -106,7 +106,7 @@ func (a *Adapter) requestV3(ctx context.Context, target resolve.Target, flatFact
 // enforcing the trusted-fact policy first, then applies the v4-to-v3
 // fallback decision on the response: fallback happens only when
 // target.Candidate.AllowV3Fallback is true AND the v4 response is a
-// verified-unsupported response (isVerifiedUnsupportedV4). It never
+// fallback-eligible generic 404 response (isFallbackEligibleV4). It never
 // happens for authentication, authorization, timeout, malformed
 // response, or candidate identity or environment mismatch.
 func (a *Adapter) requestV4WithFallback(ctx context.Context, target resolve.Target, flatFacts map[string]json.RawMessage, base model.CandidateProvenance) (puppetdb.Catalog, model.CandidateProvenance, []string, *model.Diagnostic) {
@@ -131,20 +131,17 @@ func (a *Adapter) requestV4WithFallback(ctx context.Context, target resolve.Targ
 	if err != nil {
 		// A transport-level failure (TLS, connect, timeout and the like) never
 		// triggers fallback: timeout is explicitly excluded, and there is no
-		// HTTP response at all here to classify as verified unsupported in the
+		// HTTP response at all here to evaluate for fallback in the
 		// first place.
 		diag := diagnosticFromTransportError(target.Certname, err)
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
 	}
 
-	if target.Candidate.AllowV3Fallback && isVerifiedUnsupportedV4(resp.StatusCode) {
+	if target.Candidate.AllowV3Fallback && isFallbackEligibleV4(resp) {
 		cat, prov, diag := a.requestV3(ctx, target, flatFacts, base)
-		if diag != nil {
-			return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, diag
-		}
 		prov.RequestedAPI = config.CatalogAPIv4
 		prov.FellBackFromV4 = true
-		return cat, prov, nil, nil
+		return cat, prov, []string{"v4 returned a generic 404; explicit fallback policy permitted v3, but this response does not prove that v4 is unsupported"}, diag
 	}
 
 	cat, diag := processResponse(resp, host, target.Certname, target.Candidate.Environment, config.CatalogAPIv4)

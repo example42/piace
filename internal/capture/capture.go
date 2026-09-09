@@ -17,6 +17,8 @@ type TargetOutcome struct {
 	Path       string
 	Skipped    bool
 	Diagnostic *model.Diagnostic
+	Candidate  *model.CandidateProvenance
+	Warnings   []string
 }
 
 // Failed reports whether this outcome represents a reported failure (as

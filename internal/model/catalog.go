@@ -57,9 +57,12 @@ func (r ResourceIdentity) String() string {
 // other non-semantic metadata are discarded by the normalizer before a
 // Resource is constructed.
 type Resource struct {
-	Identity            ResourceIdentity `json:"identity"`
-	Parameters          map[string]Value `json:"parameters,omitempty"`
-	SensitiveParameters []string         `json:"sensitive_parameters,omitempty"`
+	Identity            ResourceIdentity    `json:"identity"`
+	Parameters          map[string]Value    `json:"parameters,omitempty"`
+	SensitiveParameters []string            `json:"sensitive_parameters,omitempty"`
+	StaticContent       *StaticFileMetadata `json:"-"`
+	CapturedContent     *ContentDigest      `json:"-"`
+	RecursiveContent    bool                `json:"-"`
 }
 
 // Edge is a normalized dependency graph edge. Source and Target are the
@@ -75,10 +78,42 @@ type Edge struct {
 // Edges are sorted by (Source, Target) before comparison and
 // serialization.
 type NormalizedCatalog struct {
-	Certname    string     `json:"certname"`
-	Environment string     `json:"environment,omitempty"`
-	Resources   []Resource `json:"resources"`
-	Edges       []Edge     `json:"edges"`
+	Certname       string         `json:"certname"`
+	Environment    string         `json:"environment,omitempty"`
+	Resources      []Resource     `json:"resources"`
+	Edges          []Edge         `json:"edges"`
+	ContentContext ContentContext `json:"-"`
+}
+
+// ContentContext identifies the catalog whose desired bytes are being checked.
+// Historical catalogs must never be resolved against mutable environment files.
+type ContentContext struct {
+	Source          string `json:"source,omitempty"`
+	Environment     string `json:"environment,omitempty"`
+	Historical      bool   `json:"historical"`
+	CatalogIdentity string `json:"catalog_identity,omitempty"`
+}
+
+// ContentDigest is persisted inside the checksummed snapshot payload.
+type ContentDigest struct {
+	Algorithm string `json:"algorithm"`
+	Digest    string `json:"digest"`
+}
+
+// StaticFileMetadata retains the compiler's single-file evidence projection.
+// Source paths and content_uri stay in the raw snapshot, never in a report.
+type StaticFileMetadata struct {
+	Type     string `json:"type"`
+	Checksum struct {
+		Type  string `json:"type"`
+		Value string `json:"value"`
+	} `json:"checksum"`
+}
+
+type FileSideEvidence struct {
+	Context  ContentContext            `json:"context"`
+	Source   FileContentEvidenceSource `json:"source,omitempty"`
+	Verified bool                      `json:"verified"`
 }
 
 // FileContentState classifies the evidence available for a managed File
@@ -108,16 +143,22 @@ const (
 	FileContentEvidenceInline            FileContentEvidenceSource = "inline_content"
 	FileContentEvidenceCompiledChecksum  FileContentEvidenceSource = "compiled_checksum"
 	FileContentEvidenceCompilerRetrieval FileContentEvidenceSource = "compiler_retrieval"
+	FileContentEvidenceStaticMetadata    FileContentEvidenceSource = "static_metadata"
+	FileContentEvidenceCaptured          FileContentEvidenceSource = "captured_digest"
+	FileContentEvidenceMixed             FileContentEvidenceSource = "mixed"
 )
 
 // FileContentEvidence is the redaction-safe evidence attached to a File
 // parameter change. It never carries managed content bytes; a redacted
 // content selector suppresses even the digest.
 type FileContentEvidence struct {
-	State          FileContentState          `json:"state"`
-	EvidenceSource FileContentEvidenceSource `json:"evidence_source,omitempty"`
-	Algorithm      string                    `json:"algorithm,omitempty"`
-	BeforeDigest   string                    `json:"before_digest,omitempty"`
-	AfterDigest    string                    `json:"after_digest,omitempty"`
-	Redacted       bool                      `json:"redacted,omitempty"`
+	State            FileContentState          `json:"state"`
+	EvidenceSource   FileContentEvidenceSource `json:"evidence_source,omitempty"`
+	Algorithm        string                    `json:"algorithm,omitempty"`
+	BeforeDigest     string                    `json:"before_digest,omitempty"`
+	AfterDigest      string                    `json:"after_digest,omitempty"`
+	Redacted         bool                      `json:"redacted,omitempty"`
+	Before           *FileSideEvidence         `json:"before,omitempty"`
+	After            *FileSideEvidence         `json:"after,omitempty"`
+	ReferenceChanged bool                      `json:"reference_changed,omitempty"`
 }

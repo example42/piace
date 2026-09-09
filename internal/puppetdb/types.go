@@ -58,15 +58,18 @@ type Factset struct {
 // them into model.NormalizedCatalog is internal/normalize's job, performed on this
 // carrier's Resources/Edges fields.
 type Catalog struct {
-	Certname          string          `json:"certname"`
-	Version           string          `json:"version"`
-	Environment       string          `json:"environment"`
-	Hash              string          `json:"hash"`
-	TransactionUUID   string          `json:"transaction_uuid"`
-	CatalogUUID       string          `json:"catalog_uuid"`
-	CodeID            string          `json:"code_id"`
-	ProducerTimestamp string          `json:"producer_timestamp"`
-	Producer          string          `json:"producer"`
-	Resources         json.RawMessage `json:"resources"`
-	Edges             json.RawMessage `json:"edges"`
+	Certname          string                         `json:"certname"`
+	Version           string                         `json:"version"`
+	Environment       string                         `json:"environment"`
+	Hash              string                         `json:"hash"`
+	TransactionUUID   string                         `json:"transaction_uuid"`
+	CatalogUUID       string                         `json:"catalog_uuid"`
+	CodeID            string                         `json:"code_id"`
+	ProducerTimestamp string                         `json:"producer_timestamp"`
+	Producer          string                         `json:"producer"`
+	Resources         json.RawMessage                `json:"resources"`
+	Edges             json.RawMessage                `json:"edges"`
+	Metadata          json.RawMessage                `json:"metadata,omitempty"`
+	RecursiveMetadata json.RawMessage                `json:"recursive_metadata,omitempty"`
+	CapturedContent   map[string]model.ContentDigest `json:"captured_content,omitempty"`
 }

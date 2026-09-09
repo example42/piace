@@ -32,18 +32,22 @@
 // skipped with a reported warning diagnostic rather than silently doing
 // nothing or failing the whole run.
 //
-// # Read-only guarantee
+// # Compiler side effects and retained content
 //
-// No function in this package issues, or can issue, any PuppetDB
-// write/command request: CaptureFacts and CaptureCatalog only ever call
-// FactSource.Load / CatalogSource.LoadBaseline (both read-only, see
-// internal/puppetdb's doc.go) to retrieve input, and use
-// CompilerCatalogRequester.RequestCandidate (also read-only against the
-// compiler) to obtain a candidate catalog. The only write I/O anywhere in
-// this package is internal/snapshot.Write, which writes to the local
-// filesystem, never to PuppetDB.
+// PuppetDB input requests are reads. Compiler v4 requests disable persistence;
+// v3 requests can persist facts and catalogs. Capture reports the effective API
+// and v3 effects, including after a failed request. Snapshot compiler_api records
+// the effective API, including fallback.
 //
-// Factsets are validated before capture or candidate compilation. Every built
-// envelope is checked for required metadata and payload identity agreement
-// before writing, using the same snapshot.Validate contract as file reuse.
+// Catalog capture resolves single-file sources while the requested environment
+// is live and puts their locally computed digests inside the checksummed
+// payload. Inline content and compiler static metadata already retain evidence.
+// Unsupported directory/recursive sources are retained with a warning; later
+// comparison must report their byte comparison as unsupported. Retrieval and
+// checksum failures prevent snapshot publication. Capture evaluates all files,
+// including those a comparison would exclude, since the snapshot must support
+// reuse under a different comparison policy.
+//
+// Factsets are validated before capture or compilation, and built envelopes are
+// checked for required metadata and payload identity before publication.
 package capture

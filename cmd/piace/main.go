@@ -243,6 +243,10 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
+	if err := resolve.ValidateComparisonTargets(cfg.Targets); err != nil {
+		fmt.Fprintf(stderr, "piace compare: %s\n", err)
+		return exitcode.OperationalError
+	}
 	debugOpts, err := f.debug.transportOptions("compare", stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
@@ -472,8 +476,12 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
 	}
-
 	debugOpts, err := f.debug.transportOptions("capture catalog", stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
+		return exitcode.OperationalError
+	}
+	contentClient, err := transport.NewClient(cfg.Services.Compiler, debugOpts...)
 	if err != nil {
 		fmt.Fprintf(stderr, "piace capture catalog: %s\n", err)
 		return exitcode.OperationalError
@@ -492,11 +500,12 @@ func runCaptureCatalog(args []string, stdout, stderr *os.File) exitcode.Code {
 	}
 
 	w := &capture.Workflow{
-		PuppetDBFacts: puppetDBFacts,
-		FileFacts:     puppetdb.NewFileSource(),
-		Compiler:      compilerAdapter,
-		Replace:       f.replace,
-		Now:           clock,
+		PuppetDBFacts:    puppetDBFacts,
+		FileFacts:        puppetdb.NewFileSource(),
+		Compiler:         compilerAdapter,
+		ContentRetriever: filecontent.NewCompilerContentResolver(contentClient, cfg.Services.Compiler.URL),
+		Replace:          f.replace,
+		Now:              clock,
 	}
 	outcomes := w.CaptureCatalog(context.Background(), cfg.Targets, f.environment)
 	return reportCaptureOutcomes(stdout, stderr, "capture catalog", outcomes)
@@ -535,6 +544,15 @@ func newCompilerAdapter(cfg resolve.Config, debugOpts []transport.Option) (*comp
 func reportCaptureOutcomes(stdout, stderr *os.File, label string, outcomes []capture.TargetOutcome) exitcode.Code {
 	failed := false
 	for _, o := range outcomes {
+		for _, warning := range o.Warnings {
+			fmt.Fprintf(stderr, "piace %s: %s: warning: %s\n", label, o.Certname, warning)
+		}
+		if o.Candidate != nil {
+			fmt.Fprintf(stdout, "piace %s: %s: effective catalog API %s\n", label, o.Certname, o.Candidate.EffectiveAPI)
+			if o.Candidate.V3Warning != "" {
+				fmt.Fprintln(stderr, o.Candidate.V3Warning)
+			}
+		}
 		switch {
 		case o.Failed():
 			failed = true

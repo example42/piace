@@ -8,6 +8,7 @@ import (
 
 	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/config/resolve"
+	"github.com/example42/piace/internal/filecontent"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/puppetdb"
 	"github.com/example42/piace/internal/snapshot"
@@ -32,7 +33,8 @@ type Workflow struct {
 	// Compiler requests the candidate catalog for `capture catalog`.
 	// Production wiring supplies internal/compiler.Adapter, the same
 	// adapter `compare` uses; see compiler.go for the boundary.
-	Compiler CompilerCatalogRequester
+	Compiler         CompilerCatalogRequester
+	ContentRetriever filecontent.ContentRetriever
 	// Replace, when true, allows overwriting an existing snapshot file
 	// (--replace). When false, Write's overwrite refusal
 	// (snapshot.ErrExists) becomes this target's reported diagnostic.
@@ -166,7 +168,7 @@ func (w *Workflow) CaptureCatalog(ctx context.Context, targets []resolve.Target,
 	return outcomes
 }
 
-func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.Target, environment string) TargetOutcome {
+func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.Target, environment string) (outcome TargetOutcome) {
 	if target.Baseline.Source != config.BaselineSourceFile {
 		return TargetOutcome{Certname: target.Certname, Skipped: true}
 	}
@@ -186,9 +188,22 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
 
-	cat, _, _, diag := w.Compiler.RequestCandidate(ctx, candidateEnvironmentView(target, environment), fs)
+	cat, provenance, warnings, diag := w.Compiler.RequestCandidate(ctx, candidateEnvironmentView(target, environment), fs)
+	defer func() {
+		if provenance.EffectiveAPI != "" {
+			outcome.Candidate = &provenance
+		}
+		outcome.Warnings = append(outcome.Warnings, warnings...)
+	}()
 	if diag != nil {
 		return TargetOutcome{Certname: target.Certname, Diagnostic: diag}
+	}
+	contentDiagnostics := w.captureContent(ctx, &cat)
+	for _, d := range contentDiagnostics {
+		if d.Severity == model.SeverityError {
+			return TargetOutcome{Certname: target.Certname, Diagnostic: &d, Candidate: &provenance}
+		}
+		warnings = append(warnings, d.Message)
 	}
 
 	env, err := buildCatalogEnvelope(target, cat, environment, factsetIdentity, nowUTCRFC3339(w.Now))
@@ -196,6 +211,7 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		d := snapshotDiagnostic(target.Certname, err)
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
+	env.CompilerAPIVersion = snapshot.CompilerAPI(provenance.EffectiveAPI)
 
 	if err := snapshot.Validate(env, snapshot.KindCatalog, target.Certname); err != nil {
 		d := snapshotDiagnostic(target.Certname, err)
@@ -206,7 +222,7 @@ func (w *Workflow) captureCatalogForTarget(ctx context.Context, target resolve.T
 		return TargetOutcome{Certname: target.Certname, Diagnostic: &d}
 	}
 
-	return TargetOutcome{Certname: target.Certname, Path: target.Baseline.File}
+	return TargetOutcome{Certname: target.Certname, Path: target.Baseline.File, Candidate: &provenance}
 }
 
 // buildFactsetEnvelope marshals fs as the envelope payload, computes its

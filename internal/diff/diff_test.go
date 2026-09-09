@@ -31,10 +31,11 @@ func target(exclude []config.ExclusionRule, redact []config.RedactionSelector) r
 
 func catalog(resources []model.Resource, edges []model.Edge) model.NormalizedCatalog {
 	return model.NormalizedCatalog{
-		Certname:    testCertname,
-		Environment: "candidate",
-		Resources:   resources,
-		Edges:       edges,
+		Certname:       testCertname,
+		Environment:    "candidate",
+		ContentContext: model.ContentContext{Source: "compiler", Environment: "candidate"},
+		Resources:      resources,
+		Edges:          edges,
 	}
 }
 

@@ -70,4 +70,8 @@
 // query would be an unreported omission of requested analysis. It is
 // reported as a run-level estimate_impact error rather than panicking or
 // being skipped.
+// Before any service call, Run validates the comparison-only v3 policy for
+// every target. All baselines are historical content contexts, including the
+// latest catalog read from PuppetDB; only retained evidence can verify their
+// bytes. Candidate retrieval uses the candidate environment.
 package compare

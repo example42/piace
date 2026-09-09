@@ -156,4 +156,7 @@
 // internal/diff owns the explicit transition to model.ResourceChange after
 // comparison and exclusions. Only that publishable projection reaches reports
 // and inference. Sensitivity declared by either side protects both values.
+// Static catalog metadata is retained per File title for content evidence;
+// recursive metadata marks an unsupported tree comparison. Captured digests
+// survive normalization separately from parameters and sensitivity metadata.
 package normalize

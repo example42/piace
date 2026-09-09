@@ -181,7 +181,9 @@ func (f *fakeCompiler) handler() http.Handler {
 			f.mu.Unlock()
 			if f.v4Status != 0 {
 				w.WriteHeader(f.v4Status)
-				writeJSON(w, map[string]any{"error": "forced status"})
+				if f.v4Status != http.StatusNotFound {
+					writeJSON(w, map[string]any{"error": "forced status"})
+				}
 				return
 			}
 			certname, _ := body["certname"].(string)
@@ -196,7 +198,8 @@ func (f *fakeCompiler) handler() http.Handler {
 		case strings.HasPrefix(r.URL.Path, "/puppet/v3/file_content/"):
 			content, ok := f.fileContent[strings.TrimPrefix(r.URL.Path, "/puppet/v3/file_content/")]
 			if !ok {
-				http.Error(w, "no such file", http.StatusNotFound)
+				w.WriteHeader(http.StatusNotFound)
+				writeJSON(w, map[string]any{"issue_kind": "RESOURCE_NOT_FOUND"})
 				return
 			}
 			w.Header().Set("Content-Type", "application/octet-stream")
