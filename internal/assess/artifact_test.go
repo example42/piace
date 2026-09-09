@@ -34,7 +34,7 @@ func TestArtifactCarriesRealCertnamesAndItsProvenance(t *testing.T) {
 	if strings.Contains(body, "node-00") {
 		t.Error("a pseudonym reached the artifact")
 	}
-	for _, want := range []string{`"ai_schema_version":1`, `"model_id":"test-model"`, `"source_report_checksum":"sha256:abc"`} {
+	for _, want := range []string{`"ai_schema_version":2`, `"model_id":"test-model"`, `"source_report_checksum":"sha256:abc"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the artifact is missing %s", want)
 		}

@@ -72,7 +72,7 @@ func TestGroupDisclosureFromDifferThroughConsumers(t *testing.T) {
 						"text": func() ([]byte, error) { return report.Text(r, nil, report.Options{}) },
 						"html": func() ([]byte, error) { return report.HTML(r, nil) },
 						"inference": func() ([]byte, error) {
-							req, _, err := assess.BuildRequest(r, assess.ChangeContext{}, assess.Config{})
+							req, _, _, err := assess.BuildRequest(r, assess.ChangeContext{}, assess.Config{})
 							if err != nil {
 								return nil, err
 							}

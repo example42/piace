@@ -503,6 +503,22 @@ than* the limit, never as an exact population, with a sorted certname sample.
 Because an enabled estimate is requested analysis, a failed one is an
 operational error.
 
+## Bounded work
+
+Every input bounds the work it can ask for, because a byte limit alone does not:
+eight bytes of JSON (`1e-10000`) expand into ten thousand bytes of exact decimal.
+Numeric tokens are bounded by significant digits and exponent magnitude before
+they are parsed, encoded values by nesting depth, local files (snapshots, stored
+reports, configuration, policy notes, change contexts) by size before they are
+read into memory, `change-context`'s git invocations by both output size and
+running time, and the inference request by total encoded bytes. The budgets and
+the reasoning behind each are in `internal/limits`.
+
+Exceeding one is an operational error with a diagnostic naming the limit, never
+a silent truncation and never an unbounded wait. The exception is the inference
+request, which sheds evidence in a documented order and reports exactly what it
+shed; see [docs/change-assessment.md](docs/change-assessment.md).
+
 ## Writing artifacts
 
 Every file PIACE writes is published through a same-directory temporary file

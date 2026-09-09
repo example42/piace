@@ -5,11 +5,13 @@ package normalize
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/puppetdb"
+	"github.com/example42/piace/internal/snapshot"
 )
 
 // Catalog converts raw into a model.NormalizedCatalog: a resource list
@@ -64,8 +66,17 @@ func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) 
 		}
 		params, err := decodeParameters(rw.Parameters)
 		if err != nil {
+			// The reason is named only when it is safe to name: a
+			// parameter value can be a secret, so the generic message
+			// stays generic, while a value refused for its numeric shape
+			// is described by the budget it exceeded and never by the
+			// token itself.
+			reason := "invalid parameters or sensitivity wrapper"
+			if errors.Is(err, snapshot.ErrNumericBudget) {
+				reason = "a numeric value with more digits or a larger exponent than PIACE compares"
+			}
 			diag := normalizeDiagnostic(raw.Certname,
-				fmt.Sprintf("resource %s: invalid parameters or sensitivity wrapper", identity.String()))
+				fmt.Sprintf("resource %s: %s", identity.String(), reason))
 			return model.NormalizedCatalog{}, &diag
 		}
 

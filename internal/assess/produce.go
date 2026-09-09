@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/example42/piace/internal/inference"
+	"github.com/example42/piace/internal/limits"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -40,6 +41,9 @@ type Meta struct {
 func Produce(ctx context.Context, c Completer, r model.Result, cc ChangeContext, cfg Config, meta Meta) (Assessment, []Diagnostic) {
 	planned, total, truncated := PlanGroups(r, cfg.MaxGroups)
 	degraded := unknownAssessment(planned)
+	// Filled in once the request is built: it may shed evidence to fit
+	// its budget, and the artifact reports what was sent.
+	var valuesOmitted int
 
 	stamp := func(a Assessment) Assessment {
 		a.AISchemaVersion = AISchemaVersion
@@ -51,6 +55,7 @@ func Produce(ctx context.Context, c Completer, r model.Result, cc ChangeContext,
 		a.GroupsTotal = total
 		a.GroupsAssessed = len(planned)
 		a.GroupsTruncated = truncated
+		a.ValuesOmitted = valuesOmitted
 		a.InputPartial = inputIsPartial(r)
 		if cc.Present {
 			ctxCopy := cc
@@ -59,13 +64,21 @@ func Produce(ctx context.Context, c Completer, r model.Result, cc ChangeContext,
 		return a
 	}
 
-	req, p, err := BuildRequest(r, cc, cfg)
+	req, p, scope, err := BuildRequest(r, cc, cfg)
 	if err != nil {
 		return stamp(degraded), []Diagnostic{{
 			Severity: SeverityError,
 			Message:  fmt.Sprintf("building the inference request: %v", err),
 		}}
 	}
+	// The request may have shed evidence to fit its budget, so the
+	// artifact records what was actually sent rather than what was
+	// planned: an assessment that reviewed fewer groups, or groups
+	// without their values, is a narrower review and says so.
+	truncated = truncated || scope.GroupsTruncated
+	planned = planned[:scope.GroupsAssessed]
+	valuesOmitted = scope.ValuesOmitted
+	degraded = unknownAssessment(planned)
 
 	raw, err := c.Complete(ctx, req)
 	if err != nil {
@@ -89,12 +102,27 @@ func Produce(ctx context.Context, c Completer, r model.Result, cc ChangeContext,
 	// twice is not going to on a third attempt, and a backoff ladder
 	// would turn an advisory feature into a slow one.
 	first := diags
+	// The repair message carries the service's own failure text back to
+	// it, so it is capped: an inference service that answered with a
+	// megabyte of prose must not have that megabyte quoted back in a
+	// second request.
+	reason, _ := capString(firstErrorMessage(first), maxRetryReasonBytes)
 	retry := req
 	retry.Messages = append(append([]inference.Message(nil), req.Messages...), inference.Message{
 		Role: "user",
-		Content: "Your previous reply could not be used: " + firstErrorMessage(first) +
+		Content: "Your previous reply could not be used: " + reason +
 			"\n\nReply again with JSON matching the requested schema, and nothing else. No prose, no code fence.",
 	})
+	// A retry is a second disclosure of the same comparison, and a larger
+	// request than the first. BuildRequest held RetryAllowance back for
+	// exactly this message; if the assembled retry is over budget anyway,
+	// it is not sent.
+	if size, err := RequestSize(retry); err != nil || size > limits.InferenceRequest {
+		return stamp(degraded), append(first, Diagnostic{
+			Severity: SeverityError,
+			Message:  "the change assessment could not be retried within the inference request size budget",
+		})
+	}
 
 	raw, err = c.Complete(ctx, retry)
 	if err != nil {

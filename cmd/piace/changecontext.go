@@ -2,14 +2,18 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/exitcode"
+	"github.com/example42/piace/internal/limits"
 )
 
 type changeContextFlags struct {
@@ -189,17 +193,42 @@ func splitNUL(s string) []string {
 	return out
 }
 
+// gitTimeout bounds one git invocation. Every command this file runs
+// reads local history and should answer immediately; a repository large
+// enough, or a filesystem slow enough, to need longer than this is one
+// where `explain --change` should be given a file written some other
+// way rather than left waiting inside a CI job.
+const gitTimeout = 30 * time.Second
+
 // gitOutput runs one git command in the working directory and returns its
 // standard output. git's own stderr is carried into the error, because
 // "unknown revision or path not in the working tree" and "does not have
 // any commits yet" are the two failures a caller actually hits and
 // neither is guessable from an exit status.
+//
+// Both the time it may take and the output it may produce are bounded.
+// `git log` in a repository with a hundred thousand commits between two
+// refs produces megabytes of subjects, and the change context that
+// results is disclosed to an inference service; collecting all of it
+// first and deciding afterwards is the wrong order.
 func gitOutput(args ...string) (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("git", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+
+	var stdout, stderr boundedBuffer
+	stdout.max, stderr.max = limits.ChangeContext, 8*1024
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	if stdout.overflowed {
+		return "", fmt.Errorf("git %s: produced more than the %d bytes a change context may carry",
+			strings.Join(args, " "), limits.ChangeContext)
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("git %s: did not finish within %s", strings.Join(args, " "), gitTimeout)
+		}
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
 			return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), msg)
 		}
@@ -207,6 +236,30 @@ func gitOutput(args ...string) (string, error) {
 	}
 	return stdout.String(), nil
 }
+
+// boundedBuffer collects at most max bytes and records that it stopped,
+// so a caller reports truncation rather than discovering it as missing
+// content. Writes past the limit are discarded and reported as written,
+// which keeps the child process writing into a pipe that is being
+// drained instead of blocking it.
+type boundedBuffer struct {
+	buf        bytes.Buffer
+	max        int
+	overflowed bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if room := b.max - b.buf.Len(); room > 0 {
+		if len(p) <= room {
+			return b.buf.Write(p)
+		}
+		b.buf.Write(p[:room])
+	}
+	b.overflowed = true
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string { return b.buf.String() }
 
 // readRef reads a ref from exactly one of the two references the caller
 // may give, the same rule the services file follows for a credential,
@@ -265,7 +318,7 @@ func readCallerText(flagName, env, file string) (string, error) {
 	case env != "":
 		return os.Getenv(env), nil
 	case file != "":
-		raw, err := os.ReadFile(file)
+		raw, err := readBoundedLocalFile(file, limits.ChangeContext)
 		if err != nil {
 			return "", fmt.Errorf("reading --%s-file: %w", flagName, err)
 		}
@@ -273,4 +326,26 @@ func readCallerText(flagName, env, file string) (string, error) {
 	default:
 		return "", nil
 	}
+}
+
+// readBoundedLocalFile reads at most max bytes from path, refusing a
+// larger file rather than allocating it. A change-context title or
+// description is a line or a paragraph; a path naming something else is
+// a mistake worth reporting before its contents are disclosed to an
+// inference service.
+func readBoundedLocalFile(path string, max int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, int64(max)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > max {
+		return nil, fmt.Errorf("%s exceeds the %d-byte limit", path, max)
+	}
+	return data, nil
 }

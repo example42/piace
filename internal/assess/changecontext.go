@@ -9,10 +9,14 @@
 package assess
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"unicode/utf8"
 
+	"github.com/example42/piace/internal/limits"
 	"gopkg.in/yaml.v3"
 )
 
@@ -104,10 +108,28 @@ func LoadChangeContext(path string) (ChangeContext, error) {
 	}
 	defer f.Close()
 
+	// Bounded before decoding, and one byte past the limit so "too large"
+	// is decidable without reading the file: this document's free text is
+	// disclosed to an inference service, and every cap below applies to
+	// values that first have to be read into memory.
+	raw, err := io.ReadAll(io.LimitReader(f, limits.ChangeContext+1))
+	if err != nil {
+		return ChangeContext{}, fmt.Errorf("reading change context file: %w", err)
+	}
+	if len(raw) > limits.ChangeContext {
+		return ChangeContext{}, fmt.Errorf("change context file: exceeds the %d-byte limit", limits.ChangeContext)
+	}
+
 	var file changeContextFile
-	dec := yaml.NewDecoder(f)
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
 	if err := dec.Decode(&file); err != nil {
+		return ChangeContext{}, fmt.Errorf("decoding change context file: %w", err)
+	}
+	if err := dec.Decode(new(yaml.Node)); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return ChangeContext{}, fmt.Errorf("change context file: contains more than one YAML document; PIACE reads exactly one")
+		}
 		return ChangeContext{}, fmt.Errorf("decoding change context file: %w", err)
 	}
 

@@ -93,7 +93,7 @@ func TestMembershipEvidenceGroupingAndDisclosure(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				req, _, err := assess.BuildRequest(stored, assess.ChangeContext{}, assess.Config{})
+				req, _, _, err := assess.BuildRequest(stored, assess.ChangeContext{}, assess.Config{})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -145,7 +145,7 @@ func TestFileContentSummarySurvivesStoredAssessment(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			req, _, err := assess.BuildRequest(stored, assess.ChangeContext{}, assess.Config{})
+			req, _, _, err := assess.BuildRequest(stored, assess.ChangeContext{}, assess.Config{})
 			if err != nil {
 				t.Fatal(err)
 			}

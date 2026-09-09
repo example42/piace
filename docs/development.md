@@ -83,6 +83,7 @@ internal/config/resolve/  Defaults, overrides, validation, safe provenance
 internal/transport/   Hardened, independent mTLS clients; redaction
 internal/puppetdb/    Fact and baseline-catalog sources (PuppetDB and file)
 internal/artifact/    Atomic publication and destination conflict checks
+internal/limits/      Input and output budgets, with the reasoning for each
 internal/snapshot/    Envelopes, canonical JSON, checksums
 internal/compiler/    v3/v4 candidate requests, trusted-fact and fallback policy
 internal/capture/     The capture pipeline for fact and catalog snapshots

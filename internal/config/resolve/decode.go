@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/example42/piace/internal/config"
+	"github.com/example42/piace/internal/limits"
 	"gopkg.in/yaml.v3"
 )
 
@@ -14,7 +16,7 @@ import (
 // and policy and a services file names three endpoints; neither is large,
 // and a bound here means a file of any size can be handed to PIACE
 // without the decoder allocating whatever it contains first.
-const MaxConfigBytes = 4 * 1024 * 1024
+const MaxConfigBytes = limits.Config
 
 // decodeTargetFile decodes a `--targets` YAML document with
 // unknown-field rejection. gopkg.in/yaml.v3's default decoder is
@@ -76,4 +78,25 @@ func decodeSingleDocument(r io.Reader, out any) error {
 		return err
 	}
 	return nil
+}
+
+// readBoundedFile reads at most max bytes from path, refusing a larger
+// file rather than allocating it. Configuration names files PIACE did
+// not write (a policy-notes document, a token file), and a path is not a
+// promise about size.
+func readBoundedFile(path string, max int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, int64(max)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > max {
+		return nil, fmt.Errorf("%s exceeds the %d-byte limit", path, max)
+	}
+	return data, nil
 }

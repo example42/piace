@@ -10,7 +10,12 @@ import (
 // independent of model.ResultSchemaVersion by design: the assessment is
 // quarantined out of the result document so that document's determinism
 // guarantee is not weakened to accommodate it. See CONTEXT.md.
-const AISchemaVersion = 1
+//
+// Version 2 added values_omitted, the count of assessed groups whose
+// evidence was withheld from the request to keep it within its size
+// budget. A reader of a version-1 artifact could not tell a group
+// reviewed with its values from one reviewed without them.
+const AISchemaVersion = 2
 
 // DiagnosticSeverity mirrors the result document's two severities without
 // sharing the type. This package reads model.Result, but a change
@@ -76,6 +81,11 @@ type Assessment struct {
 	GroupsTotal     int  `json:"groups_total"`
 	GroupsAssessed  int  `json:"groups_assessed"`
 	GroupsTruncated bool `json:"groups_truncated"`
+	// ValuesOmitted counts assessed groups whose before/after evidence
+	// was left out to keep the request within its size budget. Those
+	// groups were reviewed by identity and reach alone, which is a
+	// narrower review than the rest and is recorded rather than implied.
+	ValuesOmitted int `json:"values_omitted,omitempty"`
 
 	// InputPartial records that the result document itself was incomplete,
 	// from a retrieval or compilation failure, so the assessment says what

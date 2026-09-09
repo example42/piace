@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/example42/piace/internal/limits"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -83,4 +84,4 @@ func DecodeJSON(data []byte) (model.Result, error) {
 // transport.DefaultMaxResponseBodyBytes deliberately: a document PIACE
 // would refuse to receive over the network is not one it should read
 // from disk either.
-const MaxDocumentBytes = 64 * 1024 * 1024
+const MaxDocumentBytes = limits.ResultDocument

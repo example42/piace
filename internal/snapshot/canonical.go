@@ -3,10 +3,14 @@ package snapshot
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
 	"strconv"
+	"strings"
+
+	"github.com/example42/piace/internal/limits"
 )
 
 // CanonicalJSON encodes payload as compact canonical JSON: map keys sort
@@ -39,7 +43,7 @@ import (
 // an error rather than guessing at an encoding.
 func CanonicalJSON(payload any) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := encodeCanonical(&buf, payload); err != nil {
+	if err := encodeCanonical(&buf, payload, 0); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
@@ -64,7 +68,14 @@ func decodeAny(raw []byte) (any, error) {
 	return v, nil
 }
 
-func encodeCanonical(buf *bytes.Buffer, v any) error {
+// encodeCanonical writes v canonically. depth is the current nesting
+// level: encoding walks whatever structure it is handed, and a document
+// can nest as deeply as its author cared to type, so the recursion is
+// bounded explicitly rather than by the goroutine stack.
+func encodeCanonical(buf *bytes.Buffer, v any, depth int) error {
+	if depth > limits.JSONNestingDepth {
+		return fmt.Errorf("snapshot: canonical json: nesting deeper than %d levels", limits.JSONNestingDepth)
+	}
 	switch val := v.(type) {
 	case nil:
 		buf.WriteString("null")
@@ -104,7 +115,7 @@ func encodeCanonical(buf *bytes.Buffer, v any) error {
 			if i > 0 {
 				buf.WriteByte(',')
 			}
-			if err := encodeCanonical(buf, e); err != nil {
+			if err := encodeCanonical(buf, e, depth+1); err != nil {
 				return err
 			}
 		}
@@ -128,7 +139,7 @@ func encodeCanonical(buf *bytes.Buffer, v any) error {
 				return err
 			}
 			buf.WriteByte(':')
-			if err := encodeCanonical(buf, val[k]); err != nil {
+			if err := encodeCanonical(buf, val[k], depth+1); err != nil {
 				return err
 			}
 		}
@@ -139,7 +150,7 @@ func encodeCanonical(buf *bytes.Buffer, v any) error {
 		if err != nil {
 			return err
 		}
-		return encodeCanonical(buf, decoded)
+		return encodeCanonical(buf, decoded, depth)
 	default:
 		return fmt.Errorf("snapshot: canonical json: unsupported value type %T", v)
 	}
@@ -178,6 +189,9 @@ func encodeCanonicalString(buf *bytes.Buffer, s string) error {
 // fractional zeros trimmed. "-0" and any all-zero value normalize to "0"
 // (there is no negative zero in exact decimal value terms).
 func canonicalNumberString(s string) (string, error) {
+	if err := checkNumericShape(s); err != nil {
+		return "", err
+	}
 	r := new(big.Rat)
 	if _, ok := r.SetString(s); !ok {
 		return "", fmt.Errorf("snapshot: invalid numeric token %q", s)
@@ -241,8 +255,17 @@ func canonicalNumberString(s string) (string, error) {
 		return digits, nil
 	}
 
-	for len(digits) <= n {
-		digits = "0" + digits
+	if len(digits) <= n {
+		// One allocation, not one per digit: prepending "0" in a loop is
+		// quadratic in n, and n is attacker-influenced through the
+		// exponent even after checkNumericShape bounds it.
+		var padded strings.Builder
+		padded.Grow(n + 1)
+		for i := len(digits); i <= n; i++ {
+			padded.WriteByte('0')
+		}
+		padded.WriteString(digits)
+		digits = padded.String()
 	}
 	intPart := digits[:len(digits)-n]
 	fracPart := trimTrailingZeros(digits[len(digits)-n:])
@@ -255,6 +278,62 @@ func canonicalNumberString(s string) (string, error) {
 		result = "-" + result
 	}
 	return result, nil
+}
+
+// checkNumericShape bounds a numeric token before it is parsed.
+//
+// The bound has to be on the token rather than on the result, because
+// the expansion happens during parsing: `1e-10000` is eight bytes to
+// read, and produces an exact decimal ten thousand digits long, which
+// then has to be scaled, formatted and written. Nothing downstream can
+// undo that cost once big.Rat has been asked for the value.
+//
+// The shape accepted here is JSON's own number grammar; anything else is
+// left to big.Rat.SetString to reject, so this function narrows what is
+// accepted and never widens it.
+// ErrNumericBudget reports a numeric token outside the digit or
+// exponent budget. It is a sentinel so a caller can describe the problem
+// to an operator without echoing the token: a number in a catalog can be
+// a sensitive value, and a diagnostic is not a disclosure channel.
+var ErrNumericBudget = errors.New("snapshot: numeric token outside the supported digit and exponent range")
+
+func checkNumericShape(s string) error {
+	mantissa, exponent := s, ""
+	if i := strings.IndexAny(s, "eE"); i >= 0 {
+		mantissa, exponent = s[:i], s[i+1:]
+	}
+
+	digits := 0
+	for _, r := range mantissa {
+		if r >= '0' && r <= '9' {
+			digits++
+		}
+	}
+	if digits > limits.NumberDigits {
+		return fmt.Errorf("%w: %d significant digits, more than the %d PIACE compares",
+			ErrNumericBudget, digits, limits.NumberDigits)
+	}
+
+	if exponent == "" {
+		return nil
+	}
+	exponent = strings.TrimPrefix(strings.TrimPrefix(exponent, "+"), "-")
+	exponent = strings.TrimLeft(exponent, "0")
+	if len(exponent) > 10 {
+		// Longer than any int64 exponent: reject on length rather than
+		// parsing, since the parse itself is what a very long exponent is
+		// aimed at.
+		return fmt.Errorf("%w: an exponent larger than the %d PIACE compares", ErrNumericBudget, limits.NumberExponent)
+	}
+	value, err := strconv.Atoi(exponent)
+	if err != nil {
+		// Not a decimal exponent at all; big.Rat.SetString reports it.
+		return nil
+	}
+	if value > limits.NumberExponent {
+		return fmt.Errorf("%w: an exponent larger than the %d PIACE compares", ErrNumericBudget, limits.NumberExponent)
+	}
+	return nil
 }
 
 // CanonicalNumberString exposes canonicalNumberString for reuse outside
