@@ -44,7 +44,7 @@ func TestCatalog_PuppetDBShape_ResourceAndEdgeIdentity(t *testing.T) {
 			{"certname":"web-01.example.test","resource":"bbb","type":"Notify","title":"hello","exported":false,"tags":[],"file":"/x.pp","line":1,"parameters":{"message":"hi"}}
 		]`,
 		`[
-			{"relationship":"before","source_type":"Notify","source_title":"hello","target_type":"File","target_title":"/etc/motd"}
+			{"relationship":"contains","source_type":"Notify","source_title":"hello","target_type":"File","target_title":"/etc/motd"}
 		]`,
 	)
 
@@ -88,7 +88,7 @@ func TestCatalog_CompilerShape_ResourceAndEdgeIdentity(t *testing.T) {
 			{"type":"Notify","title":"hello","aliases":[],"exported":false,"file":"/x.pp","line":1,"tags":[],"parameters":{"message":"hi"}}
 		]`,
 		`[
-			{"source":{"type":"Notify","title":"hello"},"target":{"type":"File","title":"/etc/motd"},"relationship":"before"}
+			{"source":{"type":"Notify","title":"hello"},"target":{"type":"File","title":"/etc/motd"},"relationship":"contains"}
 		]`,
 	)
 
@@ -576,5 +576,58 @@ func TestCatalog_OrderedParametersKeepTheirOrder(t *testing.T) {
 	want := []model.Value{"puppet:///modules/site/motd.$hostname", "puppet:///modules/site/motd"}
 	if !reflect.DeepEqual(got.Resources[0].Parameters["source"], want) {
 		t.Errorf("source = %+v, want the declared order preserved", got.Resources[0].Parameters["source"])
+	}
+}
+
+// Puppet's PuppetDB terminus synthesizes one relationship edge per
+// `require`, `before`, `notify` or `subscribe` metaparameter before
+// storing a catalog. A compiler response carries containment only.
+// Measured against a deployed OpenVox 8.15.2 installation on 2026-09-09,
+// comparing one node's production environment with itself: 296 stored
+// edges against 239 compiled ones, with all 57 extras synthesized and
+// the containment edges an identical multiset. Every one of them was
+// reported as an edge removal.
+func TestCatalog_DropsSynthesizedRelationshipEdges(t *testing.T) {
+	stored := `[
+		{"relationship":"contains","source_type":"Class","source_title":"main","target_type":"Service","target_title":"nginx"},
+		{"relationship":"required-by","source_type":"Package","source_title":"nginx","target_type":"Service","target_title":"nginx"},
+		{"relationship":"before","source_type":"File","source_title":"/etc/nginx.conf","target_type":"Service","target_title":"nginx"},
+		{"relationship":"notifies","source_type":"File","source_title":"/etc/nginx.conf","target_type":"Service","target_title":"nginx"},
+		{"relationship":"subscription-of","source_type":"Service","source_title":"nginx","target_type":"File","target_title":"/etc/nginx.conf"}
+	]`
+	compiled := `[{"source":{"type":"Class","title":"main"},"target":{"type":"Service","title":"nginx"}}]`
+
+	baseline, diag := Catalog(pdbShapedCatalog("web-01.example.test", "production", `[]`, stored))
+	if diag != nil {
+		t.Fatalf("baseline diagnostic: %+v", diag)
+	}
+	candidate, diag := Catalog(compilerShapedCatalog("web-01.example.test", "production", `[]`, compiled))
+	if diag != nil {
+		t.Fatalf("candidate diagnostic: %+v", diag)
+	}
+	want := []model.Edge{{Source: "Class[main]", Target: "Service[nginx]"}}
+	if !reflect.DeepEqual(baseline.Edges, want) {
+		t.Errorf("baseline edges = %+v, want only the containment edge", baseline.Edges)
+	}
+	if !reflect.DeepEqual(candidate.Edges, want) {
+		t.Errorf("candidate edges = %+v, want only the containment edge", candidate.Edges)
+	}
+}
+
+// A snapshot captured from a PuppetDB baseline is written in the
+// compiler's plain-array edge shape but keeps the relationship it was
+// stored with, so the filter has to apply to that shape too.
+func TestCatalog_DropsSynthesizedEdgesInEitherShape(t *testing.T) {
+	compiled := `[
+		{"source":{"type":"Class","title":"main"},"target":{"type":"Service","title":"nginx"},"relationship":"contains"},
+		{"source":{"type":"Package","title":"nginx"},"target":{"type":"Service","title":"nginx"},"relationship":"required-by"}
+	]`
+	got, diag := Catalog(compilerShapedCatalog("web-01.example.test", "production", `[]`, compiled))
+	if diag != nil {
+		t.Fatalf("unexpected diagnostic: %+v", diag)
+	}
+	want := []model.Edge{{Source: "Class[main]", Target: "Service[nginx]"}}
+	if !reflect.DeepEqual(got.Edges, want) {
+		t.Errorf("Edges = %+v, want only the containment edge", got.Edges)
 	}
 }

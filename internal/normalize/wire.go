@@ -37,15 +37,49 @@ type edgeWire struct {
 // pdbEdgeEntry is one element of a PuppetDB query-API edges.data array,
 // per https://puppet.com/docs/puppetdb/8/catalogs.html's documented
 // `<expanded edges>` shape: `{"relationship", "source_title",
-// "source_type", "target_title", "target_type"}`. Relationship is
-// intentionally undeclared: an edge's identity is solely the ordered
-// (source, target) identity pair, direction alone being significant, and
-// relationship kind is not part of the normalized model.
+// "source_type", "target_title", "target_type"}`.
+//
+// An edge's identity in the normalized model is solely the ordered
+// (source, target) identity pair, direction alone being significant, so
+// the relationship kind is not carried into it. It is decoded all the
+// same, because it says which edges belong in the model at all: see
+// containmentRelationship and doc.go.
 type pdbEdgeEntry struct {
-	SourceType  string `json:"source_type"`
-	SourceTitle string `json:"source_title"`
-	TargetType  string `json:"target_type"`
-	TargetTitle string `json:"target_title"`
+	SourceType   string `json:"source_type"`
+	SourceTitle  string `json:"source_title"`
+	TargetType   string `json:"target_type"`
+	TargetTitle  string `json:"target_title"`
+	Relationship string `json:"relationship"`
+}
+
+// containmentRelationship is the one edge relationship a compiled
+// catalog carries. Puppet's PuppetDB terminus synthesizes the others,
+// one per `require`, `before`, `notify` or `subscribe` metaparameter, on
+// its way to storage: `synthesize_edges`, whose relationship names are
+// its Relationships table ("before", "required-by", "notifies",
+// "subscription-of"). A compiler's catalog response carries containment
+// only, because relationship edges are resolved by the agent at apply
+// time.
+//
+// So a stored baseline holds edges no candidate can hold, and comparing
+// the two reports every relationship in the catalog as removed. Measured
+// against a deployed OpenVox 8.15.2 installation on 2026-09-09,
+// comparing one node's production environment with itself: 296 stored
+// edges against 239 compiled ones, the 239 containment edges an
+// identical multiset, and all 57 extras synthesized. The text report
+// hides edge groups by design, so they were invisible there while
+// reaching the JSON document, the aggregate and the inference request.
+//
+// Dropping them loses nothing. Each is derived from a metaparameter that
+// is compared as a parameter in its own right, so a real relationship
+// change is reported either way, and reported once rather than twice.
+const containmentRelationship = "contains"
+
+// isSynthesizedRelationship reports whether an edge carrying this
+// relationship was added by the PuppetDB terminus rather than compiled.
+// An absent relationship is a compiler-shaped edge, which is containment.
+func isSynthesizedRelationship(relationship string) bool {
+	return relationship != "" && relationship != containmentRelationship
 }
 
 // resourceReferencePattern is a Go port of the PuppetDB terminus's own
@@ -139,11 +173,14 @@ func (s *resourceSpecWire) UnmarshalJSON(data []byte) error {
 // compilerEdgeEntry is one element of a plain-array edges list:
 // `{"source": <vertex>, "target": <vertex>, "relationship":
 // <relationship>}`, where each vertex is either form resourceSpecWire
-// accepts. Relationship is intentionally undeclared for the same reason
-// noted on pdbEdgeEntry.
+// accepts. A live compiler response carries no relationship field at
+// all; it is decoded here so a snapshot captured from a PuppetDB
+// baseline is filtered by the same rule whichever shape it was written
+// in. See containmentRelationship.
 type compilerEdgeEntry struct {
-	Source resourceSpecWire `json:"source"`
-	Target resourceSpecWire `json:"target"`
+	Source       resourceSpecWire `json:"source"`
+	Target       resourceSpecWire `json:"target"`
+	Relationship string           `json:"relationship"`
 }
 
 // shapeContainer decides, from the first non-whitespace byte of raw,
@@ -228,14 +265,17 @@ func extractEdges(raw json.RawMessage) ([]edgeWire, error) {
 		if err := hrefDataArray(trimmed, &pdbEntries); err != nil {
 			return nil, fmt.Errorf("edges: %w", err)
 		}
-		out := make([]edgeWire, len(pdbEntries))
-		for i, e := range pdbEntries {
-			out[i] = edgeWire{
+		out := make([]edgeWire, 0, len(pdbEntries))
+		for _, e := range pdbEntries {
+			if isSynthesizedRelationship(e.Relationship) {
+				continue
+			}
+			out = append(out, edgeWire{
 				SourceType:  e.SourceType,
 				SourceTitle: e.SourceTitle,
 				TargetType:  e.TargetType,
 				TargetTitle: e.TargetTitle,
-			}
+			})
 		}
 		return out, nil
 	}
@@ -243,14 +283,17 @@ func extractEdges(raw json.RawMessage) ([]edgeWire, error) {
 	if err := json.Unmarshal(trimmed, &compilerEntries); err != nil {
 		return nil, fmt.Errorf("edges: decoding array: %w", err)
 	}
-	out := make([]edgeWire, len(compilerEntries))
-	for i, e := range compilerEntries {
-		out[i] = edgeWire{
+	out := make([]edgeWire, 0, len(compilerEntries))
+	for _, e := range compilerEntries {
+		if isSynthesizedRelationship(e.Relationship) {
+			continue
+		}
+		out = append(out, edgeWire{
 			SourceType:  e.Source.Type,
 			SourceTitle: e.Source.Title,
 			TargetType:  e.Target.Type,
 			TargetTitle: e.Target.Title,
-		}
+		})
 	}
 	return out, nil
 }

@@ -151,6 +151,31 @@
 // is retrieved first; sorting it would silently undo phase 2's source
 // selection.
 //
+// # Relationship edges, and why only containment is compared
+//
+// An edge whose relationship is present and is not "contains" is dropped,
+// in both wire shapes. Puppet's PuppetDB terminus synthesizes one such
+// edge per `require`, `before`, `notify` or `subscribe` metaparameter on
+// its way to storage: `synthesize_edges`, whose relationship names are its
+// Relationships table, "before", "required-by", "notifies" and
+// "subscription-of". A compiler's catalog response carries containment
+// edges only, because relationship edges are resolved by the agent at
+// apply time.
+//
+// Measured against a deployed OpenVox 8.15.2 installation on 2026-09-09,
+// comparing one node's production environment with itself: 296 stored
+// edges against 239 compiled ones, the 239 containment edges an identical
+// multiset, and every one of the 57 extras synthesized. Each was reported
+// as an edge removal. The text report hides edge groups by design, so they
+// were invisible there while reaching the JSON document, the aggregate and
+// the inference request.
+//
+// Dropping them loses nothing a reader had. Each is derived from a
+// metaparameter that is compared as a parameter in its own right, so a
+// real relationship change is still reported, and reported once rather
+// than twice. An edge with no relationship field is a compiler-shaped
+// edge, which is containment.
+//
 // # Canonical parameter values and Property 1
 //
 // Each parameter value is converted into the model.Value domain (nil,
