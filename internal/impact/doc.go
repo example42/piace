@@ -53,12 +53,36 @@
 // path actually used is recorded in every estimate
 // (model.ImpactRequest.Path) so a report never leaves it implicit.
 //
-// Protocol adapters are the compatibility boundary, and their exact
-// requests and responses have to be demonstrated with fixtures from the
-// deployed service versions, so this endpoint choice is a documented,
-// fixture-unverified assumption, in the same category as
-// internal/puppetdb's and internal/compiler's own endpoint-shape
-// assumptions.
+// # Measured against a deployed PuppetDB
+//
+// Every assumption in this section was checked against a deployed
+// PuppetDB 8.15.0 on 2026-09-09, by issuing the requests this package
+// builds and reading the responses:
+//
+//   - GET /pdb/query/v4 with the PQL text above in the `query`
+//     parameter returns the matching certname rows. The root endpoint
+//     does accept a PQL string that names its own entity.
+//   - `limit` and `order_by` travel beside `query` as URL parameters and
+//     are honoured. `order_by` is server-side, not decoration: the same
+//     query with `asc` and with `desc` returned different three-row
+//     samples of the same nine-row result, and the unlimited query
+//     returned its rows in neither order, so a truncated sample without
+//     `order_by` would not be reproducible.
+//   - A query matching nothing returns `[]` with HTTP 200 and
+//     content-type application/json, never `null` and never 404. See
+//     parseCertnames for why `null` is refused all the same.
+//   - A malformed PQL returns HTTP 400 with a text/plain body that
+//     quotes the submitted query back. That body is never echoed into a
+//     diagnostic, which is what keeps a resource title out of a report
+//     by way of an error message.
+//   - Every escape quotePQLString emits (backslash, double quote, \n,
+//     \r, \t) is accepted by the parser: each returned HTTP 200 rather
+//     than a parse error.
+//
+// What remains unverified is the behaviour of other supported PuppetDB
+// versions, and whether a title containing one of those escapes matches
+// a resource that really carries it, which needs a fixture catalog
+// holding such a title.
 //
 // # Bounding, and the limit of what determinism can be promised
 //

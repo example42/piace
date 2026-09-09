@@ -745,6 +745,39 @@ Until a fixture settles it, phase 1.1's "decode it from supported compiler and
 PuppetDB representations" is unexercised against real wire data on both sides,
 and 5.2's disclosure row cannot state a verified representation.
 
+**Finding L6: a `null` query response would have read as "no node affected".**
+Low severity, hardening, fixed. `encoding/json` decodes `null` into a nil slice
+without error, so an impact-estimate body saying nothing was indistinguishable
+from one saying no node is affected, and a zero-node estimate is a claim a
+reader acts on. The response shape is now decided from its first non-whitespace
+byte, as `internal/normalize`'s `shapeContainer` already does. A deployed
+PuppetDB 8.15.0 returns `[]` with HTTP 200 for a query matching nothing, so
+this refuses a body that service does not send.
+
+#### Verified against the deployed services, 2026-09-09
+
+- PuppetDB 8.15.0 impact query: the root `/pdb/query/v4` endpoint accepts the
+  PQL text this project specifies; `limit` and `order_by` travel beside `query`
+  and are honoured server-side (`asc` and `desc` return different samples of
+  the same result, and the unlimited query returns neither order, so
+  `order_by` is load-bearing for a reproducible truncated sample); an empty
+  result is `[]` with HTTP 200; a malformed PQL is HTTP 400 with a text/plain
+  body quoting the query back, which is never echoed; every escape
+  `quotePQLString` emits is accepted by the parser. Recorded in
+  `internal/impact/doc.go`.
+- Catalog compilation is deterministic: two v4 compilations of one node in one
+  environment, minutes apart, returned byte-identical resource parameters. That
+  is what establishes L2's reordering as the terminus's rather than
+  compilation's.
+- Pcore `Regexp` stringification: twelve patterns measured by calling
+  `PRegexpType.regexp_to_s` and `regexp_to_s_with_delimiters` on the deployed
+  Ruby. The table is `internal/model.StringifyRich`'s doc comment and its test.
+
+Still unverified, and each is an open gate: other supported Puppet, OpenVox and
+PuppetDB versions; every Pcore rich type but `Regexp`; whether the v4 catalog
+response carries `sensitive_parameters` at all; the File shapes 2.2 needs;
+and the inference provider matrix.
+
 The fixture manifest this step still owes must therefore cover, at minimum:
 each Pcore rich type as an actual parameter value; a resource with
 `sensitive_parameters`; a class with a `Sensitive` parameter; a regexp carrying

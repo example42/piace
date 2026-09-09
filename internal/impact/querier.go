@@ -1,6 +1,7 @@
 package impact
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -152,7 +153,20 @@ type certnameRow struct {
 // certname, is a malformed response rather than an empty result: unknown
 // or malformed data is an operational normalization failure, never an
 // empty result. The raw body never reaches the returned error.
+//
+// The leading-byte check is what keeps a JSON `null` out of the empty
+// case. encoding/json decodes `null` into a nil slice without error, so
+// a body saying nothing at all would otherwise be indistinguishable from
+// one saying no node is affected, and an impact estimate reporting zero
+// nodes is a claim a reader acts on. Deciding the shape from the first
+// non-whitespace byte is what internal/normalize's shapeContainer does
+// for the same reason. A deployed PuppetDB 8.15.0 was measured on
+// 2026-09-09 returning `[]` with HTTP 200 for a query matching nothing,
+// so this rejects a response that service does not send.
 func parseCertnames(body []byte) ([]string, error) {
+	if trimmed := bytes.TrimSpace(body); len(trimmed) == 0 || trimmed[0] != '[' {
+		return nil, errors.New("impact estimate response was not a JSON array of certname rows")
+	}
 	var rows []certnameRow
 	if err := json.Unmarshal(body, &rows); err != nil {
 		return nil, errors.New("impact estimate response was not a JSON array of certname rows")
