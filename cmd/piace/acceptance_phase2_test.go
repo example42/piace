@@ -387,3 +387,71 @@ func TestAcceptance_UnverifiableContentIsADifferenceNotAFailure(t *testing.T) {
 		})
 	}
 }
+
+// not_managed is a new enum value in a schema_version-tagged document,
+// so it has to survive every consumer downstream of the differ: the
+// aggregate, all three report formats, the stored document's own
+// validation, and the inference request explain builds from it. The
+// filecontent tests establish the classification; this establishes that
+// nothing between there and a published artifact drops or mangles it.
+func TestAcceptance_UnmanagedFileContentReachesEveryArtifact(t *testing.T) {
+	h := newHarness(t)
+	name := "web-01.example.test"
+	absent := map[string]any{"ensure": "absent", "content": "inert", "owner": "root"}
+
+	// Removed on one path, added on the other, so both membership
+	// branches are exercised in one comparison.
+	h.seedTarget(name,
+		[]resourceSpec{{Type: "File", Title: "/etc/tp/app/removed", Parameters: absent}},
+		[]resourceSpec{{Type: "File", Title: "/etc/tp/app/added", Parameters: absent}}, nil)
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(name)))
+	got := h.compare(t)
+
+	if got.code != exitcode.Success {
+		t.Fatalf("exit %d:\n%s", got.code, got.stdout)
+	}
+	var report model.Result
+	if err := json.Unmarshal([]byte(got.json), &report); err != nil {
+		t.Fatal(err)
+	}
+	states := map[model.FileContentState]int{}
+	for _, c := range report.Targets[0].NodeDiff.ResourceChanges {
+		if c.FileContent != nil {
+			states[c.FileContent.State]++
+		}
+	}
+	if states[model.FileContentNotManaged] != 2 {
+		t.Errorf("want both membership changes carrying not_managed, got %+v", states)
+	}
+	for _, g := range report.Aggregate.Groups {
+		if g.FileContent != nil && g.FileContent.State != model.FileContentNotManaged {
+			t.Errorf("aggregate group carries state %q", g.FileContent.State)
+		}
+	}
+	for name, artifact := range map[string]string{"text": got.stdout, "json": got.json, "html": got.html} {
+		if !strings.Contains(artifact, "not_managed") {
+			t.Errorf("the %s report does not name the state:\n%s", name, artifact)
+		}
+		if strings.Contains(artifact, "inert") {
+			t.Errorf("the %s report published the inert content", name)
+		}
+	}
+
+	// The stored document has to validate, and explain has to be able to
+	// send it: a state the reader refuses would make the document
+	// unexplainable, and one the request builder drops would describe a
+	// comparison that did not happen.
+	stored := h.path("stored.json")
+	writeFixtureFile(t, stored, []byte(got.json))
+	stub := newInferenceStub(t)
+	explained := h.explain(t, stub, stored)
+	if explained.code != exitcode.Success {
+		t.Fatalf("explain over a not_managed document exited %d:\n%s", explained.code, explained.stderr)
+	}
+	if stub.count() != 1 {
+		t.Fatalf("inference service contacted %d times, want 1", stub.count())
+	}
+	if !strings.Contains(stub.requests[0], "not_managed") {
+		t.Errorf("the inference request dropped the state:\n%s", stub.requests[0])
+	}
+}

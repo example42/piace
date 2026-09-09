@@ -2,6 +2,7 @@ package filecontent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/example42/piace/internal/model"
@@ -99,5 +100,36 @@ func TestUnsupportedByteComparisonsStillAre(t *testing.T) {
 				t.Fatalf("unsupported byte evidence was not reported: %+v %+v", e, d)
 			}
 		})
+	}
+}
+
+// Both sides produced valid evidence, in different algorithms. Nothing
+// failed, so the diagnostic is a warning, and nothing is comparable, so
+// the state is indeterminate. Before this was decided explicitly it fell
+// through evidenceSeverity's nil-skipping loop and got the same answer
+// by accident.
+func TestMismatchedDigestAlgorithmsAreAWarning(t *testing.T) {
+	md5 := "d41d8cd98f00b204e9800998ecf8427e"
+	before := Side{Resource: model.Resource{
+		Identity:   model.ResourceIdentity{Type: "File", Title: "/etc/motd"},
+		Parameters: map[string]any{"checksum": "md5", "checksum_value": md5},
+	}}
+	after := Side{Resource: model.Resource{
+		Identity:   model.ResourceIdentity{Type: "File", Title: "/etc/motd"},
+		Parameters: map[string]any{"content": "bytes"},
+	}}
+
+	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil)
+	if e.State != model.FileContentIndeterminate {
+		t.Errorf("state = %q, want %q", e.State, model.FileContentIndeterminate)
+	}
+	if d == nil || d.Severity != model.SeverityWarning {
+		t.Fatalf("want a warning-severity diagnostic, got %+v", d)
+	}
+	if !strings.Contains(d.Message, "different algorithms") {
+		t.Errorf("the reason does not say why: %q", d.Message)
+	}
+	if e.BeforeDigest != "" || e.AfterDigest != "" || e.Algorithm != "" {
+		t.Errorf("incomparable digests were published: %+v", e)
 	}
 }
