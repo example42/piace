@@ -72,4 +72,18 @@ type Catalog struct {
 	Metadata          json.RawMessage                `json:"metadata,omitempty"`
 	RecursiveMetadata json.RawMessage                `json:"recursive_metadata,omitempty"`
 	CapturedContent   map[string]model.ContentDigest `json:"captured_content,omitempty"`
+
+	// StringifiedRich records that this catalog's parameter values
+	// passed through Puppet's ToStringifiedConverter, so every rich
+	// value in it is a lossy string rather than a Pcore typed value.
+	// It is true of a catalog read back from PuppetDB and false of one
+	// a compiler returned; see model.ProjectStringifiedRich for what
+	// the difference is and why comparison has to know.
+	//
+	// It is not part of the wire format, and it is not part of a
+	// snapshot payload either: whichever loader produced the catalog
+	// sets it, so it cannot be forged by a stored document. A snapshot
+	// carries the same fact in its envelope's source kind, which is
+	// inside the checksum.
+	StringifiedRich bool `json:"-"`
 }

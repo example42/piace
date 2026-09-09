@@ -173,6 +173,13 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 		}
 	}
 
+	// `piace capture catalog` writes a compiler response, so a catalog
+	// snapshot is rich today and this is false. It is read from the
+	// envelope rather than assumed, because the envelope is what would
+	// say otherwise, and the answer decides how the catalog can be
+	// compared: see model.ProjectStringifiedRich.
+	cat.StringifiedRich = env.Source.Kind == string(model.SourceKindPuppetDB)
+
 	prov := model.SourceProvenance{
 		Kind:              model.SourceKindFile,
 		Certname:          cat.Certname,

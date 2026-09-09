@@ -40,7 +40,7 @@ func Diff(
 	// Pass 1: full graph diff, computed with no knowledge of exclusion
 	// or redaction configuration.
 	resourceChanges, diagnostics := diffResources(ctx, target.Certname, before.ContentContext, after.ContentContext,
-		beforeResources, afterResources, retriever)
+		beforeResources, afterResources, retriever, fidelity{before: before.StringifiedRich, after: after.StringifiedRich})
 	edgeChanges := diffEdges(before.Edges, after.Edges)
 
 	// Fingerprints digest the unredacted evidence and must therefore be

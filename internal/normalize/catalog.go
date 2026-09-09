@@ -116,10 +116,11 @@ func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) 
 	})
 
 	return model.NormalizedCatalog{
-		Certname:    raw.Certname,
-		Environment: raw.Environment,
-		Resources:   resources,
-		Edges:       edges,
+		Certname:        raw.Certname,
+		Environment:     raw.Environment,
+		Resources:       resources,
+		Edges:           edges,
+		StringifiedRich: raw.StringifiedRich,
 	}, nil
 }
 

@@ -490,6 +490,19 @@ unchanged references are indeterminate. Exclusions suppress differences but do n
 cancel content resolution or hide its diagnostics. Capture warns about unsupported
 trees, but retrieval or checksum errors prevent publishing the snapshot.
 
+**Baseline fidelity.** A catalog read back from PuppetDB is not the catalog a
+compiler produced. Puppet's own PuppetDB terminus rewrites it on the way to
+storage: it injects an `alias` parameter, sorts the metaparameters Puppet calls
+unordered, synthesizes a relationship edge per `require`, `before`, `notify` and
+`subscribe`, deletes every parameter named in `sensitive_parameters` along with
+that key, and converts every rich value to a string through a converter Puppet
+documents as lossy. PIACE normalizes the first three away on both sides and
+compares a rich value against its stringified form where it has measured how
+that type stringifies, which today is `Regexp` and nothing else. An unmeasured
+rich type is reported as a difference with a warning saying it may be
+representation rather than change. A sensitive parameter cannot be compared
+against a PuppetDB baseline at all, because the baseline does not contain it.
+
 **The v3 warning.** With `catalog_api: v3`, or any permitted v4-to-v3 fallback,
 `$trusted` in the compiled catalog can reflect the catalog-reader certificate
 rather than the target. The warning is non-suppressible, appears in all three
