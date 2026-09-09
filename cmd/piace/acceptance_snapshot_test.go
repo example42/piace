@@ -248,3 +248,77 @@ func capturedV4Provenance() *snapshot.CaptureProvenance {
 		FactSource:         snapshot.FactSourcePuppetDB,
 	}
 }
+
+// A baseline compiled through v3 was compiled with the catalog-reader's
+// identity in $trusted, and that is a property of the bytes being
+// compared rather than of the run comparing them. A result document
+// built from such a snapshot used to look exactly like one built from a
+// v4 capture: the distinction survived only in the snapshot file. This
+// was deferred out of phase 3.3 as a result-schema change and lands on
+// schema 3 with the rest.
+func TestAcceptance_FileBaselineSurfacesItsCaptureTrustSemantics(t *testing.T) {
+	certname := "web-01.example.test"
+	for _, tc := range []struct {
+		name      string
+		api       string
+		wantWarn  bool
+		wantInDoc string
+	}{
+		{"v4 capture", "v4", false, `"effective_api":"v4"`},
+		{"v3 capture", "v3", true, `"effective_api":"v3"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+			h.compiler.catalogs[certname] = compilerCatalog(certname, "production", baseResources(), baseEdges())
+			for _, dir := range []string{"snapshots/facts", "snapshots/catalogs"} {
+				if err := os.MkdirAll(h.path(dir), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			defaults := strings.Replace(snapshotDefaults, "catalog_api: v4", "catalog_api: "+tc.api, 1)
+			h.writeConfigs(t, targetsYAML(defaults, target(certname)))
+			configArgs := []string{"--targets", h.path("targets.yaml"), "--services", h.path("services.yaml")}
+			if _, stderr, code := captureRun(t, append([]string{"capture", "facts"}, configArgs...)); code != exitcode.Success {
+				t.Fatalf("capture facts exit = %d: %s", code, stderr)
+			}
+			if _, stderr, code := captureRun(t,
+				append(append([]string{"capture", "catalog"}, configArgs...), "--environment", "production")); code != exitcode.Success {
+				t.Fatalf("capture catalog exit = %d: %s", code, stderr)
+			}
+
+			// The comparison itself is v4 either way, so what the
+			// document reports about v3 can only have come from the
+			// snapshot. That is the whole point: the run's own trust
+			// semantics are not the baseline's.
+			h.writeConfigs(t, targetsYAML(snapshotDefaults, target(certname)))
+			h.compiler.catalogs[certname] = compilerCatalog(certname, "feature-123", baseResources(), baseEdges())
+			got := h.compare(t)
+			if got.code != exitcode.Success {
+				t.Fatalf("compare exit %d:\n%s", got.code, got.stdout)
+			}
+			if !strings.Contains(got.json, tc.wantInDoc) {
+				t.Errorf("the result document does not record the capture's API:\n%s", got.json)
+			}
+
+			const banner = "WARNING (baseline capture):"
+			if strings.Contains(got.stdout, banner) != tc.wantWarn {
+				t.Errorf("text report baseline warning present = %v, want %v:\n%s",
+					strings.Contains(got.stdout, banner), tc.wantWarn, got.stdout)
+			}
+			const htmlBanner = "Baseline capture trusted-fact compatibility warning"
+			if strings.Contains(got.html, htmlBanner) != tc.wantWarn {
+				t.Errorf("HTML report baseline warning present = %v, want %v",
+					strings.Contains(got.html, htmlBanner), tc.wantWarn)
+			}
+			// The stored document has to survive its own reader, which
+			// now checks that the warning and the effective API agree.
+			stored := h.path("stored.json")
+			writeFixtureFile(t, stored, []byte(got.json))
+			stub := newInferenceStub(t)
+			if explained := h.explain(t, stub, stored); explained.code != exitcode.Success {
+				t.Fatalf("explain over the document exited %d:\n%s", explained.code, explained.stderr)
+			}
+		})
+	}
+}

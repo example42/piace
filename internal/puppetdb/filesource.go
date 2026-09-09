@@ -187,8 +187,31 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 		ProducerTimestamp: cat.ProducerTimestamp,
 		CatalogIdentity:   env.PayloadChecksum,
 		Producer:          cat.Producer,
+		Capture:           baselineCapture(env.Capture),
 	}
 	return cat, prov, nil
+}
+
+// baselineCapture projects a catalog snapshot's capture provenance into
+// the result document, deriving the v3 warning rather than reading a
+// copy of it: the envelope deliberately stores no warning text, so that
+// the wording can change without contradicting snapshots already on
+// disk.
+func baselineCapture(c *snapshot.CaptureProvenance) *model.BaselineCapture {
+	if c == nil {
+		return nil
+	}
+	out := &model.BaselineCapture{
+		RequestedAPI:       config.CatalogAPI(c.RequestedAPI),
+		EffectiveAPI:       config.CatalogAPI(c.EffectiveAPI),
+		FellBackFromV4:     c.FellBackFromV4,
+		TrustedFactsSource: model.TrustedFactsSource(c.TrustedFactsSource),
+		FactSource:         model.SourceKind(c.FactSource),
+	}
+	if out.EffectiveAPI == config.CatalogAPIv3 {
+		out.V3Warning = model.V3TrustedFactWarning
+	}
+	return out
 }
 
 // snapshotDiagnostic builds a model.Diagnostic for a local snapshot load

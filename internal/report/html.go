@@ -178,9 +178,13 @@ type htmlTarget struct {
 	Exclude      []string
 	Redact       []string
 	V3Warning    string
-	Failures     []htmlDiagnostic
-	Warnings     []htmlDiagnostic
-	Compared     bool
+	// BaselineV3Warning is the same warning about the baseline's own
+	// capture: those are the bytes being compared, whatever API this
+	// run used.
+	BaselineV3Warning string
+	Failures          []htmlDiagnostic
+	Warnings          []htmlDiagnostic
+	Compared          bool
 	// Changes and EdgeChanges are the target's differences, split because
 	// the page discloses them separately: a run's edge differences
 	// routinely outnumber its resource differences, being a consequence of
@@ -424,6 +428,9 @@ func buildHTMLTarget(t model.TargetResult) htmlTarget {
 	}
 	if t.Baseline != nil {
 		out.Baseline = mapEntries(sourceProvenanceMap(*t.Baseline))
+		if t.Baseline.Capture != nil {
+			out.BaselineV3Warning = t.Baseline.Capture.V3Warning
+		}
 	}
 	if t.Facts != nil {
 		out.Facts = mapEntries(sourceProvenanceMap(*t.Facts))
@@ -581,6 +588,15 @@ func sourceProvenanceMap(p model.SourceProvenance) map[string]any {
 	addNonEmpty(m, "producer_timestamp", p.ProducerTimestamp)
 	addNonEmpty(m, "catalog_identity", p.CatalogIdentity)
 	addNonEmpty(m, "producer", p.Producer)
+	if c := p.Capture; c != nil {
+		addNonEmpty(m, "captured_requested_api", string(c.RequestedAPI))
+		addNonEmpty(m, "captured_effective_api", string(c.EffectiveAPI))
+		addNonEmpty(m, "captured_trusted_facts_source", string(c.TrustedFactsSource))
+		addNonEmpty(m, "captured_fact_source", string(c.FactSource))
+		if c.FellBackFromV4 {
+			m["captured_fell_back_from_v4"] = true
+		}
+	}
 	return m
 }
 

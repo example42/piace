@@ -164,6 +164,12 @@ func writeTextTargets(b *bytes.Buffer, targets []model.TargetResult) {
 		if t.Candidate != nil && t.Candidate.V3Warning != "" {
 			textf(b, "    WARNING: %s\n", t.Candidate.V3Warning)
 		}
+		// The baseline's own capture carries the same warning when it
+		// was compiled through v3: those are the bytes being compared,
+		// whatever API this run used.
+		if t.Baseline != nil && t.Baseline.Capture != nil && t.Baseline.Capture.V3Warning != "" {
+			textf(b, "    WARNING (baseline capture): %s\n", t.Baseline.Capture.V3Warning)
+		}
 
 		if t.NodeDiff != nil {
 			writeTextNodeDiff(b, *t.NodeDiff)
@@ -203,6 +209,12 @@ func sourceProvenanceLine(p model.SourceProvenance) string {
 	}
 	if p.Producer != "" {
 		parts = append(parts, "producer="+p.Producer)
+	}
+	if c := p.Capture; c != nil {
+		parts = append(parts, fmt.Sprintf("captured_api=%s (requested %s)", c.EffectiveAPI, c.RequestedAPI))
+		if c.FellBackFromV4 {
+			parts = append(parts, "fell_back_from_v4=true")
+		}
 	}
 	return strings.Join(parts, " ")
 }

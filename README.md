@@ -490,6 +490,14 @@ unchanged references are indeterminate. Exclusions suppress differences but do n
 cancel content resolution or hide its diagnostics. Capture warns about unsupported
 trees, but retrieval or checksum errors prevent publishing the snapshot.
 
+**A file baseline carries its own capture provenance.** A catalog snapshot
+records the API that compiled it, and the result document carries that
+through: `captured_api` in the text report, `baseline.capture` in JSON, and its
+own warning banner in text and HTML when the capture was served by v3. A
+baseline compiled through v3 was compiled with the catalog-reader's identity in
+`$trusted`, and that is a property of the bytes being compared, not of the run
+comparing them, so it is reported even when the run itself used v4.
+
 **Baseline fidelity.** A catalog read back from PuppetDB is not the catalog a
 compiler produced. Puppet's own PuppetDB terminus rewrites it on the way to
 storage: it injects an `alias` parameter, sorts the metaparameters Puppet calls
