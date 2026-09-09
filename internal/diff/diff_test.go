@@ -989,3 +989,48 @@ func BenchmarkDiff_LargeCatalog(b *testing.B) {
 		}
 	}
 }
+
+// A File the catalog asks Puppet to remove manages no bytes. The first
+// live run against an OpenVox 8.15.2 compiler on 2026-09-09 reported
+// sixteen such resources as changed, with an error diagnostic each,
+// while both catalogs held them identically. The comparison exited 30
+// for it.
+func TestDiff_AbsentFileManagesNoContent(t *testing.T) {
+	c := catalog([]model.Resource{
+		resource("File", "/etc/tp/app/example", map[string]model.Value{
+			"ensure": "absent", "content": "inert", "owner": "root",
+		}),
+	}, nil)
+
+	nd, diags := run(t, target(nil, nil), c, c, nil)
+	if nd.HasDifference || len(nd.ResourceChanges) != 0 {
+		t.Errorf("an identical absent File was reported as changed: %+v", nd.ResourceChanges)
+	}
+	if len(diags) != 0 {
+		t.Errorf("an absent File produced diagnostics: %+v", diags)
+	}
+}
+
+// The content parameters of an absent File are inert, so a difference
+// between them is not a difference in what Puppet will do. A change to
+// `ensure` itself is reported by the ordinary parameter diff, which is
+// what tells the reader the file is being removed.
+func TestDiff_EnsureChangeIsReportedWithoutContentEvidence(t *testing.T) {
+	before := catalog([]model.Resource{
+		resource("File", "/etc/motd", map[string]model.Value{"ensure": "file", "content": "hello"}),
+	}, nil)
+	after := catalog([]model.Resource{
+		resource("File", "/etc/motd", map[string]model.Value{"ensure": "absent", "content": "hello"}),
+	}, nil)
+
+	nd, diags := run(t, target(nil, nil), before, after, nil)
+	if len(diags) != 0 {
+		t.Errorf("unexpected diagnostics: %+v", diags)
+	}
+	if len(nd.ResourceChanges) != 1 {
+		t.Fatalf("want exactly the ensure change, got %+v", nd.ResourceChanges)
+	}
+	if got := nd.ResourceChanges[0]; got.Parameter != "ensure" || got.FileContent != nil {
+		t.Errorf("want a bare ensure change, got %+v", got)
+	}
+}

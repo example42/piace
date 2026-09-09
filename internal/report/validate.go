@@ -16,7 +16,7 @@ import (
 // Decoding a document and reading a supported schema_version establishes
 // only that its syntax is right and that this binary knows the shape. It
 // does not establish that the document says anything coherent:
-// `{"schema_version":2}` decodes cleanly and describes no comparison at
+// `{"schema_version":3}` decodes cleanly and describes no comparison at
 // all, an outcome of "clean" can sit above a target reporting
 // differences, and an aggregate group can name a target the document
 // does not contain. Every consumer downstream of a stored document, the
@@ -407,7 +407,8 @@ func knownOutcome(o exitcode.Outcome) bool {
 func knownFileContentState(s model.FileContentState) bool {
 	switch s {
 	case model.FileContentAdded, model.FileContentRemoved, model.FileContentUnchanged,
-		model.FileContentChanged, model.FileContentReferenceChanged, model.FileContentIndeterminate:
+		model.FileContentChanged, model.FileContentReferenceChanged, model.FileContentIndeterminate,
+		model.FileContentNotManaged:
 		return true
 	}
 	return false

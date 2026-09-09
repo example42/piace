@@ -570,7 +570,7 @@ indeterminate and produces an operational diagnostic.
 Aggregate groups combine the most restrictive member disclosure policy.
 File summaries retain state, sources and verification without digests or
 target-specific provenance. Individual target changes retain that provenance.
-The result document uses `schema_version: 2`; `explain` requires this version.
+The result document uses `schema_version: 3`; `explain` requires this version.
 
 Malformed sensitivity lists and wrappers fail normalization. Synthetic tests
 cover compiler arrays and PuppetDB expanded containers, reports, normal debug

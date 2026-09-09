@@ -47,6 +47,9 @@ func NeedsEvidence(r model.Resource) bool {
 // Membership evidence describes only the catalog side that exists. Removing a
 // resource from a catalog does not assert that Puppet will delete its file.
 func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.ChangeKind, side Side, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
+	if !managesContent(parameters(side.Resource)) {
+		return model.FileContentEvidence{State: model.FileContentNotManaged}, nil
+	}
 	digest, source, err := ResolveSide(ctx, certname, side, retriever)
 	s := &model.FileSideEvidence{Context: side.Context, Source: source, Verified: err == nil}
 	e := model.FileContentEvidence{EvidenceSource: source}
@@ -79,6 +82,15 @@ func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.
 
 func ResolveFileContentEvidence(ctx context.Context, certname string, identity model.ResourceIdentity, before, after Side, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
 	bp, ap := parameters(before.Resource), parameters(after.Resource)
+	// Checked before any evidence resolution: a side that manages no
+	// bytes has no desired content for the other side to be compared
+	// against, so there is no content difference to report and no
+	// evidence to go looking for. `ensure` itself is not a
+	// content-bearing parameter, so a change to it is reported by the
+	// ordinary parameter diff.
+	if !managesContent(bp) || !managesContent(ap) {
+		return model.FileContentEvidence{State: model.FileContentNotManaged}, nil
+	}
 	referenceChanged := !reflect.DeepEqual(bp["source"], ap["source"])
 	e := model.FileContentEvidence{
 		State:            model.FileContentIndeterminate,
@@ -249,10 +261,22 @@ func nonByteComparable(r model.Resource, p map[string]any) bool {
 	if m := r.StaticContent; m != nil && m.Type != "file" {
 		return true
 	}
-	if ensure, ok := getStringParam(p, "ensure"); ok && (ensure == "absent" || ensure == "link") {
+	return false
+}
+
+// managesContent reports whether the catalog asks Puppet to place bytes
+// at this path at all. `ensure => absent` asks for the file to be gone
+// and `ensure => link` asks for a symlink whose target parameter, not
+// its content, is the desired state; Puppet ignores content, source and
+// checksum_value in both cases. A resource that manages no bytes has
+// nothing to compare, which is a determinate answer rather than missing
+// evidence, so it must not be classified as an unsupported comparison.
+func managesContent(p map[string]model.Value) bool {
+	ensure, ok := getStringParam(p, "ensure")
+	if !ok {
 		return true
 	}
-	return false
+	return !strings.EqualFold(ensure, "absent") && !strings.EqualFold(ensure, "link")
 }
 
 func isDirectoryOrRecursive(p map[string]model.Value) bool {

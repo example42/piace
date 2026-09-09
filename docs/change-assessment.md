@@ -89,7 +89,7 @@ is a model's opinion about a change, not a measurement of one. A **review
 focus** is a reading order, not a work list.
 
 None of it can affect a comparison. The assessment is not part of the result
-document (`schema_version: 2`), does not enter the outcome reducer, and
+document (`schema_version: 3`), does not enter the outcome reducer, and
 cannot change an exit code. It is not deterministic either: two runs over the
 same report may say different things. The HTML section says so on the page, sits
 below every deterministic section, and names the model that produced it.

@@ -137,6 +137,14 @@ const (
 	// could not establish the evidence required for a verified
 	// comparison; it must never be reported as a clean/unchanged result.
 	FileContentIndeterminate FileContentState = "content_indeterminate"
+	// FileContentNotManaged means the catalog manages no bytes for this
+	// File on at least one of the sides being compared, because its
+	// ensure value is absent or link. That is a determinate answer and
+	// not a failed comparison: Puppet ignores content, source and
+	// checksum_value for such a resource, so there are no desired bytes
+	// to compare. An ensure value that changes between the two catalogs
+	// is reported on its own as a parameter change.
+	FileContentNotManaged FileContentState = "not_managed"
 )
 
 // FileContentEvidenceSource records which resolution step in the
