@@ -12,8 +12,10 @@ import (
 // fileResourceType is the exact Puppet resource type this package
 // synthesizes a single content-bearing parameter-changed entry for,
 // instead of reporting content/source/checksum/checksum_value as
-// independent parameter changes. See doc.go.
-const fileResourceType = "File"
+// independent parameter changes. See doc.go. It is model's constant, so
+// the differ and the reader that validates a stored report agree on
+// which resource type carries a content-disclosure boundary.
+const fileResourceType = model.FileResourceType
 
 // contentBearingParameter is the stable parameter label a synthesized
 // File-content ResourceChange reports, regardless of which of the four
@@ -23,18 +25,13 @@ const fileResourceType = "File"
 // "content"} matches it directly.
 const contentBearingParameter = "content"
 
-// fileContentBearingParameters is the exact set of File parameter names
-// internal/filecontent inspects (see evidence.go's contentParameter,
-// sourceParameter, checksumParameter, checksumValueParameter). A
-// resource's diff must treat these four names as one unit, never as
-// four independent parameter-changed entries, so the content-disclosure
-// boundary is always in place.
-var fileContentBearingParameters = map[string]bool{
-	"content":        true,
-	"source":         true,
-	"checksum":       true,
-	"checksum_value": true,
-}
+// The set of File parameter names internal/filecontent inspects (see
+// evidence.go's contentParameter, sourceParameter, checksumParameter,
+// checksumValueParameter) lives in model as
+// FileContentBearingParameter. A resource's diff must treat those names
+// as one unit, never as independent parameter-changed entries, so the
+// content-disclosure boundary is always in place; the reader that
+// validates a stored report checks the same set.
 
 // diffResources computes the resource-added/removed and
 // parameter-changed portion of pass 1 (see doc.go). identity indexes
@@ -119,7 +116,7 @@ func diffParameters(
 
 	names := unionParameterNames(before, after)
 	for _, name := range names {
-		if isFile && fileContentBearingParameters[name] {
+		if isFile && model.FileContentBearingParameter(name) {
 			if !reflect.DeepEqual(before[name], after[name]) {
 				fileContentDiffers = true
 			}
@@ -234,7 +231,7 @@ func indexResources(resources []model.Resource) map[model.ResourceIdentity]model
 
 func contentParameters(params map[string]model.Value) map[string]model.Value {
 	out := make(map[string]model.Value)
-	for name := range fileContentBearingParameters {
+	for _, name := range model.FileContentBearingParameters() {
 		if value, ok := params[name]; ok {
 			out[name] = value
 		}

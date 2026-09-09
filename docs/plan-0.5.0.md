@@ -522,7 +522,35 @@ paths can collide with each other or their inputs.
 
 ### 4.3 Validate stored reports before trusting or transmitting them
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. `report.Validate` runs inside
+  `DecodeJSON`, so no consumer reads an unvalidated stored document: it checks
+  invocation metadata, target identity and uniqueness, per-change kind and
+  identity shape, aggregate references (target exists, index in range,
+  referenced change of the group's kind, certname list matching the
+  references), outcome and exit-code consistency against what the document's
+  own targets and diagnostics reduce to, and content-evidence coherence.
+  Partial comparisons stay valid: a failed target legitimately carries no node
+  diff, but must record the failure, so missing structure cannot pass as a
+  reported one. Disclosure is enforced on the way in: a published value
+  carrying a Pcore Sensitive wrapper, or a File content-bearing parameter's
+  value, is refused, while redaction markers stay readable and distinct from
+  omission. Decoding is bounded (`report.MaxDocumentBytes`), and configuration
+  files now get the same guarantees: bounded reads, strict fields, and exactly
+  one YAML document (a second `---` document was previously ignored in
+  silence). Sensitivity-wrapper detection and the File content-bearing
+  parameter set moved into `internal/model`, so the differ that redacts and the
+  reader that validates share one definition. Synthetic regressions:
+  `internal/report/validate_test.go`, `internal/config/resolve/decode_test.go`,
+  and two acceptance cases covering a sparse, contradictory, invalid-reference
+  or forged-wrapper document reaching no inference service, and a partial
+  comparison remaining explainable. Local macOS verification passed:
+  `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./...`,
+  `gofmt -l`, and `git diff --check`. Numeric precision on round trip is
+  covered by the existing `internal/report/roundtrip_test.go`. The read of a
+  result file or stdin is bounded before the decode's own check, so an
+  oversized document is refused without being allocated; the remaining
+  budgets (canonicalization cost, inference request size, change context)
+  are 4.4.
 
 **Finding: reproduced hardening gap.** `DecodeJSON` accepts
 `{"schema_version":1}`. Syntactic decoding and a version tag do not establish

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -392,5 +393,131 @@ func TestAcceptance_CaptureRejectsTwoTargetsSharingOneSnapshot(t *testing.T) {
 	}
 	if _, err := os.Stat(h.path("snapshots/facts/all.json")); err == nil {
 		t.Error("a rejected capture wrote a snapshot anyway")
+	}
+}
+
+// TestAcceptance_ExplainRefusesAnInconsistentDocument: a stored result
+// document is an input, and `explain` transmits what it reads to an
+// inference service. A document that decodes but describes no coherent
+// comparison is refused before anything leaves the building.
+func TestAcceptance_ExplainRefusesAnInconsistentDocument(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	h.seedTarget(certname, baseResources(), []resourceSpec{
+		{Type: "Notify", Title: "hello", Parameters: map[string]any{"message": "hi"}},
+		{Type: "Service", Title: "nginx", Parameters: map[string]any{"ensure": "stopped", "enable": true}},
+	}, baseEdges())
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(certname)))
+	if got := h.compare(t); got.code != exitcode.Success {
+		t.Fatalf("compare: %s", got.stderr)
+	}
+	reportPath := h.path("report0.json")
+
+	cases := map[string]struct {
+		mutate func(map[string]any)
+		want   string
+	}{
+		"a document describing no comparison": {
+			mutate: func(doc map[string]any) {
+				for key := range doc {
+					if key != "schema_version" {
+						delete(doc, key)
+					}
+				}
+			},
+			want: "records no targets",
+		},
+		"an outcome contradicting its targets": {
+			mutate: func(doc map[string]any) { doc["outcome"] = "clean" },
+			want:   "reduce to",
+		},
+		"an aggregate group naming an absent target": {
+			mutate: func(doc map[string]any) {
+				groups, _ := doc["aggregate"].(map[string]any)["groups"].([]any)
+				if len(groups) == 0 {
+					t.Fatal("the fixture produced no aggregate group to corrupt")
+				}
+				group := groups[0].(map[string]any)
+				group["certnames"] = []any{"ghost.example.test"}
+				refs := group["node_change_refs"].([]any)
+				refs[0].(map[string]any)["certname"] = "ghost.example.test"
+			},
+			want: "does not contain",
+		},
+		"a forged sensitivity wrapper": {
+			mutate: func(doc map[string]any) {
+				targets := doc["targets"].([]any)
+				changes := targets[0].(map[string]any)["node_diff"].(map[string]any)["resource_changes"].([]any)
+				changes[0].(map[string]any)["after"] = map[string]any{"__ptype": "Sensitive", "__pvalue": "s3cr3t"}
+			},
+			want: "Sensitive wrapper",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var doc map[string]any
+			if err := json.Unmarshal([]byte(readFile(t, reportPath)), &doc); err != nil {
+				t.Fatal(err)
+			}
+			tc.mutate(doc)
+			raw, err := json.Marshal(doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			corrupted := h.path("corrupted.json")
+			writeFixtureFile(t, corrupted, raw)
+
+			stub := newInferenceStub(t)
+			t.Setenv("PIACE_TEST_INFERENCE_TOKEN", "a-bearer-token")
+			previous := inferenceHTTPClient
+			inferenceHTTPClient = stub.server.Client()
+			t.Cleanup(func() { inferenceHTTPClient = previous })
+
+			_, stderr, code := captureRun(t, []string{"explain",
+				"--json-in", corrupted,
+				"--services", h.inferenceServices(t, "inference.yaml", stub, ""),
+				"--ai-out", h.path("assessment.json")})
+			if code != exitcode.OperationalError {
+				t.Fatalf("exit = %d, want 30 for an inconsistent stored document", code)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Errorf("the diagnostic does not mention %q:\n%s", tc.want, stderr)
+			}
+			if len(stub.requests) != 0 {
+				t.Errorf("the run sent %d inference requests, want none", len(stub.requests))
+			}
+		})
+	}
+}
+
+// TestAcceptance_ExplainAcceptsAPartialComparison keeps the check from
+// becoming a demand for a perfect run: a report whose targets failed is
+// a complete record of a partial comparison, and is exactly the kind of
+// run an operator wants explained.
+func TestAcceptance_ExplainAcceptsAPartialComparison(t *testing.T) {
+	h := newHarness(t)
+	good, failing := "web-01.example.test", "web-02.example.test"
+	h.seedTarget(good, baseResources(), []resourceSpec{
+		{Type: "Notify", Title: "hello", Parameters: map[string]any{"message": "hi"}},
+		{Type: "Service", Title: "nginx", Parameters: map[string]any{"ensure": "stopped", "enable": true}},
+	}, baseEdges())
+	h.pdb.factsets[failing] = pdbFactset(failing, true)
+	h.pdb.catalogs[failing] = pdbCatalog(failing, "production", baseResources(), baseEdges())
+	// No compiler catalog for the second target: its candidate compilation
+	// fails and the report records why.
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(good), target(failing)))
+
+	got := h.compare(t)
+	if got.code != exitcode.CompilationFailure {
+		t.Fatalf("exit = %d, want a compilation failure\nstdout:\n%s", got.code, got.stdout)
+	}
+	stub := newInferenceStub(t)
+	assessed := h.explain(t, stub, h.path("report0.json"))
+	if assessed.code != exitcode.Success {
+		t.Fatalf("explain exit = %d, want 0 for a partial comparison\nstderr:\n%s", assessed.code, assessed.stderr)
+	}
+	if len(stub.requests) != 1 {
+		t.Errorf("the run sent %d inference requests, want 1", len(stub.requests))
 	}
 }

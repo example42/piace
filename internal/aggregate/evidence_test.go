@@ -11,6 +11,7 @@ import (
 	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/config/resolve"
 	"github.com/example42/piace/internal/diff"
+	"github.com/example42/piace/internal/exitcode"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/report"
 )
@@ -74,8 +75,16 @@ func TestMembershipEvidenceGroupingAndDisclosure(t *testing.T) {
 					t.Fatal("equivalent settings lost their target references")
 				}
 				for i := range nodes {
-					r.Targets = append(r.Targets, model.TargetResult{Certname: nodes[i].Certname, NodeDiff: &nodes[i]})
+					// A stored document is validated when it is read back, so
+					// these fixtures carry the outcomes a real run records
+					// rather than leaving them zero.
+					r.Targets = append(r.Targets, model.TargetResult{
+						Certname: nodes[i].Certname,
+						Outcome:  exitcode.OutcomeDifferencesAllowed,
+						NodeDiff: &nodes[i],
+					})
 				}
+				r.Finalize()
 				encoded, err := report.JSON(r)
 				if err != nil {
 					t.Fatal(err)
@@ -126,7 +135,8 @@ func TestFileContentSummarySurvivesStoredAssessment(t *testing.T) {
 			node := model.NodeDiff{Certname: "a", ResourceChanges: []model.ResourceChange{change}, HasDifference: true}
 			r := model.NewResult("test", "2026-09-09T00:00:00Z")
 			r.Aggregate = aggregate.Build([]model.NodeDiff{node})
-			r.Targets = []model.TargetResult{{Certname: "a", NodeDiff: &node}}
+			r.Targets = []model.TargetResult{{Certname: "a", Outcome: exitcode.OutcomeDifferencesAllowed, NodeDiff: &node}}
+			r.Finalize()
 			encoded, err := report.JSON(r)
 			if err != nil {
 				t.Fatal(err)

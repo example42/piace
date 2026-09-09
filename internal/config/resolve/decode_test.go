@@ -93,3 +93,63 @@ puppetdb:
 		t.Errorf("Compiler.Endpoint = %q", sf.Compiler.Endpoint)
 	}
 }
+
+// TestDecode_RejectsASecondDocument: a YAML decoder reads the first
+// document of a stream and leaves the rest, so a file whose real
+// configuration sits after a `---` separator would otherwise be read as
+// whatever came before it, with no indication that anything was skipped.
+func TestDecode_RejectsASecondDocument(t *testing.T) {
+	targets := `version: 1
+defaults:
+  candidate:
+    environment: production
+    catalog_api: v4
+  facts:
+    source: puppetdb
+  baseline:
+    source: puppetdb
+    environment: production
+targets:
+  - certname: web-01.example.test
+---
+version: 1
+targets:
+  - certname: the-one-you-meant.example.test
+`
+	if _, err := decodeTargetFile(strings.NewReader(targets)); err == nil {
+		t.Fatal("accepted a target file carrying two documents")
+	} else if !strings.Contains(err.Error(), "more than one YAML document") {
+		t.Errorf("error = %v, want it to name the second document", err)
+	}
+
+	services := `version: 1
+compiler:
+  endpoint: https://compiler.example.test:8140
+---
+version: 1
+`
+	if _, err := decodeServicesFile(strings.NewReader(services)); err == nil {
+		t.Fatal("accepted a services file carrying two documents")
+	}
+}
+
+func TestDecode_RejectsAnEmptyFile(t *testing.T) {
+	if _, err := decodeTargetFile(strings.NewReader("")); err == nil {
+		t.Fatal("accepted an empty target file")
+	}
+}
+
+func TestDecode_RejectsAnOversizedFile(t *testing.T) {
+	// Valid YAML, just far too much of it: the point is that the limit is
+	// applied before the decoder allocates what the file contains.
+	var b strings.Builder
+	b.WriteString("version: 1\ntargets:\n")
+	for b.Len() <= MaxConfigBytes {
+		b.WriteString("  - certname: node-with-a-reasonably-long-name.example.test\n")
+	}
+	if _, err := decodeTargetFile(strings.NewReader(b.String())); err == nil {
+		t.Fatal("accepted a target file past the size limit")
+	} else if !strings.Contains(err.Error(), "limit") {
+		t.Errorf("error = %v, want it to name the limit", err)
+	}
+}

@@ -21,6 +21,25 @@
 // drift even when both are safe, so both formats call formatValue, and
 // both label the same sections with the same constants.
 //
+// # Reading a document back
+//
+// DecodeJSON is the inverse of JSON, and it is where a stored document
+// stops being a file and starts being evidence. Decoding is bounded and
+// strict, and what decodes is then checked by Validate for the things a
+// schema cannot express: that the outcome is what the document's own
+// targets reduce to, that every aggregate group refers to a change that
+// exists and is of its kind, that a failed target actually records its
+// failure, and that no published value carries a Sensitive wrapper or a
+// File content-bearing parameter's value.
+//
+// That last check is the reason the rest are not merely tidiness. This
+// package cannot disclose a secret it never received, but `explain`
+// transmits a stored document to an inference service, and a document
+// arriving from disk has not been through internal/diff's redaction. A
+// forged wrapper would otherwise be disclosed on the strength of having
+// been in a file. Redaction markers are not omissions and stay readable:
+// a redacted entry is present, marked, and carries no digest.
+//
 // # Three formats, three amounts of detail
 //
 // The three formats show the same document at three levels of detail.
