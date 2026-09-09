@@ -754,6 +754,18 @@ byte, as `internal/normalize`'s `shapeContainer` already does. A deployed
 PuppetDB 8.15.0 returns `[]` with HTTP 200 for a query matching nothing, so
 this refuses a body that service does not send.
 
+**Finding L7: capture failed on any catalog holding a local-path File source.**
+High severity, reproduced, fixed. The first live `piace capture catalog` wrote
+no snapshot and exited 30. One File in the catalog had
+`source => /etc/puppetlabs/puppet/ssl/certs/ca.pem`, a path the agent reads
+from its own filesystem, which is not a retrieval PIACE can make rather than
+one that failed. Capture treated it as a failed observation, which by policy
+prevents publication. Six such resources and three recursive directories were
+in that one catalog. Capture also obtained its diagnostic by re-resolving with
+a nil retriever, so the message named the absence of a retriever instead of the
+reason. Both the severity split and the safe reason text now live in one place,
+`filecontent.classifyEvidenceError`, used by the differ and by capture.
+
 #### Verified against the deployed services, 2026-09-09
 
 - PuppetDB 8.15.0 impact query: the root `/pdb/query/v4` endpoint accepts the
@@ -773,10 +785,25 @@ this refuses a body that service does not send.
   `PRegexpType.regexp_to_s` and `regexp_to_s_with_delimiters` on the deployed
   Ruby. The table is `internal/model.StringifyRich`'s doc comment and its test.
 
+- The capture and reuse round trip: `piace capture catalog` for one node's
+  `production` environment, then a comparison of that node against the snapshot
+  it wrote. Format version 2 loads, its `capture` block records requested and
+  effective v4, and the comparison reports exactly the nine File resources
+  capture had warned it could not observe, with no other difference. That
+  exercises 3.3's round trip and the file-baseline fidelity path end to end.
+
 Still unverified, and each is an open gate: other supported Puppet, OpenVox and
 PuppetDB versions; every Pcore rich type but `Regexp`; whether the v4 catalog
-response carries `sensitive_parameters` at all; the File shapes 2.2 needs;
-and the inference provider matrix.
+response carries `sensitive_parameters` at all; the File shapes 2.2 needs; and
+the inference provider matrix.
+
+One gate is sharper than it was. No node in the lab has a File with a
+single-file `puppet:///` source: a PQL query across every stored catalog
+returned three resources, all recursive directories. So the captured-digest
+path, which is 2.1's headline acceptance ("a module file edit with an unchanged
+`source` URL is detected when verified evidence exists"), has no live coverage
+at all, and the snapshot written from that lab has an empty `captured_content`
+map. Only the fixture manifest can close it.
 
 The fixture manifest this step still owes must therefore cover, at minimum:
 each Pcore rich type as an actual parameter value; a resource with

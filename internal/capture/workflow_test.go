@@ -3,13 +3,16 @@ package capture
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/config/resolve"
+	"github.com/example42/piace/internal/filecontent"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/puppetdb"
 	"github.com/example42/piace/internal/snapshot"
@@ -523,4 +526,87 @@ func (c incompleteProvenanceCompiler) RequestCandidate(ctx context.Context, targ
 		FactsetIdentity:    identity,
 		TrustedFactsSource: model.TrustedFactsProvided,
 	}, nil, nil
+}
+
+// The first live capture attempted against a deployed OpenVox 8.15.2
+// installation, on 2026-09-09, wrote no snapshot and exited 30. The
+// catalog held a File with `source =>
+// /etc/puppetlabs/puppet/ssl/certs/ca.pem`, a bare local path the agent
+// reads from its own filesystem. That is not a retrieval this tool can
+// make, let alone one that failed, and it is ordinary in a real catalog:
+// nine resources in that one catalog were unobservable for reasons of
+// this kind, six of them local paths and three recursive directories.
+//
+// Evidence that was never obtainable is a warning and the snapshot is
+// written. Evidence the catalog got wrong is an error and it is not.
+func TestWorkflow_CaptureCatalog_UnobservableContentIsAWarning(t *testing.T) {
+	const localPathSource = `[{"type":"File","title":"/opt/certs/ca.pem","parameters":{"ensure":"file","source":"/etc/puppetlabs/puppet/ssl/certs/ca.pem"}},` +
+		`{"type":"File","title":"/etc/tp/lib","parameters":{"ensure":"directory","recurse":true,"source":"puppet:///modules/tp/lib/"}}]`
+	const badChecksum = `[{"type":"File","title":"/etc/motd","parameters":{"ensure":"file","checksum":"sha256","checksum_value":"audit-new-secret"}}]`
+
+	for _, tc := range []struct {
+		name       string
+		resources  string
+		wantFailed bool
+		wantIn     string
+	}{
+		{"unobservable sources", localPathSource, false, "cannot serve its bytes"},
+		{"invalid checksum", badChecksum, true, "invalid content checksum"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "web-01-catalog.json")
+			fakeFacts := &fakeFactSource{factsets: map[string]puppetdb.Factset{
+				"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
+			}}
+			fakeCompilerImpl := &fakeCompiler{catalogs: map[string]puppetdb.Catalog{
+				"web-01.example.test": {
+					Certname: "web-01.example.test", Environment: "production", Producer: "compiler-01", Hash: "c",
+					Resources: json.RawMessage(tc.resources), Edges: json.RawMessage(`[]`),
+				},
+			}}
+			// A real resolver, because the reason a bare local path
+			// cannot be observed is the resolver's own judgement about
+			// the reference. It refuses that reference before building
+			// a request, so the nil client is never reached; a
+			// workflow with no retriever at all would report the
+			// absence of a retriever instead, which is a different
+			// thing and not what a configured capture does.
+			endpoint, err := url.Parse("https://compiler.example.test:8140")
+			if err != nil {
+				t.Fatal(err)
+			}
+			w := &Workflow{
+				PuppetDBFacts: fakeFacts, FileFacts: puppetdb.NewFileSource(),
+				Compiler:         fakeCompilerImpl,
+				ContentRetriever: filecontent.NewCompilerContentResolver(nil, endpoint),
+				Now:              fixedClock(),
+			}
+
+			outcomes := w.CaptureCatalog(context.Background(), []resolve.Target{
+				catalogTarget("web-01.example.test", path, "v4", "puppetdb", ""),
+			}, "production")
+			if len(outcomes) != 1 {
+				t.Fatalf("outcomes = %+v", outcomes)
+			}
+			if outcomes[0].Failed() != tc.wantFailed {
+				t.Fatalf("Failed() = %v, want %v (diagnostic %+v, warnings %+v)",
+					outcomes[0].Failed(), tc.wantFailed, outcomes[0].Diagnostic, outcomes[0].Warnings)
+			}
+			reported := strings.Join(outcomes[0].Warnings, "\n")
+			if outcomes[0].Diagnostic != nil {
+				reported += "\n" + outcomes[0].Diagnostic.Message
+			}
+			if !strings.Contains(reported, tc.wantIn) {
+				t.Errorf("nothing reported %q:\n%s", tc.wantIn, reported)
+			}
+			_, err = snapshot.Load(path)
+			if tc.wantFailed && err == nil {
+				t.Error("a capture that failed still published a snapshot")
+			}
+			if !tc.wantFailed && err != nil {
+				t.Errorf("no snapshot was published: %v", err)
+			}
+		})
+	}
 }
