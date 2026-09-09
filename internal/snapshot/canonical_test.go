@@ -1,7 +1,10 @@
 package snapshot
 
 import (
+	"strings"
+
 	"encoding/json"
+	"github.com/example42/piace/internal/limits"
 	"testing"
 )
 
@@ -117,4 +120,88 @@ func canonicalOf(t *testing.T, raw json.RawMessage) ([]byte, error) {
 		return nil, err
 	}
 	return CanonicalJSON(v)
+}
+
+// TestCanonicalNumberString_BoundsExpansion is the finding this budget
+// exists for: `1e-10000` is eight bytes of input that used to produce
+// 10,002 bytes of exact decimal output, and the cost is paid during
+// parsing, before anything downstream can decline it.
+func TestCanonicalNumberString_BoundsExpansion(t *testing.T) {
+	for _, token := range []string{"1e-10000", "1e10000", "1E+10000", "1e-99999999999999999999"} {
+		if _, err := CanonicalNumberString(token); err == nil {
+			t.Errorf("CanonicalNumberString(%q) = no error, want the exponent refused", token)
+		}
+	}
+
+	long := strings.Repeat("9", limits.NumberDigits+1)
+	if _, err := CanonicalNumberString(long); err == nil {
+		t.Error("accepted a mantissa with more significant digits than the limit")
+	}
+}
+
+// TestCanonicalNumberString_KeepsTheValuesPIACECompares: the budget must
+// not cost exactness on anything a catalog actually contains, including
+// the large integers and long decimals the round-trip tests rely on.
+func TestCanonicalNumberString_KeepsTheValuesPIACECompares(t *testing.T) {
+	cases := map[string]string{
+		"0":                     "0",
+		"-0":                    "0",
+		"1.50":                  "1.5",
+		"9007199254740993":      "9007199254740993",
+		"0.1234567890123456789": "0.1234567890123456789",
+		"1e3":                   "1000",
+		"1e-3":                  "0.001",
+		"1e1024":                "1" + strings.Repeat("0", 1024),
+		"1e-1024":               "0." + strings.Repeat("0", 1023) + "1",
+	}
+	for token, want := range cases {
+		got, err := CanonicalNumberString(token)
+		if err != nil {
+			t.Errorf("CanonicalNumberString(%q): %v", token, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("CanonicalNumberString(%q) = %q, want %q", token, got, want)
+		}
+	}
+}
+
+// TestCanonicalJSON_BoundsNesting: recursion over a document shaped by
+// whoever wrote it is otherwise bounded only by the stack.
+func TestCanonicalJSON_BoundsNesting(t *testing.T) {
+	var deep any = "leaf"
+	for i := 0; i < limits.JSONNestingDepth+2; i++ {
+		deep = []any{deep}
+	}
+	if _, err := CanonicalJSON(deep); err == nil {
+		t.Fatal("accepted a value nested past the limit")
+	}
+
+	var shallow any = "leaf"
+	for i := 0; i < 50; i++ {
+		shallow = map[string]any{"child": shallow}
+	}
+	if _, err := CanonicalJSON(shallow); err != nil {
+		t.Errorf("rejected ordinary nesting: %v", err)
+	}
+}
+
+// BenchmarkCanonicalNumberString covers the shapes that motivated the
+// budget alongside an ordinary value, so a regression in either
+// direction is visible.
+func BenchmarkCanonicalNumberString(b *testing.B) {
+	for name, token := range map[string]string{
+		"ordinary":         "8140",
+		"long decimal":     "0.1234567890123456789",
+		"largest allowed":  "1e1024",
+		"smallest allowed": "1e-1024",
+	} {
+		b.Run(name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := CanonicalNumberString(token); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
 }

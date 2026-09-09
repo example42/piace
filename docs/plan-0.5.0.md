@@ -1,7 +1,7 @@
 # PIACE 0.5.0 implementation plan
 
-Status: Phase 1 verified; Phase 2 implemented with the real-wire fixture gate
-in 2.2 still open; phase 3 verified. Updated 2026-09-09. Based on the
+Status: Phases 1 to 4 implemented, with the real-wire fixture gate in 2.2 still
+open and phase 5 outstanding. Updated 2026-09-09. Based on the
 codebase review of commit `e2b5090` on 2026-09-08.
 
 PIACE is published but has no deployments. Treat 0.5.0 as the first deployment
@@ -578,7 +578,35 @@ that a stored document is a complete, internally consistent comparison.
 
 ### 4.4 Bound computation and inference payload size
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. New `internal/limits` holds every
+  budget with its reasoning. Numeric tokens are bounded by significant digits
+  and exponent magnitude *before* parsing, which is where the expansion happens:
+  the recorded `1e-10000` case (8 bytes in, 10,002 out, confirmed by probe
+  before the fix) is now refused, and the quadratic zero-prepending in the
+  decimal expansion is one allocation. The exponent bound cannot go below 324,
+  the smallest denormal float64, without refusing values a real factset can
+  hold. Canonical encoding bounds nesting depth. Local reads are bounded before
+  allocation: snapshots, stored result documents and stdin, configuration,
+  policy-notes and token files, and change-context files, which also now get the
+  single-YAML-document guarantee. `change-context` bounds each git invocation by
+  output size and wall-clock time. The inference request has a total byte
+  budget: when it would be exceeded, group values are replaced whole by
+  `[omitted: inference request size budget]` largest-first and counted in
+  `values_omitted`, then whole groups are dropped lowest-reach-first, with
+  nothing cut mid-value; the omission marker is deliberately distinct from the
+  redaction marker, and the budget holds room for the one retry, which is
+  checked before it is sent. `assess.BuildRequest` now returns a `RequestScope`
+  so the artifact records what was actually sent; `AISchemaVersion` is 2 for the
+  added `values_omitted`. A refused numeric value produces a diagnostic naming
+  the budget class and never the token, since a number in a catalog can be a
+  secret. Synthetic regressions and benchmarks:
+  `internal/snapshot/canonical_test.go` (expansion, nesting, exact values kept,
+  `BenchmarkCanonicalNumberString`), `internal/assess/request_test.go` (whole-
+  request budget, shedding order, retry room, context crowding),
+  `internal/diff/diff_test.go` (`BenchmarkDiff_LargeCatalog`, 5,000 resources),
+  and two acceptance cases (adversarial number, oversized snapshot). Local macOS
+  verification passed: `go test ./...`, `go test -race ./...`, `go vet ./...`,
+  `go build ./...`, `gofmt -l`, and `git diff --check`.
 
 **Findings:** response-byte limits do not bound canonicalization cost, local
 file/stdin reads, or inference request size. The eight-byte numeric input

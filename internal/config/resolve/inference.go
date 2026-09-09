@@ -10,6 +10,7 @@ import (
 
 	"github.com/example42/piace/internal/assess"
 	"github.com/example42/piace/internal/config"
+	"github.com/example42/piace/internal/limits"
 )
 
 // Default inference request options. Timeout is generous because an
@@ -119,7 +120,7 @@ func ResolveInference(sf config.ServicesFile, dir string) (Inference, error) {
 	var notes string
 	if in.PolicyNotesFile != "" {
 		path := resolveAgainst(dir, in.PolicyNotesFile)
-		raw, err := os.ReadFile(path)
+		raw, err := readBoundedFile(path, limits.PolicyNotes)
 		if err != nil {
 			c.addf("services.inference.policy_notes_file: %s", err)
 		} else {
@@ -170,7 +171,10 @@ func resolveInferenceToken(in config.InferenceSection, dir string, c *errorColle
 		return token
 	case in.TokenFile != "":
 		path := resolveAgainst(dir, in.TokenFile)
-		raw, err := os.ReadFile(path)
+		// A bearer token is a line, not a file: the same bound as a
+		// configuration file is already absurdly generous, and its point
+		// is that a path naming something else entirely fails here.
+		raw, err := readBoundedFile(path, limits.Config)
 		if err != nil {
 			c.addf("services.inference.token_file: %s", err)
 			return ""

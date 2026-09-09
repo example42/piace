@@ -4,11 +4,34 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/example42/piace/internal/artifact"
+	"github.com/example42/piace/internal/limits"
 )
+
+// readBounded reads at most max bytes from path and refuses a larger
+// file rather than allocating it. A snapshot is written by PIACE, but it
+// is read back from wherever a repository put it, and "it is our own
+// format" is not a size guarantee.
+func readBounded(path string, max int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data, err := io.ReadAll(io.LimitReader(f, int64(max)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > max {
+		return nil, fmt.Errorf("the file exceeds the %d-byte snapshot limit", max)
+	}
+	return data, nil
+}
 
 // ErrExists is returned by Write when path already exists and replace
 // was not requested: "Capture refuses to overwrite a snapshot unless
@@ -80,7 +103,7 @@ func Write(path string, env Envelope, replace bool) error {
 // On any failure, Load returns a zero Envelope: it never returns a
 // partially-validated Envelope for a caller to accidentally use.
 func Load(path string) (Envelope, error) {
-	data, err := os.ReadFile(path)
+	data, err := readBounded(path, limits.Snapshot)
 	if err != nil {
 		return Envelope{}, fmt.Errorf("snapshot: reading %s: %w", path, err)
 	}

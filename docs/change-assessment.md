@@ -41,6 +41,23 @@ One HTTPS request per run, to the endpoint you configure, containing:
 - your **policy notes file**, if any, size-capped;
 - a task prompt fixed in the binary.
 
+The whole request has a byte budget on top of `max_groups`, because a group
+count does not predict a request size: a handful of groups carrying very large
+values can be larger than a thousand small ones. When a request would exceed the
+budget, evidence is shed in a fixed order and the shedding is reported rather
+than done quietly. Group before/after values go first, largest group down,
+replaced whole by `[omitted: inference request size budget]` and counted in
+`values_omitted`; a group without its values is still assessed by identity, kind
+and reach. Whole groups go only after every value has, lowest-reach first, and
+raise `groups_truncated`. Nothing is cut mid-value: a shortened string or a
+sliced object would be a malformed payload rather than a smaller one. The
+omission marker is deliberately not the report's `<redacted>` marker, which
+means something else entirely.
+
+The budget also holds room for the one retry, which appends a message to the
+same request rather than replacing it: a retry is a second disclosure of the
+same comparison, and if the retry would exceed the budget it is not sent.
+
 Sensitive values are replaced by redaction markers, including inside resource
 parameter maps. Managed `File` content bytes and digests, source URLs, catalog
 provenance, and compiler/PuppetDB authorities are absent from the generated

@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/example42/piace/internal/inference"
+	"github.com/example42/piace/internal/limits"
 	"github.com/example42/piace/internal/model"
 )
 
@@ -134,7 +135,7 @@ type Config struct {
 // is known locally, unlike an impact estimate bounded by a server-side
 // limit that can only be reported as *more than* it, the payload states
 // the exact number of groups and how many were assessed.
-func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Request, Pseudonyms, error) {
+func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Request, Pseudonyms, RequestScope, error) {
 	p := newPseudonyms(r, cfg.Pseudonymize)
 
 	maxGroups := cfg.MaxGroups
@@ -142,14 +143,34 @@ func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Reque
 		maxGroups = DefaultMaxGroups
 	}
 
-	body, err := buildPayload(r, p, maxGroups)
+	// The comparison payload gets what the rest of the request does not
+	// need. Everything else in it is already individually bounded, the
+	// task prompt is a constant, and the change context and policy notes
+	// carry their own caps; the payload is the part that grows with the
+	// size of the infrastructure, so it is the part that yields.
+	//
+	// RetryAllowance is held back because a retry appends a message to
+	// this request rather than replacing it: a request built to exactly
+	// the limit could not be retried without exceeding it.
+	notes := len(cfg.PolicyNotes)
+	if notes > MaxPolicyNotesBytes {
+		notes = MaxPolicyNotesBytes
+	}
+	overhead := len(TaskPrompt) + changeContextBytes(cc) + notes + requestEnvelopeAllowance + RetryAllowance
+	budget := limits.InferenceRequest - overhead
+	if budget < minimumPayloadBudget {
+		return inference.Request{}, Pseudonyms{}, RequestScope{},
+			fmt.Errorf("the change context and policy notes leave under %d bytes for the comparison itself", minimumPayloadBudget)
+	}
+
+	body, scope, err := buildPayload(r, p, maxGroups, budget)
 	if err != nil {
-		return inference.Request{}, Pseudonyms{}, err
+		return inference.Request{}, Pseudonyms{}, RequestScope{}, err
 	}
 
 	user, err := buildUserMessage(body, cc, cfg.PolicyNotes)
 	if err != nil {
-		return inference.Request{}, Pseudonyms{}, err
+		return inference.Request{}, Pseudonyms{}, RequestScope{}, err
 	}
 
 	req := inference.Request{
@@ -174,7 +195,10 @@ func BuildRequest(r model.Result, cc ChangeContext, cfg Config) (inference.Reque
 			JSONSchema: inference.JSONSchema{Name: "piace_change_assessment", Strict: true, Schema: ResponseSchema()},
 		}
 	}
-	return req, p, nil
+	if err := checkRequestSize(req); err != nil {
+		return inference.Request{}, Pseudonyms{}, RequestScope{}, err
+	}
+	return req, p, scope, nil
 }
 
 // buildUserMessage assembles the deterministic evidence and the untrusted
@@ -219,11 +243,17 @@ func buildUserMessage(payload []byte, cc ChangeContext, policyNotes string) (str
 }
 
 type payloadDoc struct {
-	Run             runPayload      `json:"run"`
-	Groups          []groupPayload  `json:"groups"`
-	GroupsTotal     int             `json:"groups_total"`
-	GroupsAssessed  int             `json:"groups_assessed"`
-	GroupsTruncated bool            `json:"groups_truncated"`
+	Run             runPayload     `json:"run"`
+	Groups          []groupPayload `json:"groups"`
+	GroupsTotal     int            `json:"groups_total"`
+	GroupsAssessed  int            `json:"groups_assessed"`
+	GroupsTruncated bool           `json:"groups_truncated"`
+	// ValuesOmitted counts groups whose before/after evidence was
+	// replaced by OmittedForSize to bring the request within its budget.
+	// The group itself is still assessed, with its identity, kind and
+	// node count; only the values are gone, and the count says so rather
+	// than leaving a reader to infer it from a quiet absence.
+	ValuesOmitted   int             `json:"values_omitted,omitempty"`
 	ImpactEstimates []impactPayload `json:"impact_estimates,omitempty"`
 }
 
@@ -269,7 +299,85 @@ type impactPayload struct {
 	Truncated   bool   `json:"truncated"`
 }
 
-func buildPayload(r model.Result, p Pseudonyms, maxGroups int) ([]byte, error) {
+// changeContextBytes estimates how much of the user message the change
+// context will occupy. Its fields are already individually capped when
+// the context is loaded, so this is a sum rather than a bound; it exists
+// so the payload budget accounts for text that is going into the same
+// request.
+func changeContextBytes(cc ChangeContext) int {
+	if !cc.Present {
+		return 0
+	}
+	n := len(cc.BaseRef) + len(cc.HeadRef) + len(cc.Title) + len(cc.Description)
+	for _, c := range cc.Commits {
+		n += len(c.SHA) + len(c.Subject) + len(c.Author)
+	}
+	for _, p := range cc.ChangedPaths {
+		n += len(p)
+	}
+	for _, t := range cc.Truncated {
+		n += len(t)
+	}
+	return n
+}
+
+// requestEnvelopeAllowance covers the JSON around the two messages
+// (model id, roles, token limit, response schema) so the payload budget
+// does not have to be recomputed every time one of those fields moves.
+const requestEnvelopeAllowance = 8 * 1024
+
+// minimumPayloadBudget is the smallest comparison payload worth sending.
+// Below it, the request is mostly context about a change whose evidence
+// did not fit, which is not an assessment of anything.
+const minimumPayloadBudget = 16 * 1024
+
+// maxRetryReasonBytes caps the failure text a retry quotes back to the
+// service that produced it.
+const maxRetryReasonBytes = 500
+
+// RetryAllowance is the room held back from the first request for the
+// repair message a retry appends. A retry is a second disclosure of the
+// same comparison, not a free one, and it is larger than the first, so
+// the budget has to hold for both.
+const RetryAllowance = 4 * 1024
+
+// checkRequestSize is the backstop for the allowances above: they are
+// estimates of the request's non-payload parts, and an estimate that
+// drifts should fail here rather than send a request past the budget.
+func checkRequestSize(req inference.Request) error {
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("encoding the inference request: %w", err)
+	}
+	if len(encoded) > limits.InferenceRequest {
+		return fmt.Errorf("the inference request is %d bytes, past the %d-byte budget",
+			len(encoded), limits.InferenceRequest)
+	}
+	return nil
+}
+
+// RequestSize reports the encoded size of a request, for a caller that
+// has to check one it assembled itself (see Produce's retry).
+func RequestSize(req inference.Request) (int, error) {
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return 0, err
+	}
+	return len(encoded), nil
+}
+
+// OmittedForSize replaces a group's before/after evidence when a request
+// would otherwise exceed its budget. It is deliberately not
+// model.RedactedValue: that marker means "this value exists and may not
+// be disclosed", and confusing the two would let a size decision read as
+// a confidentiality one.
+// It uses square brackets rather than the angle brackets of the report's
+// own markers because encoding/json escapes `<` and `>` as \u003c/\u003e:
+// a marker meant to be read, by a model and by a person auditing what
+// was sent, should not arrive as an escape sequence.
+const OmittedForSize = "[omitted: inference request size budget]"
+
+func buildPayload(r model.Result, p Pseudonyms, maxGroups, budget int) ([]byte, RequestScope, error) {
 	doc := payloadDoc{
 		Run: runPayload{Outcome: string(r.Outcome), ExitCode: r.ExitCode},
 	}
@@ -323,7 +431,89 @@ func buildPayload(r model.Result, p Pseudonyms, maxGroups int) ([]byte, error) {
 		})
 	}
 
-	return json.MarshalIndent(doc, "", "  ")
+	return fitPayload(doc, budget)
+}
+
+// fitPayload encodes doc, shedding evidence in a fixed order until it
+// fits within budget, and reports what it shed.
+//
+// The order is least to most costly to a reader. Values go first, from
+// the largest group down, because a group without its values still tells
+// the reader which resource changed, on how many nodes, and in what way.
+// Whole groups go only after every value has gone, lowest-ranked first,
+// because PlanGroups already ordered them by reach.
+//
+// Nothing is truncated mid-value: a shortened JSON string or a sliced
+// object would be a malformed payload rather than a smaller one, so a
+// value is replaced whole or kept whole.
+func fitPayload(doc payloadDoc, budget int) ([]byte, RequestScope, error) {
+	scope := func() RequestScope {
+		return RequestScope{
+			GroupsTotal:     doc.GroupsTotal,
+			GroupsAssessed:  doc.GroupsAssessed,
+			GroupsTruncated: doc.GroupsTruncated,
+			ValuesOmitted:   doc.ValuesOmitted,
+		}
+	}
+	encode := func() ([]byte, bool, error) {
+		data, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return nil, false, err
+		}
+		return data, len(data) <= budget, nil
+	}
+
+	data, fits, err := encode()
+	if err != nil || fits {
+		return data, scope(), err
+	}
+
+	for _, i := range groupsByEncodedSize(doc.Groups) {
+		if doc.Groups[i].Before == nil && doc.Groups[i].After == nil {
+			continue
+		}
+		doc.Groups[i].Before, doc.Groups[i].After = OmittedForSize, OmittedForSize
+		doc.ValuesOmitted++
+		if data, fits, err = encode(); err != nil || fits {
+			return data, scope(), err
+		}
+	}
+
+	for len(doc.Groups) > 0 {
+		doc.Groups = doc.Groups[:len(doc.Groups)-1]
+		doc.GroupsAssessed = len(doc.Groups)
+		doc.GroupsTruncated = true
+		if data, fits, err = encode(); err != nil || fits {
+			return data, scope(), err
+		}
+	}
+
+	return nil, scope(), fmt.Errorf("the comparison does not fit a %d-byte inference request even with no group evidence", budget)
+}
+
+// groupsByEncodedSize orders group indices from largest encoded group to
+// smallest, so shedding starts where it buys the most room.
+func groupsByEncodedSize(groups []groupPayload) []int {
+	sizes := make([]int, len(groups))
+	order := make([]int, len(groups))
+	for i, g := range groups {
+		order[i] = i
+		if encoded, err := json.Marshal(g); err == nil {
+			sizes[i] = len(encoded)
+		}
+	}
+	sort.SliceStable(order, func(a, b int) bool { return sizes[order[a]] > sizes[order[b]] })
+	return order
+}
+
+// RequestScope records what one built request actually carries, so the
+// assessment artifact can state the scope of what was reviewed rather
+// than implying a complete one.
+type RequestScope struct {
+	GroupsTotal     int
+	GroupsAssessed  int
+	GroupsTruncated bool
+	ValuesOmitted   int
 }
 
 // GroupID is the anchor a change assessment references a group by. An

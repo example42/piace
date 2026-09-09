@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -941,5 +942,50 @@ func TestDiff_ExclusionSuppressesDifferencesButNotDiagnostics(t *testing.T) {
 	}
 	if diags[0].Operation != model.OperationVerifyContent || diags[0].Severity != model.SeverityError {
 		t.Errorf("diagnostic = %+v, want an error-severity verify_content entry", diags[0])
+	}
+}
+
+// BenchmarkDiff_LargeCatalog is the realistic-scale counterpart to the
+// adversarial numeric benchmarks in internal/snapshot: a catalog the
+// size of a busy node, half of whose resources changed. It exists so a
+// change that makes comparison superlinear in catalog size is visible as
+// a number rather than as a slow CI job.
+func BenchmarkDiff_LargeCatalog(b *testing.B) {
+	const resources = 5000
+	build := func(changed bool) model.NormalizedCatalog {
+		cat := model.NormalizedCatalog{Certname: "web-01.example.test", Environment: "production"}
+		for i := 0; i < resources; i++ {
+			params := map[string]model.Value{
+				"ensure":  "present",
+				"owner":   "root",
+				"mode":    "0644",
+				"content": fmt.Sprintf("line one\nline two\nvalue %d\n", i),
+				"tags":    []model.Value{"app", "managed"},
+			}
+			if changed && i%2 == 0 {
+				params["mode"] = "0640"
+			}
+			cat.Resources = append(cat.Resources, model.Resource{
+				Identity:   model.ResourceIdentity{Type: "File", Title: fmt.Sprintf("/etc/app/%04d.conf", i)},
+				Parameters: params,
+			})
+		}
+		for i := 1; i < resources; i++ {
+			cat.Edges = append(cat.Edges, model.Edge{
+				Source: fmt.Sprintf("File[/etc/app/%04d.conf]", i-1),
+				Target: fmt.Sprintf("File[/etc/app/%04d.conf]", i),
+			})
+		}
+		return cat
+	}
+	before, after := build(false), build(true)
+	target := resolve.Target{Certname: "web-01.example.test"}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		nd, _ := Diff(context.Background(), target, before, after, nil)
+		if !nd.HasDifference {
+			b.Fatal("the fixture produced no difference")
+		}
 	}
 }

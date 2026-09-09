@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/example42/piace/internal/exitcode"
+	"github.com/example42/piace/internal/limits"
 )
 
 // compilerOnlyServices writes a services file naming the compiler and
@@ -519,5 +520,72 @@ func TestAcceptance_ExplainAcceptsAPartialComparison(t *testing.T) {
 	}
 	if len(stub.requests) != 1 {
 		t.Errorf("the run sent %d inference requests, want 1", len(stub.requests))
+	}
+}
+
+// TestAcceptance_AdversarialNumberFailsWithADiagnostic: eight bytes of
+// JSON (`1e-10000`) expand into ten thousand bytes of exact decimal, and
+// a catalog is free to contain as many of them as it likes. The run
+// stops with a diagnostic naming the value rather than working through
+// them.
+func TestAcceptance_AdversarialNumberFailsWithADiagnostic(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	hostile := []resourceSpec{{
+		Type:  "Exec",
+		Title: "tune",
+		Parameters: map[string]any{
+			"threshold": json.RawMessage("1e-10000"),
+		},
+	}}
+	h.pdb.factsets[certname] = pdbFactset(certname, true)
+	h.pdb.catalogs[certname] = pdbCatalog(certname, "production", baseResources(), baseEdges())
+	h.compiler.catalogs[certname] = compilerCatalog(certname, "feature-123", hostile, nil)
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(certname)))
+
+	got := h.compare(t)
+	if got.code != exitcode.OperationalError {
+		t.Fatalf("exit = %d, want 30 for a numeric value past the budget\nstdout:\n%s", got.code, got.stdout)
+	}
+	if !strings.Contains(got.stdout, "exponent") {
+		t.Errorf("the diagnostic does not explain what was refused:\n%s", got.stdout)
+	}
+}
+
+// TestAcceptance_OversizedSnapshotFailsBeforeItIsRead: a snapshot is
+// PIACE's own format, which is not a promise about the size of the file
+// a repository happens to have at that path.
+func TestAcceptance_OversizedSnapshotFailsBeforeItIsRead(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	h.seedTarget(certname, baseResources(), baseResources(), baseEdges())
+	h.writeConfigs(t, targetsYAML(snapshotDefaults, target(certname)))
+	if err := os.MkdirAll(h.path("snapshots/facts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(h.path("snapshots/catalogs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A file one byte past the limit, written without going through the
+	// snapshot writer, which is what a truncated download or a wrong path
+	// produces in practice.
+	path := h.path(filepath.Join("snapshots/facts", certname+".json"))
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(int64(limits.Snapshot) + 1); err != nil {
+		f.Close()
+		t.Skipf("this filesystem cannot make a sparse file that large: %v", err)
+	}
+	f.Close()
+
+	got := h.compare(t)
+	if got.code != exitcode.OperationalError {
+		t.Fatalf("exit = %d, want 30 for an oversized snapshot", got.code)
+	}
+	if !strings.Contains(got.stdout, "limit") {
+		t.Errorf("the diagnostic does not name the limit:\n%s", got.stdout)
 	}
 }
