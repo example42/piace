@@ -393,9 +393,9 @@ func TestAcceptance_ExplainRefusesAnUnsupportedResultSchemaVersion(t *testing.T)
 
 	stored := h.storedReport(t)
 	raw := readFile(t, stored)
-	bumped := strings.Replace(raw, `"schema_version":1`, `"schema_version":2`, 1)
+	bumped := strings.Replace(raw, `"schema_version":2`, `"schema_version":3`, 1)
 	if bumped == raw {
-		t.Fatalf("the stored result document does not carry schema_version 1:\n%s", raw[:200])
+		t.Fatalf("the stored result document does not carry schema_version 2:\n%s", raw[:200])
 	}
 	writeFixtureFile(t, stored, []byte(bumped))
 
@@ -403,9 +403,9 @@ func TestAcceptance_ExplainRefusesAnUnsupportedResultSchemaVersion(t *testing.T)
 	got := h.explain(t, stub, stored)
 
 	if got.code != exitcode.OperationalError {
-		t.Errorf("explain over a version-2 document exited %d, want %d", got.code, exitcode.OperationalError)
+		t.Errorf("explain over a version-3 document exited %d, want %d", got.code, exitcode.OperationalError)
 	}
-	if !strings.Contains(got.stderr, "schema_version 2") {
+	if !strings.Contains(got.stderr, "schema_version 3") {
 		t.Errorf("stderr does not name the document's version:\n%s", got.stderr)
 	}
 	if stub.count() != 0 {

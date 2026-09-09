@@ -519,6 +519,12 @@ func changeParts(c model.ResourceChange) htmlChange {
 	default:
 		out.Sign, out.Class = "?", "change"
 	}
+	if c.Before != nil || c.After != nil {
+		out.Before, out.After, out.HasValues = formatValue(c.Before), formatValue(c.After), true
+	}
+	if c.FileContent != nil {
+		out.Note = fileContentSummary(*c.FileContent)
+	}
 	return out
 }
 
@@ -547,6 +553,9 @@ func groupKeyParts(g model.AggregateGroup) htmlChange {
 	}
 	if g.Before != nil || g.After != nil {
 		out.Before, out.After, out.HasValues = formatValue(g.Before), formatValue(g.After), true
+	}
+	if g.FileContent != nil {
+		out.Note = aggregateContentSummary(*g.FileContent)
 	}
 	return out
 }

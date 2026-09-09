@@ -106,8 +106,8 @@ func TestGroupsAreRankedByHowManyNodesTheyReach(t *testing.T) {
 	payload := decodePayload(t, req)
 
 	groups, _ := payload["groups"].([]any)
-	if len(groups) != 2 {
-		t.Fatalf("groups = %d, want 2", len(groups))
+	if len(groups) != 3 {
+		t.Fatalf("groups = %d, want 3", len(groups))
 	}
 	first, _ := groups[0].(map[string]any)
 	if first["identity"] != "Service[nginx]" {
@@ -118,23 +118,47 @@ func TestGroupsAreRankedByHowManyNodesTheyReach(t *testing.T) {
 	}
 }
 
-// An edge group is a consequence of the resource changes around it and
-// carries no value pair to reason about, so PlanGroups drops it before it
-// reaches the request. The fixture has one; nothing about it may leave.
-func TestEdgeGroupsAreNotSentForAssessment(t *testing.T) {
-	body, _ := buildBody(t, testConfig(), ChangeContext{})
-	if strings.Contains(body, "Class[a] -> Class[b]") {
-		t.Errorf("an edge group's identity reached the inference request")
+func TestEdgeGroupsShareTheAssessmentBudget(t *testing.T) {
+	req, _, err := BuildRequest(assessableResult(), ChangeContext{}, testConfig())
+	if err != nil {
+		t.Fatal(err)
 	}
+	payload := decodePayload(t, req)
+	groups := payload["groups"].([]any)
+	edge := groups[1].(map[string]any)["edge"].(map[string]any)
+	if edge["source"] != "Class[a]" || edge["target"] != "Class[b]" {
+		t.Fatalf("incorrect edge evidence: %+v", edge)
+	}
+	planned, total, truncated := PlanGroups(assessableResult(), DefaultMaxGroups)
+	if total != 3 || truncated || planned[1].Key.Edge == nil {
+		t.Fatalf("incorrect edge accounting: %d, %t, %+v", total, truncated, planned)
+	}
+}
 
-	planned, total, _ := PlanGroups(assessableResult(), DefaultMaxGroups)
-	if total != 2 {
-		t.Errorf("groups_total = %d, want 2 (edge group not counted as assessable)", total)
+func TestEdgeOnlyAssessmentAndTruncation(t *testing.T) {
+	r := assessableResult()
+	edge := r.Aggregate.Groups[1]
+	r.Aggregate.Groups = []model.AggregateGroup{edge}
+	req, _, err := BuildRequest(r, ChangeContext{}, testConfig())
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, g := range planned {
-		if g.Key.Edge != nil {
-			t.Errorf("planned group %s is an edge group", g.ID)
-		}
+	payload := decodePayload(t, req)
+	if payload["groups_total"] != json.Number("1") || payload["groups_assessed"] != json.Number("1") || payload["groups_truncated"] != false {
+		t.Fatalf("edge-only evidence not assessed: %+v", payload)
+	}
+	other := edge
+	other.Key = model.AggregateChangeKey{Kind: model.ChangeEdgeRemoved, Edge: &model.Edge{Source: "Class[b]", Target: "Class[a]"}}
+	r.Aggregate.Groups = append(r.Aggregate.Groups, other)
+	cfg := testConfig()
+	cfg.MaxGroups = 1
+	req, _, err = BuildRequest(r, ChangeContext{}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload = decodePayload(t, req)
+	if payload["groups_total"] != json.Number("2") || payload["groups_assessed"] != json.Number("1") || payload["groups_truncated"] != true {
+		t.Fatalf("omitted graph evidence not counted: %+v", payload)
 	}
 }
 
@@ -152,8 +176,8 @@ func TestOverTheGroupCapTheRequestSaysWhatItLeftOut(t *testing.T) {
 	if groups, _ := payload["groups"].([]any); len(groups) != 1 {
 		t.Errorf("groups sent = %d, want 1", len(groups))
 	}
-	if payload["groups_total"] != json.Number("2") {
-		t.Errorf("groups_total = %v, want 2", payload["groups_total"])
+	if payload["groups_total"] != json.Number("3") {
+		t.Errorf("groups_total = %v, want 3", payload["groups_total"])
 	}
 	if payload["groups_truncated"] != true {
 		t.Errorf("groups_truncated = %v, want true", payload["groups_truncated"])

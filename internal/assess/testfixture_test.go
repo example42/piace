@@ -93,10 +93,11 @@ func assessableResult() model.Result {
 	r.Aggregate = model.AggregateDiff{Groups: []model.AggregateGroup{
 		// One target only, so it must rank below the two-target group.
 		{
-			Key:       model.AggregateChangeKey{Kind: model.ChangeParameterChanged, Identity: &shadow, Parameter: "content"},
-			Before:    model.RedactedValue,
-			After:     model.RedactedValue,
-			Certnames: []string{realCertname},
+			Key:         model.AggregateChangeKey{Kind: model.ChangeParameterChanged, Identity: &shadow, Parameter: "content"},
+			FileContent: &model.FileContentSummary{State: model.FileContentChanged, EvidenceSource: model.FileContentEvidenceCompiledChecksum, Redacted: true},
+			Before:      model.RedactedValue,
+			After:       model.RedactedValue,
+			Certnames:   []string{realCertname},
 		},
 		{
 			Key:       model.AggregateChangeKey{Kind: model.ChangeEdgeAdded, Edge: &model.Edge{Source: "Class[a]", Target: "Class[b]"}},

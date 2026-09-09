@@ -34,6 +34,7 @@ func Build(nodeDiffs []model.NodeDiff) model.AggregateDiff {
 		index    int
 		before   any
 		after    any
+		content  *model.FileContentEvidence
 	}
 	members := make(map[groupKey][]member)
 	var order []groupKey
@@ -58,7 +59,7 @@ func Build(nodeDiffs []model.NodeDiff) model.AggregateDiff {
 				unfingerprintable++
 				key.unfingerprintableSeq = unfingerprintable
 			}
-			add(key, member{certname: nd.Certname, index: i, before: change.Before, after: change.After})
+			add(key, member{certname: nd.Certname, index: i, before: change.Before, after: change.After, content: change.FileContent})
 		}
 		for i, change := range nd.EdgeChanges {
 			key := groupKey{kind: change.Kind, edge: change.Edge}
@@ -92,17 +93,81 @@ func Build(nodeDiffs []model.NodeDiff) model.AggregateDiff {
 			Certnames:      certnames,
 			NodeChangeRefs: refs,
 		}
-		// Every member of a resource group shares the same unredacted
-		// evidence (that is what the fingerprint asserts), so the first
-		// member's redacted projection represents the whole group.
 		if !isEdgeKind(key.kind) {
 			group.Before = ms[0].before
 			group.After = ms[0].after
+			for _, m := range ms[1:] {
+				group.Before = restrictProjection(group.Before, m.before)
+				group.After = restrictProjection(group.After, m.after)
+			}
+			for _, m := range ms {
+				group.FileContent = combineContentSummary(group.FileContent, m.content)
+			}
 		}
 		groups = append(groups, group)
 	}
 
 	return model.AggregateDiff{Groups: groups}
+}
+
+func combineContentSummary(summary *model.FileContentSummary, evidence *model.FileContentEvidence) *model.FileContentSummary {
+	if evidence == nil {
+		return summary
+	}
+	if summary == nil {
+		summary = &model.FileContentSummary{State: evidence.State, EvidenceSource: evidence.EvidenceSource}
+	} else if summary.EvidenceSource != evidence.EvidenceSource {
+		summary.EvidenceSource = model.FileContentEvidenceMixed
+	}
+	summary.Redacted = summary.Redacted || evidence.Redacted
+	summary.ReferenceChanged = summary.ReferenceChanged || evidence.ReferenceChanged
+	summary.Before = combineSideSummary(summary.Before, evidence.Before)
+	summary.After = combineSideSummary(summary.After, evidence.After)
+	return summary
+}
+
+func combineSideSummary(summary *model.FileSideSummary, evidence *model.FileSideEvidence) *model.FileSideSummary {
+	if evidence == nil {
+		return summary
+	}
+	if summary == nil {
+		return &model.FileSideSummary{Source: evidence.Source, Verified: evidence.Verified}
+	}
+	if summary.Source != evidence.Source {
+		summary.Source = model.FileContentEvidenceMixed
+	}
+	summary.Verified = summary.Verified && evidence.Verified
+	return summary
+}
+
+// Equal fingerprints establish equal raw values, but each member can mask
+// different subtrees. A marker dominates the corresponding subtree regardless
+// of whether sensitivity metadata, a wrapper, or a selector produced it.
+func restrictProjection(a, b any) any {
+	if s, ok := a.(string); ok && s == model.RedactedValue {
+		return model.RedactedValue
+	}
+	if s, ok := b.(string); ok && s == model.RedactedValue {
+		return model.RedactedValue
+	}
+	switch a := a.(type) {
+	case map[string]any:
+		other := b.(map[string]any)
+		out := make(map[string]any, len(a))
+		for key, value := range a {
+			out[key] = restrictProjection(value, other[key])
+		}
+		return out
+	case []any:
+		other := b.([]any)
+		out := make([]any, len(a))
+		for i, value := range a {
+			out[i] = restrictProjection(value, other[i])
+		}
+		return out
+	default:
+		return a
+	}
 }
 
 // publicKey converts an internal groupKey into the serializable

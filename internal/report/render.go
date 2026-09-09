@@ -82,9 +82,9 @@ func displayJSON(canonical []byte) string {
 func changeSummary(c model.ResourceChange) string {
 	switch c.Kind {
 	case model.ChangeResourceAdded:
-		return "+ " + c.Identity.String()
+		return "+ " + c.Identity.String() + membershipSummary(c.After, c.FileContent)
 	case model.ChangeResourceRemoved:
-		return "- " + c.Identity.String()
+		return "- " + c.Identity.String() + membershipSummary(c.Before, c.FileContent)
 	case model.ChangeParameterChanged:
 		if c.FileContent != nil {
 			return fmt.Sprintf("~ %s %s: %s", c.Identity, c.Parameter, fileContentSummary(*c.FileContent))
@@ -93,6 +93,28 @@ func changeSummary(c model.ResourceChange) string {
 	default:
 		return fmt.Sprintf("? %s (%s)", c.Identity, c.Kind)
 	}
+}
+
+func membershipSummary(value any, content *model.FileContentEvidence) string {
+	var summary string
+	if value != nil {
+		summary = " " + formatValue(value)
+	}
+	if content != nil {
+		summary += " content: " + fileContentSummary(*content)
+	}
+	return summary
+}
+
+func aggregateContentSummary(e model.FileContentSummary) string {
+	summary := fileContentSummary(model.FileContentEvidence{State: e.State, EvidenceSource: e.EvidenceSource, Redacted: e.Redacted, ReferenceChanged: e.ReferenceChanged})
+	if e.Before != nil {
+		summary += fmt.Sprintf(" [baseline %s verified=%t]", e.Before.Source, e.Before.Verified)
+	}
+	if e.After != nil {
+		summary += fmt.Sprintf(" [candidate %s verified=%t]", e.After.Source, e.After.Verified)
+	}
+	return summary
 }
 
 // fileContentSummary describes File-content evidence: the comparison
@@ -173,6 +195,9 @@ func aggregateGroupLabel(g model.AggregateGroup) string {
 	label := aggregateKeyLabel(g.Key)
 	if g.Before != nil || g.After != nil {
 		label += fmt.Sprintf(" %s -> %s", formatValue(g.Before), formatValue(g.After))
+	}
+	if g.FileContent != nil {
+		label += " " + aggregateContentSummary(*g.FileContent)
 	}
 	return label
 }

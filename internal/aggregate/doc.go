@@ -28,6 +28,19 @@
 // whose same parameter changed to *different* secrets never merge into
 // one group even though both projections read model.RedactedValue.
 //
+// Disclosure is independent of equivalence. Each group's before/after
+// projection combines every member's redaction markers recursively: a marker
+// masks the corresponding subtree for the whole group. This applies equally
+// to sensitivity metadata, nested wrappers, and configured selectors. Public
+// siblings remain visible, and the per-target projections are never modified.
+// Renaming or reordering targets therefore cannot weaken group disclosure.
+// File-content summaries retain state, evidence sources, verification and
+// redaction status, but no digests or target-specific catalog provenance.
+// Sources that differ across equivalent members are reported as mixed;
+// verification requires every member to be verified. NodeChangeRefs retain
+// access to each member's full publishable evidence. Resource additions and
+// removals group by their complete managed parameter evidence.
+//
 // An empty Fingerprint means "cannot group": internal/diff sets it only
 // when canonical encoding failed, alongside an error-severity
 // diagnostic. Such a change is placed in a group of its own rather than

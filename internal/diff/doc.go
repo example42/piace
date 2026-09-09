@@ -22,8 +22,10 @@
 // content evidence entry. Wrapped inline values are unwrapped only for evidence
 // resolution. Sensitivity or selectors on any content-bearing parameter suppress
 // both digests and the algorithm, preserving the content state. File bytes never
-// enter the published change. Added and removed resources currently carry only
-// identity; parameter evidence for them is scheduled for phase 3 of 0.5.0.
+// enter the published change. Added and removed resources carry the existing
+// side's parameter map with the same sensitivity and selector rules. All File
+// content-bearing parameters become markers; separate one-sided evidence
+// records verified content or an indeterminate state with a diagnostic.
 //
 // Fingerprints cover raw canonical evidence before publication, including File
 // content parameters and resolved evidence. Distinct sensitive changes therefore
