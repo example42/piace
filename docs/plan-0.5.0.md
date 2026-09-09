@@ -473,7 +473,28 @@ own `--environment` flag, or despite capturing facts only.
 
 ### 4.2 Publish artifacts atomically and validate destination relationships
 
-- [ ] Implement and verify.
+- [x] Implemented and verified 2026-09-09. New `internal/artifact` publishes
+  every output through a same-directory temporary file with the mode applied
+  before content, an fsync, and one atomic replacement; a no-replace snapshot is
+  published by hard link, so the refusal and the write are a single operation
+  rather than a check followed by a clobbering rename. Snapshots, reports and
+  assessments all go through it, and `snapshot.ErrExists` stays the sentinel
+  callers already match. A destination that resolves to a pipe or device is
+  written in place; a symlink to a regular file is replaced by the artifact.
+  `artifact.Validate` rejects two artifacts sharing a destination and any
+  artifact written over a file the run reads (configuration or snapshot),
+  comparing normalized paths and, where both exist, file identity, so symlink
+  and hard-link aliases are caught; it runs before any service request. Compare
+  and explain render every artifact before publishing any, and a publication
+  failure reports which artifacts exist. Synthetic regressions:
+  `internal/artifact/publish_test.go` (concurrent `WriteNew` with exactly one
+  winner and no torn file, concurrent replacement never observed partial, FIFO
+  and symlink destinations), `internal/artifact/destinations_test.go`, and four
+  cases in `cmd/piace/acceptance_phase4_test.go`. Local macOS verification
+  passed: `go test ./...`, `go test -race ./...`, `go vet ./...`,
+  `go build ./...`, `gofmt -l`, and `git diff --check`. Linux coverage is the
+  CI matrix leg, not local evidence. Not detectable and not claimed: two
+  not-yet-existing destinations that would become hard links to each other.
 
 **Finding: medium severity.** Snapshot no-clobber behavior is a check followed
 by an overwriting rename. Reports and assessments use direct writes, and output
