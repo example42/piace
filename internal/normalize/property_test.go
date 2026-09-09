@@ -154,7 +154,7 @@ func TestProperty_EdgeSortKeyIsOrderedPair(t *testing.T) {
 			stt, _ := json.Marshal(p.s.Title)
 			tt2, _ := json.Marshal(p.tt.Type)
 			ttt, _ := json.Marshal(p.tt.Title)
-			edgeEntries[i] = fmt.Sprintf(`{"source":{"type":%s,"title":%s},"target":{"type":%s,"title":%s},"relationship":"before"}`,
+			edgeEntries[i] = fmt.Sprintf(`{"source":{"type":%s,"title":%s},"target":{"type":%s,"title":%s},"relationship":"contains"}`,
 				st, stt, tt2, ttt)
 		}
 		edgesJSON := "[" + joinStrings(edgeEntries, ",") + "]"
