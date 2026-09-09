@@ -117,6 +117,40 @@
 // is that list and is deliberately not generalized beyond the one
 // parameter actually measured to cause this.
 //
+// # Relationship order, and why it is not a difference
+//
+// Seven parameters have their array values sorted on both sides, by this
+// package's own total order: `audit`, `before`, `check`, `notify`,
+// `require`, `subscribe` and `tag`. The list is Puppet's, not an
+// invention here. The PuppetDB terminus declares them as
+// UnorderedMetaparams, "metaparams that may contain arrays, but whose
+// semantics are fundamentally unordered", and sorts each one before
+// storing a catalog. A compiler's catalog response is not sorted.
+//
+// Measured against a deployed OpenVox 8.15.2 installation on 2026-09-09,
+// comparing one node's production environment with itself: the stored
+// baseline held Service[pabawi]'s `require` as
+// ["Concat[pabawi_env_file]", "Exec[docker_pull_pabawi]",
+// "Exec[systemd_reload_pabawi]", "File[/etc/systemd/system/pabawi.service]"]
+// and the freshly compiled candidate held the same four entries in
+// declaration order. Two of the twelve remaining differences in that
+// comparison were this and nothing else. Compiling the same catalog
+// twice returned byte-identical parameters, so the reordering is the
+// terminus's, not compilation nondeterminism.
+//
+// `alias` is on Puppet's list too; it is dropped entirely above, so it
+// never reaches the sort.
+//
+// The order applied is not Ruby's `sort_by {|x| x.to_s}`. It does not
+// need to be: the same order is imposed on both sides, and any
+// permutation of one multiset sorts to the same sequence. Nothing
+// outside this codebase has to agree with PIACE about the sequence.
+//
+// This is deliberately not generalized to every array-valued parameter.
+// A File `source` array is ordered, and its order decides which source
+// is retrieved first; sorting it would silently undo phase 2's source
+// selection.
+//
 // # Canonical parameter values and Property 1
 //
 // Each parameter value is converted into the model.Value domain (nil,

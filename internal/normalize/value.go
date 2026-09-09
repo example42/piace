@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/snapshot"
@@ -24,6 +25,81 @@ var generatedMetadataParameters = map[string]bool{
 // decodeParameters drops on both sides of a comparison.
 func isGeneratedMetadataParameter(name string) bool {
 	return generatedMetadataParameters[name]
+}
+
+// unorderedMetaparameters names the parameters whose array values carry
+// no order, so a difference in their order is not a difference in what
+// Puppet will do. The list is Puppet's own: the PuppetDB terminus
+// declares it as UnorderedMetaparams, "metaparams that may contain
+// arrays, but whose semantics are fundamentally unordered", and sorts
+// each of them before storing a catalog. A compiler's catalog response
+// is not sorted, so comparing a PuppetDB baseline against a compiled
+// candidate reports the same relationship set as a change whenever the
+// manifest declared it in an order other than the sorted one.
+//
+// `alias` is on Puppet's list too and is dropped entirely above, so it
+// never reaches here.
+//
+// See doc.go for the measurement and the primary source.
+var unorderedMetaparameters = map[string]bool{
+	"audit":     true,
+	"before":    true,
+	"check":     true,
+	"notify":    true,
+	"require":   true,
+	"subscribe": true,
+	"tag":       true,
+}
+
+// sortUnorderedMetaparameter returns v with its elements in this
+// package's own total order when v is a slice, and v unchanged
+// otherwise.
+//
+// The order deliberately does not try to reproduce Ruby's
+// `sort_by {|x| x.to_s}`. It does not have to: the same order is
+// imposed on both sides of every comparison, and any permutation of one
+// multiset sorts to the same sequence, so two catalogs holding the same
+// relationships compare equal whatever that order is. Reproducing
+// Ruby's would only matter if PIACE had to agree with a third party
+// about the sequence, and nothing does.
+//
+// Ordering by the canonical JSON encoding keeps that property for
+// element types the sorted-strings case does not cover. Puppet
+// stringifies a resource reference on both wire paths, so in practice
+// every element here is a string.
+func sortUnorderedMetaparameter(v model.Value) model.Value {
+	items, ok := v.([]model.Value)
+	if !ok || len(items) < 2 {
+		return v
+	}
+	keys := make([]string, len(items))
+	for i, item := range items {
+		if s, ok := item.(string); ok {
+			// Prefixed so a string can never sort into the middle of
+			// the encoded values, which would make the order depend on
+			// whether an element happened to be a string.
+			keys[i] = "s" + s
+			continue
+		}
+		encoded, err := json.Marshal(item)
+		if err != nil {
+			// Unreachable: every model.Value is JSON-encodable by
+			// construction (canonicalizeValue's domain). Leaving the
+			// order alone is the safe answer if it ever is not.
+			return v
+		}
+		keys[i] = "j" + string(encoded)
+	}
+	order := make([]int, len(items))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(i, j int) bool { return keys[order[i]] < keys[order[j]] })
+	sorted := make([]model.Value, len(items))
+	for i, from := range order {
+		sorted[i] = items[from]
+	}
+	return sorted
 }
 
 // decodeParameters decodes a resource's raw "parameters" JSON object
@@ -65,6 +141,9 @@ func decodeParameters(raw json.RawMessage) (map[string]model.Value, error) {
 		cv, err := canonicalizeRaw(v)
 		if err != nil {
 			return nil, fmt.Errorf("parameter %q: %w", k, err)
+		}
+		if unorderedMetaparameters[k] {
+			cv = sortUnorderedMetaparameter(cv)
 		}
 		out[k] = cv
 	}
