@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/exitcode"
 	"github.com/example42/piace/internal/model"
 )
@@ -102,6 +103,9 @@ func (v *validation) err() error {
 func (v *validation) target(where string, t model.TargetResult) {
 	if !knownOutcome(t.Outcome) {
 		v.addf("%s: unknown outcome %q", where, t.Outcome)
+	}
+	if t.Baseline != nil {
+		v.baselineCapture(where+".baseline.capture", t.Baseline)
 	}
 
 	switch t.Outcome {
@@ -384,6 +388,45 @@ func (v *validation) publishedValue(where, resourceType, parameter string, value
 			v.addf("%s: publishes the value of the File %s parameter", where, name)
 		}
 	}
+}
+
+// baselineCapture checks that a file baseline's capture provenance says
+// something coherent about how it was obtained. The warning is derived
+// from the effective API on the way in, so a document claiming a v3
+// capture without it, or a v4 capture carrying it, is one whose trust
+// semantics have been rewritten somewhere between the snapshot and the
+// reader.
+func (v *validation) baselineCapture(where string, p *model.SourceProvenance) {
+	c := p.Capture
+	if c == nil {
+		return
+	}
+	if p.Kind != model.SourceKindFile {
+		v.addf("%s: a %s baseline carries capture provenance, which only a snapshot has", where, p.Kind)
+	}
+	if !knownCatalogAPI(c.RequestedAPI) || !knownCatalogAPI(c.EffectiveAPI) {
+		v.addf("%s: unknown catalog API pair (%q requested, %q effective)", where, c.RequestedAPI, c.EffectiveAPI)
+		return
+	}
+	if c.FellBackFromV4 && (c.RequestedAPI != config.CatalogAPIv4 || c.EffectiveAPI != config.CatalogAPIv3) {
+		v.addf("%s: records a v4-to-v3 fallback from %q to %q", where, c.RequestedAPI, c.EffectiveAPI)
+	}
+	if !c.FellBackFromV4 && c.RequestedAPI != c.EffectiveAPI {
+		v.addf("%s: %q was requested and %q answered, with no fallback recorded", where, c.RequestedAPI, c.EffectiveAPI)
+	}
+	if c.EffectiveAPI == config.CatalogAPIv3 && c.V3Warning != model.V3TrustedFactWarning {
+		v.addf("%s: a v3 capture without its trusted-fact warning", where)
+	}
+	if c.EffectiveAPI == config.CatalogAPIv4 && c.V3Warning != "" {
+		v.addf("%s: a v4 capture carrying a v3 warning", where)
+	}
+	if c.EffectiveAPI == config.CatalogAPIv3 && c.TrustedFactsSource != "" {
+		v.addf("%s: a v3 capture naming a trusted-fact source, which v3 has no request field for", where)
+	}
+}
+
+func knownCatalogAPI(api config.CatalogAPI) bool {
+	return api == config.CatalogAPIv3 || api == config.CatalogAPIv4
 }
 
 func hasErrorDiagnostic(diagnostics []model.Diagnostic) bool {

@@ -385,7 +385,14 @@ assessment even though edge-only comparisons are supported.
   2.2/5.1 fixture gate remains open. Deferred to 5.2: a comparison against a
   file baseline still does not surface that baseline's capture-time v3 trust
   semantics in the result document, whose scope is a result-schema change
-  rather than a capture change.
+  rather than a capture change. Closed on 2026-09-10: a file baseline's
+  `SourceProvenance` now carries a `capture` block projected from the snapshot
+  envelope, with the v3 warning derived from the effective API rather than
+  copied out of the file, and the text and HTML reports carry a distinct
+  baseline-capture warning banner. `report.Validate` checks the block's
+  coherence: the fallback pair, the warning matching the effective API, and a
+  v3 capture naming no trusted-fact source. Landed on `schema_version` 3
+  alongside the other 0.5.0 document changes.
 
 **Finding: medium severity.** Capture discards compiler provenance and warnings,
 then stamps the requested API into the envelope. A v4-to-v3 capture can therefore

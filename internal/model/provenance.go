@@ -24,6 +24,39 @@ type SourceProvenance struct {
 	// from the source (e.g. PuppetDB's catalog_uuid or hash).
 	CatalogIdentity string `json:"catalog_identity,omitempty"`
 	Producer        string `json:"producer,omitempty"`
+	// Capture records how a file-backed baseline's payload was obtained,
+	// at capture time, as its snapshot envelope recorded it. It is nil
+	// for a PuppetDB baseline, which was not captured by PIACE, and for
+	// a factset snapshot, which no compiler API produced.
+	//
+	// It exists because a comparison's trust semantics are not only its
+	// own. A baseline compiled through v3 was compiled with the
+	// catalog-reader's identity in $trusted, and that is a property of
+	// the bytes being compared, not of the run comparing them. Without
+	// this, a result document built from such a snapshot looked exactly
+	// like one built from a v4 capture, and the only place the
+	// difference survived was the snapshot file itself.
+	Capture *BaselineCapture `json:"capture,omitempty"`
+}
+
+// BaselineCapture is the result document's projection of a catalog
+// snapshot's capture provenance. It mirrors snapshot.CaptureProvenance,
+// which is the on-disk contract, and adds the derived warning so every
+// renderer states the same thing without deriving it separately.
+type BaselineCapture struct {
+	RequestedAPI   config.CatalogAPI `json:"requested_api"`
+	EffectiveAPI   config.CatalogAPI `json:"effective_api"`
+	FellBackFromV4 bool              `json:"fell_back_from_v4,omitempty"`
+	// TrustedFactsSource is set for an effective-v4 capture and empty
+	// for v3, which has no trusted-fact request field at all.
+	TrustedFactsSource TrustedFactsSource `json:"trusted_facts_source,omitempty"`
+	FactSource         SourceKind         `json:"fact_source,omitempty"`
+	// V3Warning is present exactly when EffectiveAPI is v3, and is
+	// V3TrustedFactWarning. It is the same constant a v3 candidate
+	// carries, because it describes the same thing about the catalog:
+	// what $trusted could have held while it was compiled, and what the
+	// compilation may have stored in PuppetDB.
+	V3Warning string `json:"v3_warning,omitempty"`
 }
 
 // TrustedFactsSource records how a v4 candidate request obtained target

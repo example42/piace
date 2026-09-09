@@ -497,6 +497,8 @@ pre {
 
   {{if .V3Warning}}
   <div class="banner banner-warn"><strong>Trusted-fact compatibility warning.</strong> {{.V3Warning}}</div>
+  {{end}}{{if .BaselineV3Warning}}
+  <div class="banner banner-warn"><strong>Baseline capture trusted-fact compatibility warning.</strong> {{.BaselineV3Warning}}</div>
   {{end}}
 
   {{range .Failures}}
