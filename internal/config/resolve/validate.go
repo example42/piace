@@ -145,13 +145,16 @@ func validateHTTPSEndpoint(raw string) (*url.URL, error) {
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("endpoint %q: %w", raw, err)
+		return nil, fmt.Errorf("endpoint is not a valid URL")
+	}
+	if u.User != nil {
+		return nil, fmt.Errorf("endpoint userinfo is forbidden")
 	}
 	if u.Scheme != "https" {
-		return nil, fmt.Errorf("endpoint %q: unsafe endpoint: scheme must be \"https\", got %q", raw, u.Scheme)
+		return nil, fmt.Errorf("unsafe endpoint: scheme must be https")
 	}
-	if u.Host == "" {
-		return nil, fmt.Errorf("endpoint %q: unsafe endpoint: missing host", raw)
+	if u.Hostname() == "" {
+		return nil, fmt.Errorf("unsafe endpoint: missing host")
 	}
 	return u, nil
 }

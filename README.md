@@ -157,7 +157,11 @@ reads as if nothing changed.
 
 `--debug` prints one metadata line per request: method, URL, status, duration,
 body sizes, content type, and the response body's top-level JSON *member
-names*.
+names*. URLs omit credentials, fragments and arbitrary query values. Only a
+dated `api-version` value is retained; File-content source paths are masked.
+Member names and content types have
+control characters escaped and are limited to 256 bytes each; at most 64 member
+names are printed.
 
 ```
 piace capture catalog: debug #002 POST https://compiler.example.test:8140/puppet/v4/catalog -> 200 in 1.069s (request 24580 B, response 18362 B, content-type application/json, body object, top-level keys: catalog)
@@ -284,8 +288,9 @@ did not exist when the file was written; see
 [docs/ci.md](docs/ci.md#why-nothing-is-rendered).
 
 Using one identity for both services is a deliberate choice rather than a
-default. Only `https` is accepted; inline keys, bearer tokens and insecure TLS
-are rejected. [`examples/services.yaml`](examples/services.yaml) documents every
+default. Only `https` endpoints without URL userinfo are accepted. Compiler
+and PuppetDB clients enforce their configured authority on initial requests
+and redirects. Inline keys, bearer tokens and insecure TLS are rejected. [`examples/services.yaml`](examples/services.yaml) documents every
 key, the `inference:` section included.
 
 ### Authorizing the catalog-reader certificate
@@ -428,7 +433,11 @@ rather than the target. The warning is non-suppressible, appears in all three
 formats, and does not change the exit status; it makes the trust semantics
 reviewable. v4 sends the target's own trusted facts, and fails compilation
 rather than inventing them when neither a validated input nor a configured
-compiler lookup is available.
+compiler lookup is available. Supplied factset and trusted certnames must match
+the requested target. Trusted `authenticated` must be `"remote"` or `"local"`;
+Puppet's unauthenticated `false` context cannot establish that identity.
+Malformed supplied trusted facts fail even when lookup is enabled. These checks
+validate structure and identity agreement, not the authenticity of file contents.
 
 **The impact estimate.** It reports only that a node's latest *stored* catalog
 contains the exact `Type[title]`. It is **not** proof those nodes would change,
@@ -440,22 +449,26 @@ operational error.
 
 ## Output and secrecy
 
-Redaction happens after semantic comparison and exclusion but before
-serialization, so masking never turns a real difference into a non-difference,
-and two distinct sensitive values never merge into one aggregate group. Puppet
-`Sensitive` wrappers are detected recursively; configured `redact` selectors
-mask by exact type and parameter name. No report carries credentials, private
-key material, managed file content bytes, or unredacted sensitive values.
+Redaction happens after semantic comparison and exclusions through an explicit
+conversion from private comparison evidence to the report model. Grouping
+fingerprints remain internal; they never enter JSON or inference requests.
 
-That boundary holds for `--debug` too, which reports only request metadata and
-response top-level member names. `--debug-dump-dir` is the one deliberate
-exception.
+Resource-level `sensitive_parameters` lists and recursive Pcore
+`{"__ptype":"Sensitive","__pvalue":...}` wrappers are retained and validated.
+A parameter marked sensitive by either catalog is protected on both sides.
+Configured `redact` selectors match exact type and parameter names. Sensitive
+File content also suppresses derived digests while retaining the comparison
+state. Additions and removals currently publish identity only.
 
-> **One assumption to be aware of.** `Sensitive` detection matches Puppet's
-> documented wire shape (`{"__ptype":"Sensitive","__pvalue":…}`). A compiler
-> emitting a different encoding would leave such a value unredacted. Confirm
-> against your compiler before treating redaction as a hard guarantee; see
-> [docs/development.md](docs/development.md#project-status).
+Malformed sensitivity lists and wrappers fail normalization. Synthetic tests
+cover compiler arrays and PuppetDB expanded containers, reports, normal debug
+output and inference. These tests do not establish which sensitivity metadata
+each deployed PuppetDB version retains. Other encodings need wire conformance
+verification; see [docs/development.md](docs/development.md#project-status).
+
+`--debug-dump-dir` remains an explicit raw-body disclosure outside normal debug
+output. Cross-target aggregation disclosure policy is tracked separately in
+phase 3 of [the 0.5.0 plan](docs/plan-0.5.0.md).
 
 ## Snapshots
 
@@ -464,8 +477,13 @@ version, target identity, source, capture timestamp, SHA-256 payload checksum,
 and, for catalogs, requested environment, compiler API version, and input
 factset identity. Files are written atomically at `0600` and are never
 overwritten without `--replace`. On reuse, version, kind, target, checksum,
-required metadata, and baseline environment are all validated before the catalog
-is diffed.
+required metadata, envelope/payload certname agreement, and baseline environment
+are all validated before the catalog is diffed.
+
+Fact inputs require a `facts` object with a `data` array. An explicit empty
+array is valid. Missing or null collections, malformed entries, missing values,
+and duplicate fact names fail before candidate compilation. File and PuppetDB
+inputs follow the same identity rules.
 
 ---
 

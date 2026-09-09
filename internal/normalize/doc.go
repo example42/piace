@@ -79,7 +79,8 @@
 // resource's `tags`, `file`, `line`, `exported`, or
 // `aliases`/`certname`/`resource` fields, whichever the input shape
 // happens to carry, into the returned model.Resource: only `type`,
-// `title`, and `parameters` participate. This is a one-way, lossy
+// `title`, and `parameters` participate in comparison. Resource-level
+// `sensitive_parameters` is retained for disclosure policy. This is a one-way, lossy
 // conversion by design. The normalized model is the semantic graph the
 // differ and the content verifier operate on, not a lossless mirror of
 // the wire response, and a caller that still needs the discarded fields
@@ -143,21 +144,16 @@
 // depth. Catalog data outside this JSON-compatible value domain is
 // rejected as a normalization error.
 //
-// # Redaction-readiness (Property 5)
+// # Sensitivity and publication
 //
-// NormalizedCatalog, model.Resource, and model.Edge are the same
-// serializable types the shared result document, the JSON, text and HTML
-// renderers, and the aggregate builder consume (see model/catalog.go and
-// model/diff.go). This package holds no separate raw representation once
-// Catalog returns: the only transient, non-serializable intermediate
-// state, the decoded-but-not-yet-canonicalized `any` tree from
-// json.Decoder.UseNumber(), exists only inside canonicalizeValue's call
-// stack and is never retained. Raw values live only in short-lived
-// comparison structures, and every serializable semantic representation
-// is redaction-ready. Detecting and redacting a Puppet `Sensitive`
-// wrapper or a configured redaction selector is deliberately not this
-// package's job: that belongs at the result boundary, after equality and
-// exclusion evaluation, specifically so redaction cannot corrupt the
-// comparison itself. This package's canonical output is a necessary
-// input to that later step, not a redacted value in itself.
+// NormalizedCatalog carries raw canonical values, never a report projection.
+// Resource sensitivity metadata is retained from either supported container
+// shape. If present, sensitive_parameters must be an array of unique nonempty
+// strings; null, malformed types and duplicate names are validation failures.
+// Recursive Pcore Sensitive wrappers require __pvalue, which may be null.
+// Parameter validation errors omit value trees and nested keys.
+//
+// internal/diff owns the explicit transition to model.ResourceChange after
+// comparison and exclusions. Only that publishable projection reaches reports
+// and inference. Sensitivity declared by either side protects both values.
 package normalize

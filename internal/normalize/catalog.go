@@ -49,16 +49,22 @@ func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) 
 		}
 		seen[identity] = true
 
+		sensitivity, err := decodeSensitivity(rw.SensitiveParameters)
+		if err != nil {
+			diag := normalizeDiagnostic(raw.Certname, err.Error())
+			return model.NormalizedCatalog{}, &diag
+		}
 		params, err := decodeParameters(rw.Parameters)
 		if err != nil {
 			diag := normalizeDiagnostic(raw.Certname,
-				fmt.Sprintf("resource %s: %s", identity.String(), err.Error()))
+				fmt.Sprintf("resource %s: invalid parameters or sensitivity wrapper", identity.String()))
 			return model.NormalizedCatalog{}, &diag
 		}
 
 		resources = append(resources, model.Resource{
-			Identity:   identity,
-			Parameters: params,
+			Identity:            identity,
+			Parameters:          params,
+			SensitiveParameters: sensitivity,
 		})
 	}
 	sort.Slice(resources, func(i, j int) bool {

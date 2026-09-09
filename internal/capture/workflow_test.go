@@ -88,7 +88,7 @@ func TestWorkflow_CaptureFacts_WritesSnapshot(t *testing.T) {
 	path := filepath.Join(dir, "web-01.json")
 
 	fake := &fakeFactSource{factsets: map[string]puppetdb.Factset{
-		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "puppetdb-01", Hash: "h", Facts: json.RawMessage(`{}`)},
+		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "puppetdb-01", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
 	}}
 	w := &Workflow{PuppetDBFacts: fake, FileFacts: puppetdb.NewFileSource(), Now: fixedClock()}
 
@@ -146,7 +146,7 @@ func TestWorkflow_CaptureFacts_PerTargetErrorIsolation(t *testing.T) {
 
 	fake := &fakeFactSource{
 		factsets: map[string]puppetdb.Factset{
-			"b.example.test": {Certname: "b.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{}`)},
+			"b.example.test": {Certname: "b.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
 		},
 		fail: map[string]bool{"a.example.test": true},
 	}
@@ -181,7 +181,7 @@ func TestWorkflow_CaptureFacts_RefusesOverwriteWithoutReplace(t *testing.T) {
 	path := filepath.Join(dir, "web-01.json")
 
 	fake := &fakeFactSource{factsets: map[string]puppetdb.Factset{
-		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{}`)},
+		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
 	}}
 	w := &Workflow{PuppetDBFacts: fake, FileFacts: puppetdb.NewFileSource(), Now: fixedClock()}
 
@@ -208,7 +208,7 @@ func TestWorkflow_CaptureCatalog_StubCompilerReportsNotImplemented(t *testing.T)
 	path := filepath.Join(dir, "web-01-catalog.json")
 
 	fake := &fakeFactSource{factsets: map[string]puppetdb.Factset{
-		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{}`)},
+		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
 	}}
 	w := &Workflow{PuppetDBFacts: fake, FileFacts: puppetdb.NewFileSource(), Compiler: StubCompiler{}, Now: fixedClock()}
 
@@ -234,7 +234,7 @@ func TestWorkflow_CaptureCatalog_WritesSnapshotWithWorkingCompiler(t *testing.T)
 	path := filepath.Join(dir, "web-01-catalog.json")
 
 	fakeFacts := &fakeFactSource{factsets: map[string]puppetdb.Factset{
-		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{}`)},
+		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
 	}}
 	fakeCompilerImpl := &fakeCompiler{catalogs: map[string]puppetdb.Catalog{
 		"web-01.example.test": {Certname: "web-01.example.test", Environment: "production", Producer: "compiler-01", Hash: "c", Resources: json.RawMessage(`[]`), Edges: json.RawMessage(`[]`)},
@@ -297,8 +297,8 @@ func TestWorkflow_CaptureCatalog_PerTargetErrorIsolation(t *testing.T) {
 	pathB := filepath.Join(dir, "b-catalog.json")
 
 	fakeFacts := &fakeFactSource{factsets: map[string]puppetdb.Factset{
-		"a.example.test": {Certname: "a.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{}`)},
-		"b.example.test": {Certname: "b.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{}`)},
+		"a.example.test": {Certname: "a.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
+		"b.example.test": {Certname: "b.example.test", Environment: "production", Producer: "p", Hash: "h", Facts: json.RawMessage(`{"data":[]}`)},
 	}}
 	fakeCompilerImpl := &fakeCompiler{
 		catalogs: map[string]puppetdb.Catalog{

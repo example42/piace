@@ -73,7 +73,12 @@ func (f *FileSource) Load(ctx context.Context, target resolve.Target) (Factset, 
 	var fs Factset
 	if err := json.Unmarshal(env.Payload, &fs); err != nil {
 		diag := snapshotDiagnostic(model.OperationLoadFacts, target.Certname,
-			fmt.Sprintf("malformed or unparseable factset payload in snapshot %s: %s", target.Facts.File, err))
+			"malformed or unparseable factset payload in snapshot")
+		return Factset{}, model.SourceProvenance{}, &diag
+	}
+
+	if _, err := ValidateFactset(fs, target.Certname); err != nil {
+		diag := snapshotDiagnostic(model.OperationLoadFacts, target.Certname, err.Error())
 		return Factset{}, model.SourceProvenance{}, &diag
 	}
 
@@ -123,7 +128,12 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 	var cat Catalog
 	if err := json.Unmarshal(env.Payload, &cat); err != nil {
 		diag := snapshotDiagnostic(model.OperationLoadBaseline, target.Certname,
-			fmt.Sprintf("malformed or unparseable catalog payload in snapshot %s: %s", target.Baseline.File, err))
+			"malformed or unparseable catalog payload in snapshot")
+		return Catalog{}, model.SourceProvenance{}, &diag
+	}
+
+	if target.Certname == "" || cat.Certname != target.Certname {
+		diag := snapshotDiagnostic(model.OperationLoadBaseline, target.Certname, "catalog certname does not match the requested target")
 		return Catalog{}, model.SourceProvenance{}, &diag
 	}
 

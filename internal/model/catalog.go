@@ -57,8 +57,9 @@ func (r ResourceIdentity) String() string {
 // other non-semantic metadata are discarded by the normalizer before a
 // Resource is constructed.
 type Resource struct {
-	Identity   ResourceIdentity `json:"identity"`
-	Parameters map[string]Value `json:"parameters,omitempty"`
+	Identity            ResourceIdentity `json:"identity"`
+	Parameters          map[string]Value `json:"parameters,omitempty"`
+	SensitiveParameters []string         `json:"sensitive_parameters,omitempty"`
 }
 
 // Edge is a normalized dependency graph edge. Source and Target are the

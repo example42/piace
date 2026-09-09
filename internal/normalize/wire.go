@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 )
 
 // resourceWire is the subset of a catalog resource entry this package
@@ -15,9 +16,10 @@ import (
 // resource, exported, tags, file, line and aliases are all intentionally
 // undeclared here and therefore dropped by encoding/json.
 type resourceWire struct {
-	Type       string          `json:"type"`
-	Title      string          `json:"title"`
-	Parameters json.RawMessage `json:"parameters"`
+	Type                string          `json:"type"`
+	Title               string          `json:"title"`
+	Parameters          json.RawMessage `json:"parameters"`
+	SensitiveParameters json.RawMessage `json:"sensitive_parameters"`
 }
 
 // edgeWire is the normalized (shape-independent) form this package
@@ -182,6 +184,9 @@ func hrefDataArray(trimmed []byte, dest any) error {
 	if !ok {
 		return fmt.Errorf(`{href, data}-shaped field is missing its required "data" key`)
 	}
+	if trimmed := bytes.TrimSpace(dataRaw); len(trimmed) == 0 || trimmed[0] != '[' {
+		return fmt.Errorf("data must be an array")
+	}
 	if err := json.Unmarshal(dataRaw, dest); err != nil {
 		return fmt.Errorf("decoding \"data\" array: %w", err)
 	}
@@ -248,4 +253,23 @@ func extractEdges(raw json.RawMessage) ([]edgeWire, error) {
 		}
 	}
 	return out, nil
+}
+
+func decodeSensitivity(raw json.RawMessage) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var names []string
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &names) != nil {
+		return nil, fmt.Errorf("sensitive_parameters must be an array of parameter names")
+	}
+	seen := map[string]bool{}
+	for _, name := range names {
+		if name == "" || seen[name] {
+			return nil, fmt.Errorf("sensitive_parameters contains an empty or duplicate name")
+		}
+		seen[name] = true
+	}
+	sort.Strings(names)
+	return names, nil
 }

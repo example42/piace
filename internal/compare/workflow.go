@@ -115,6 +115,10 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		tr.Diagnostics = append(tr.Diagnostics, *diag)
 		return tr
 	}
+	if _, err := puppetdb.ValidateFactset(facts, target.Certname); err != nil {
+		tr.Diagnostics = append(tr.Diagnostics, inputDiagnostic(target.Certname, model.OperationLoadFacts, err.Error()))
+		return tr
+	}
 	tr.Facts = &factsProvenance
 
 	baselineCatalog, baselineProvenance, diag := puppetdb.SelectCatalogSource(target, w.PuppetDBBaseline, w.FileBaseline).
@@ -123,7 +127,16 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		tr.Diagnostics = append(tr.Diagnostics, *diag)
 		return tr
 	}
+	if baselineCatalog.Certname != target.Certname || baselineCatalog.Environment != target.Baseline.Environment {
+		tr.Diagnostics = append(tr.Diagnostics, inputDiagnostic(target.Certname, model.OperationLoadBaseline, "baseline identity or environment does not match the requested target"))
+		return tr
+	}
 	tr.Baseline = &baselineProvenance
+	baseline, diag := normalize.Catalog(baselineCatalog)
+	if diag != nil {
+		tr.Diagnostics = append(tr.Diagnostics, *diag)
+		return tr
+	}
 
 	candidateCatalog, candidateProvenance, warnings, diag := w.Compiler.RequestCandidate(ctx, target, facts)
 	if diag != nil {
@@ -147,9 +160,8 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		})
 	}
 
-	baseline, diag := normalize.Catalog(baselineCatalog)
-	if diag != nil {
-		tr.Diagnostics = append(tr.Diagnostics, *diag)
+	if candidateCatalog.Certname != target.Certname || candidateCatalog.Environment != target.Candidate.Environment {
+		tr.Diagnostics = append(tr.Diagnostics, inputDiagnostic(target.Certname, model.OperationRequestCandidate, "candidate identity or environment does not match the requested target"))
 		return tr
 	}
 	candidate, diag := normalize.Catalog(candidateCatalog)
@@ -218,4 +230,8 @@ func (w *Workflow) now() string {
 		clock = time.Now
 	}
 	return clock().UTC().Format(time.RFC3339)
+}
+
+func inputDiagnostic(certname string, operation model.DiagnosticOperation, message string) model.Diagnostic {
+	return model.Diagnostic{Certname: certname, Operation: operation, Severity: model.SeverityError, Message: message}
 }

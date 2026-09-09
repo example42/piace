@@ -14,69 +14,108 @@ const (
 	pcoreSensitiveType = "Sensitive"
 )
 
-// redactChanges implements pass 3 (see doc.go). It runs strictly after
-// applyExclusions and after NodeDiff.HasDifference has already been
-// computed, so masking a value can never turn a real difference into a
-// non-difference: it only replaces what a report may display.
-//
-// Both redaction sources are applied to every remaining change:
-//
-//   - a Puppet `Sensitive` wrapper found at any depth in a Before/After
-//     canonical value tree, and
-//   - a configured config.RedactionSelector whose Type and Parameter both
-//     match the change exactly (case-sensitive).
-//
-// Changes are returned as a new slice; the input entries are copied by
-// value and their canonical value trees are never mutated in place, so a
-// caller holding the pre-redaction changes (for example for its own
-// comparison purposes) is unaffected.
-func redactChanges(selectors []config.RedactionSelector, changes []model.ResourceChange) []model.ResourceChange {
-	if len(changes) == 0 {
-		return changes
-	}
+// publishChanges is the only conversion from raw comparison evidence to
+// the report model. Sensitivity from either catalog applies to both sides.
+func publishChanges(selectors []config.RedactionSelector, changes []rawResourceChange, before, after map[model.ResourceIdentity]model.Resource) []model.ResourceChange {
 	out := make([]model.ResourceChange, len(changes))
-	for i, change := range changes {
-		out[i] = redactChange(selectors, change)
+	for i, raw := range changes {
+		change := model.ResourceChange{Kind: raw.Kind, Identity: raw.Identity, Parameter: raw.Parameter, Fingerprint: raw.Fingerprint}
+		br, ar := before[raw.Identity], after[raw.Identity]
+		selected := parameterSensitive(br, raw.Parameter) || parameterSensitive(ar, raw.Parameter) || matchesRedactionSelector(selectors, raw.Identity.Type, raw.Parameter)
+		if raw.FileContent != nil {
+			for name := range fileContentBearingParameters {
+				selected = selected || parameterSensitive(br, name) || parameterSensitive(ar, name) || containsSensitive(br.Parameters[name]) || containsSensitive(ar.Parameters[name]) || matchesRedactionSelector(selectors, raw.Identity.Type, name)
+			}
+			evidence := *raw.FileContent
+			if selected {
+				evidence.Algorithm = ""
+				evidence.BeforeDigest, evidence.AfterDigest = model.RedactedValue, model.RedactedValue
+				evidence.Redacted = true
+			}
+			change.FileContent = &evidence
+		} else if selected {
+			change.Before, change.After = model.RedactedValue, model.RedactedValue
+		} else {
+			change.Before, change.After = redactSensitivePair(raw.Before, raw.After)
+		}
+		out[i] = change
 	}
 	return out
 }
 
-// redactChange applies both redaction sources to one change.
-func redactChange(selectors []config.RedactionSelector, change model.ResourceChange) model.ResourceChange {
-	selected := matchesRedactionSelector(selectors, change.Identity.Type, change.Parameter)
-
-	if change.FileContent != nil {
-		// A File-content entry carries no Before/After at all (see
-		// resources.go); its only redactable evidence is the digest pair. State
-		// is deliberately preserved either way: "a redacted content selector
-		// emits a stable REDACTED value while preserving the change
-		// classification and no digest in reports."
-		evidence := *change.FileContent
-		if selected {
-			evidence.Algorithm = ""
-			evidence.BeforeDigest = model.RedactedValue
-			evidence.AfterDigest = model.RedactedValue
-			evidence.Redacted = true
+func parameterSensitive(resource model.Resource, name string) bool {
+	for _, sensitive := range resource.SensitiveParameters {
+		if sensitive == name {
+			return true
 		}
-		change.FileContent = &evidence
-		return change
 	}
+	return false
+}
 
-	if selected {
-		// A configured selector redacts the whole matched value, so
-		// there is nothing left for the Sensitive walk to find.
-		if change.Before != nil {
-			change.Before = model.RedactedValue
+func containsSensitive(v any) bool {
+	switch v := v.(type) {
+	case map[string]any:
+		if isSensitiveWrapper(v) {
+			return true
 		}
-		if change.After != nil {
-			change.After = model.RedactedValue
+		for _, child := range v {
+			if containsSensitive(child) {
+				return true
+			}
 		}
-		return change
+	case []any:
+		for _, child := range v {
+			if containsSensitive(child) {
+				return true
+			}
+		}
 	}
+	return false
+}
 
-	change.Before = redactSensitiveValue(change.Before)
-	change.After = redactSensitiveValue(change.After)
-	return change
+// A wrapper on either side protects the corresponding value on both sides.
+// Incompatible container shapes require masking the whole parameter because
+// there is no reliable correspondence between their descendants.
+func redactSensitivePair(before, after any) (any, any) {
+	bm, bok := before.(map[string]any)
+	am, aok := after.(map[string]any)
+	if (bok && isSensitiveWrapper(bm)) || (aok && isSensitiveWrapper(am)) {
+		return model.RedactedValue, model.RedactedValue
+	}
+	if bok && aok {
+		names := unionParameterNames(bm, am)
+		for _, key := range names {
+			_, inBefore := bm[key]
+			_, inAfter := am[key]
+			if inBefore != inAfter && (containsSensitive(before) || containsSensitive(after)) {
+				return model.RedactedValue, model.RedactedValue
+			}
+		}
+		b, a := map[string]any{}, map[string]any{}
+		for _, key := range names {
+			bv, av := redactSensitivePair(bm[key], am[key])
+			if _, ok := bm[key]; ok {
+				b[key] = bv
+			}
+			if _, ok := am[key]; ok {
+				a[key] = av
+			}
+		}
+		return b, a
+	}
+	bs, bok := before.([]any)
+	as, aok := after.([]any)
+	if bok && aok && len(bs) == len(as) {
+		b, a := make([]any, len(bs)), make([]any, len(as))
+		for i := range bs {
+			b[i], a[i] = redactSensitivePair(bs[i], as[i])
+		}
+		return b, a
+	}
+	if containsSensitive(before) || containsSensitive(after) {
+		return model.RedactedValue, model.RedactedValue
+	}
+	return before, after
 }
 
 // matchesRedactionSelector reports whether any configured selector names
@@ -94,43 +133,6 @@ func matchesRedactionSelector(selectors []config.RedactionSelector, resourceType
 		}
 	}
 	return false
-}
-
-// redactSensitiveValue walks a canonical value tree and replaces every
-// Puppet `Sensitive` wrapper it finds, at any depth, inside maps and
-// arrays alike, with model.RedactedValue. Wrappers are detected
-// recursively and their payload is never copied to the serializable
-// result.
-//
-// The entire matched subtree is replaced, never merely its `__pvalue`
-// entry: leaving the wrapper object in place with a redacted payload
-// would still disclose the payload's shape (map keys, array length,
-// nesting depth), which is evidence about the secret.
-//
-// The walk never mutates its input: every map and slice containing a
-// redacted descendant is rebuilt, so the caller's pre-redaction tree,
-// the one pass 1 compared and fingerprintResourceChange digested, stays
-// intact.
-func redactSensitiveValue(v model.Value) model.Value {
-	switch val := v.(type) {
-	case map[string]model.Value:
-		if isSensitiveWrapper(val) {
-			return model.RedactedValue
-		}
-		out := make(map[string]model.Value, len(val))
-		for k, e := range val {
-			out[k] = redactSensitiveValue(e)
-		}
-		return out
-	case []model.Value:
-		out := make([]model.Value, len(val))
-		for i, e := range val {
-			out[i] = redactSensitiveValue(e)
-		}
-		return out
-	default:
-		return v
-	}
 }
 
 // isSensitiveWrapper reports whether m is the Pcore generic-data

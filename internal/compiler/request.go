@@ -50,7 +50,7 @@ const (
 // target is explicitly configured for it; otherwise report
 // unavailability so the caller fails compilation.
 func decideTrustedFacts(flatFacts map[string]json.RawMessage, compilerLookupConfigured bool) trustedFactsDecision {
-	if raw, ok := extractTrustedFacts(flatFacts); ok {
+	if raw, ok := flatFacts["trusted"]; ok {
 		return trustedFactsDecision{available: true, source: trustedFactsSourceProvided, value: raw}
 	}
 	if compilerLookupConfigured {

@@ -25,6 +25,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"time"
+
+	"github.com/example42/piace/internal/safemeta"
 )
 
 // maxTopLevelKeys bounds how many top-level member names one Event
@@ -131,7 +133,7 @@ func describeBody(body []byte) (BodyShape, []string, bool) {
 			continue
 		}
 		name, _ := nameTok.(string)
-		keys = append(keys, name)
+		keys = append(keys, safemeta.Text(name))
 	}
 	return ShapeObject, keys, truncated
 }

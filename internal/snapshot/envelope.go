@@ -48,7 +48,7 @@ type Source struct {
 }
 
 // Envelope is the on-disk PIACE snapshot file shape: a UTF-8 JSON
-// document wrapping an unmodified validated service payload with
+// document wrapping a validated PIACE service projection with
 // integrity and capture metadata. The checksum scope is SHA-256 over the
 // canonical encoding of Payload only, excluding envelope metadata.
 type Envelope struct {
@@ -69,8 +69,8 @@ type Envelope struct {
 	// encoding of Payload alone.
 	PayloadChecksum string `json:"payload_checksum"`
 
-	// Payload retains the original validated service document verbatim;
-	// it is not a lossy normalized form. json.RawMessage defers decoding
+	// Payload retains the typed service projection, including raw resources
+	// and their sensitivity metadata. json.RawMessage defers decoding
 	// to the factset/catalog-specific consumer.
 	Payload json.RawMessage `json:"payload"`
 }

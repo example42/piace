@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/example42/piace/internal/safemeta"
 )
 
 // maxResponseBodyBytes bounds one response. A change assessment is a few
@@ -53,6 +55,9 @@ func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Clie
 	if u == nil {
 		return nil, fmt.Errorf("inference: no endpoint configured")
 	}
+	if u.User != nil {
+		return nil, fmt.Errorf("inference: endpoint userinfo is forbidden")
+	}
 	if u.Scheme != "https" {
 		return nil, fmt.Errorf("inference: endpoint scheme must be https, got %q", u.Scheme)
 	}
@@ -65,9 +70,10 @@ func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Clie
 	if timeout <= 0 {
 		return nil, fmt.Errorf("inference: timeout must be positive")
 	}
+	endpoint := *u
 	c := &Client{
 		httpClient: &http.Client{Timeout: timeout, CheckRedirect: checkRedirect},
-		url:        u,
+		url:        &endpoint,
 		token:      token,
 		timeout:    timeout,
 	}
@@ -96,6 +102,9 @@ func New(u *url.URL, token string, timeout time.Duration, opts ...Option) (*Clie
 // caller who relaxes this policy does not silently reintroduce the leak.
 func checkRedirect(req *http.Request, via []*http.Request) error {
 	req.Header.Del("Authorization")
+	if req.URL.User != nil {
+		return fmt.Errorf("inference: redirect userinfo is forbidden")
+	}
 
 	if len(via) == 0 {
 		return nil
@@ -124,8 +133,9 @@ func (c *Client) SetHTTPClient(h *http.Client) {
 	if h == nil {
 		return
 	}
-	h.CheckRedirect = checkRedirect
-	c.httpClient = h
+	client := *h
+	client.CheckRedirect = checkRedirect
+	c.httpClient = &client
 }
 
 // Authority is the endpoint's host, safe to record in an artifact so a
@@ -161,7 +171,7 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url.String(), bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("inference: building request: %w", err)
+		return nil, safemeta.RequestError("building inference request", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
@@ -170,10 +180,9 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 	start := time.Now()
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		// url.Error stringifies to include the request URL but never a
-		// header, so the token cannot appear here.
+		err = safemeta.RequestError("inference request", err)
 		c.emit(Event{
-			Method: http.MethodPost, URL: c.url.String(), Host: c.url.Host,
+			Method: http.MethodPost, URL: safemeta.URL(c.url), Host: c.url.Host,
 			Duration: time.Since(start), RequestBodyBytes: len(body),
 			Err: err, RequestBody: body,
 		})
@@ -195,20 +204,20 @@ func (c *Client) Complete(ctx context.Context, req Request) ([]byte, error) {
 
 	shape, keys, keysTruncated := describeBody(raw)
 	c.emit(Event{
-		Method: http.MethodPost, URL: c.url.String(), Host: c.url.Host,
+		Method: http.MethodPost, URL: safemeta.URL(c.url), Host: c.url.Host,
 		StatusCode: resp.StatusCode, Duration: time.Since(start),
 		RequestBodyBytes: len(body), ResponseBodyBytes: len(raw),
-		ContentType:   resp.Header.Get("Content-Type"),
+		ContentType:   safemeta.Text(resp.Header.Get("Content-Type")),
 		Shape:         shape,
 		TopLevelKeys:  keys,
 		KeysTruncated: keysTruncated,
-		Err:           readErr,
+		Err:           safemeta.RequestError("reading inference response", readErr),
 		RequestBody:   body,
 		ResponseBody:  raw,
 	})
 
 	if readErr != nil {
-		return nil, fmt.Errorf("inference: reading response from %s: %w", c.url.Host, readErr)
+		return nil, safemeta.RequestError("reading inference response", readErr)
 	}
 	if tooLarge {
 		return nil, fmt.Errorf("inference: %s returned a response body exceeding the %d byte limit", c.url.Host, maxResponseBodyBytes)

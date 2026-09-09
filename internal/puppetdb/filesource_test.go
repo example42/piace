@@ -22,7 +22,7 @@ func writeFactsetSnapshot(t *testing.T, path, certname, environment string) {
 		ProducerTimestamp: "2015-06-04T15:27:56.893Z",
 		Producer:          "compiler-01.example.test",
 		Hash:              "deadbeef",
-		Facts:             json.RawMessage(`{}`),
+		Facts:             json.RawMessage(`{"data":[]}`),
 	}
 	payload, err := json.Marshal(fs)
 	if err != nil {

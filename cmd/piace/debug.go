@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/example42/piace/internal/inference"
+	"github.com/example42/piace/internal/safemeta"
 	"github.com/example42/piace/internal/transport"
 )
 
@@ -208,11 +209,11 @@ func describeInferenceEvent(ev inference.Event) string {
 	}
 	fmt.Fprintf(&b, " -> %d in %s (request %d B, response %d B", ev.StatusCode, ev.Duration, ev.RequestBodyBytes, ev.ResponseBodyBytes)
 	if ev.ContentType != "" {
-		fmt.Fprintf(&b, ", content-type %s", ev.ContentType)
+		fmt.Fprintf(&b, ", content-type %s", safemeta.Text(ev.ContentType))
 	}
 	fmt.Fprintf(&b, ", body %s", ev.Shape)
 	if ev.Shape == inference.ShapeObject {
-		keys := strings.Join(ev.TopLevelKeys, ",")
+		keys := safeDebugKeys(ev.TopLevelKeys)
 		if ev.KeysTruncated {
 			keys += ",..."
 		}
@@ -244,11 +245,11 @@ func describeEvent(ev transport.Event) string {
 	}
 	fmt.Fprintf(&b, ", response %d B", ev.ResponseBodyBytes)
 	if ev.ContentType != "" {
-		fmt.Fprintf(&b, ", content-type %s", ev.ContentType)
+		fmt.Fprintf(&b, ", content-type %s", safemeta.Text(ev.ContentType))
 	}
 	fmt.Fprintf(&b, ", body %s", ev.Shape)
 	if ev.Shape == transport.ShapeObject {
-		keys := strings.Join(ev.TopLevelKeys, ",")
+		keys := safeDebugKeys(ev.TopLevelKeys)
 		if ev.KeysTruncated {
 			keys += ",..."
 		}
@@ -297,4 +298,15 @@ func slugPath(rawURL string) string {
 		slug = slug[:80]
 	}
 	return slug
+}
+
+func safeDebugKeys(keys []string) string {
+	safe := make([]string, 0, len(keys))
+	for i, key := range keys {
+		if i == 64 {
+			break
+		}
+		safe = append(safe, safemeta.Text(key))
+	}
+	return strings.Join(safe, ",")
 }

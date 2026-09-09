@@ -25,11 +25,12 @@ skipped test carrying its confirmation procedure in
 - **PuppetDB impact endpoints**: that the impact PQL text is accepted at the
   root `/pdb/query/v4`, and that `limit` and `order_by` are honoured there. If
   `order_by` is not honoured, a *truncated* impact sample is not reproducible.
-- **The Puppet `Sensitive` wire shape**: `{"__ptype":"Sensitive","__pvalue":…}`
-  is derived from Puppet's Ruby serializer source, not from a captured
-  response. The test suite serves that shape, so it proves PIACE redacts what
-  it *expects*; a compiler emitting a different encoding would pass the suite
-  with the value unredacted.
+- **Puppet sensitivity representations**: resource-level `sensitive_parameters`
+  and recursive `{"__ptype":"Sensitive","__pvalue":...}` wrappers are covered
+  by synthetic fixtures, including one-sided declarations and File content.
+  The contracts derive from Puppet's Ruby sources. Real compiler/PuppetDB
+  captures must establish which representations each supported deployment
+  preserves; unknown encodings remain outside the verified disclosure scope.
 - **The structured-output wire shape** (`piace explain`): that a deployed
   OpenAI-compatible provider accepts `response_format: {type: json_schema, …}`
   and honours `strict`. The least load-bearing of the three: structured output

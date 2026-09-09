@@ -397,7 +397,7 @@ func TestAdapter_NeverIssuesNonGETRequests(t *testing.T) {
 		switch r.URL.Path {
 		case "/pdb/query/v4/factsets/web-01.example.test":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"certname":"web-01.example.test","environment":"production","producer_timestamp":"t","producer":"p","hash":"h","facts":{}}`))
+			w.Write([]byte(`{"certname":"web-01.example.test","environment":"production","producer_timestamp":"t","producer":"p","hash":"h","facts":{"data":[]}}`))
 		case "/pdb/query/v4/catalogs/web-01.example.test":
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"certname":"web-01.example.test","environment":"production","producer_timestamp":"t","producer":"p","hash":"h","resources":{},"edges":{}}`))

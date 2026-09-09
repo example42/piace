@@ -167,7 +167,7 @@ func Load(path string) (Envelope, error) {
 }
 
 // Validate checks env against the caller's expectations before it is
-// reused: kind, target identity, and, for a catalog envelope, the
+// reused: kind, source kind, envelope/payload target agreement, and, for a catalog envelope, the
 // catalog-only mandatory fields (RequestedEnvironment,
 // CompilerAPIVersion, InputFactsetIdentity) plus a well-formed
 // CapturedAt timestamp.
@@ -191,12 +191,31 @@ func Validate(env Envelope, wantKind Kind, wantTarget string) error {
 		return fmt.Errorf("snapshot: target %q: captured_at %q is not a valid RFC 3339 timestamp: %w",
 			wantTarget, env.CapturedAt, err)
 	}
+	if env.Target == "" {
+		return fmt.Errorf("snapshot: missing target")
+	}
+	if env.Kind != KindFactset && env.Kind != KindCatalog {
+		return fmt.Errorf("snapshot: unsupported kind")
+	}
+	if (env.Kind == KindFactset && env.Source.Kind != "puppetdb") || (env.Kind == KindCatalog && env.Source.Kind != "compiler") {
+		return fmt.Errorf("snapshot: invalid source kind")
+	}
+	var payload struct {
+		Certname    string `json:"certname"`
+		Environment string `json:"environment"`
+	}
+	if json.Unmarshal(env.Payload, &payload) != nil || payload.Certname != env.Target {
+		return fmt.Errorf("snapshot: payload certname does not match envelope target")
+	}
+	if env.Kind == KindCatalog && payload.Environment != env.RequestedEnvironment {
+		return fmt.Errorf("snapshot: payload environment does not match requested_environment")
+	}
 	if env.Kind == KindCatalog {
 		if env.RequestedEnvironment == "" {
 			return fmt.Errorf("snapshot: target %q: catalog envelope is missing requested_environment", wantTarget)
 		}
-		if env.CompilerAPIVersion == "" {
-			return fmt.Errorf("snapshot: target %q: catalog envelope is missing compiler_api", wantTarget)
+		if env.CompilerAPIVersion != CompilerAPIv3 && env.CompilerAPIVersion != CompilerAPIv4 {
+			return fmt.Errorf("snapshot: target %q: catalog envelope has missing or unsupported compiler_api", wantTarget)
 		}
 		if env.InputFactsetIdentity == "" {
 			return fmt.Errorf("snapshot: target %q: catalog envelope is missing input_factset_identity", wantTarget)

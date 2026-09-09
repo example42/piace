@@ -116,6 +116,11 @@ func canonicalizeValue(v any) (model.Value, error) {
 		}
 		return out, nil
 	case map[string]any:
+		if val["__ptype"] == "Sensitive" {
+			if _, ok := val["__pvalue"]; !ok {
+				return nil, fmt.Errorf("malformed Sensitive wrapper")
+			}
+		}
 		out := make(map[string]model.Value, len(val))
 		for k, e := range val {
 			cv, err := canonicalizeValue(e)
