@@ -53,7 +53,7 @@ func (f *fakeCompiler) RequestCandidate(ctx context.Context, target resolve.Targ
 		diag := model.Diagnostic{Severity: model.SeverityError, Operation: model.OperationRequestCandidate, Certname: target.Certname, Message: "no catalog configured for target"}
 		return puppetdb.Catalog{}, model.CandidateProvenance{}, nil, &diag
 	}
-	return cat, model.CandidateProvenance{}, nil, nil
+	return cat, model.CandidateProvenance{EffectiveAPI: target.Candidate.CatalogAPI, RequestedAPI: target.Candidate.CatalogAPI}, nil, nil
 }
 
 func fixedClock() func() time.Time {

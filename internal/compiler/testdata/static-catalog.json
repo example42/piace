@@ -1,0 +1,25 @@
+{
+  "name": "web-01.example.test",
+  "environment": "feature-123",
+  "code_id": "static-fixture-code",
+  "resources": [
+    {"type": "File", "title": "/tmp/foo", "parameters": {"ensure": "file", "source": "puppet:///modules/a_module/foo"}}
+  ],
+  "edges": [],
+  "metadata": {
+    "/tmp/foo": {
+      "checksum": {"type": "sha256", "value": "{sha256}5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03"},
+      "content_uri": "puppet:///modules/a_module/files/foo",
+      "source": "puppet:///modules/a_module/foo",
+      "type": "file"
+    }
+  },
+  "recursive_metadata": {
+    "/tmp/bar": {
+      "puppet:///modules/a_module/bar": [
+        {"type": "directory", "relative_path": ".", "checksum": {"type": "ctime", "value": "{ctime}2016-02-19 17:38:36 -0800"}},
+        {"type": "file", "relative_path": "baz", "checksum": {"type": "sha256", "value": "{sha256}962dbd7362c34a20baac8afd13fba734d3d51cc2944477d96ee05a730e5edcb7"}}
+      ]
+    }
+  }
+}

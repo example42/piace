@@ -160,7 +160,7 @@ func (f *FileSource) LoadBaseline(ctx context.Context, target resolve.Target) (C
 		Certname:          cat.Certname,
 		Environment:       cat.Environment,
 		ProducerTimestamp: cat.ProducerTimestamp,
-		CatalogIdentity:   cat.Hash,
+		CatalogIdentity:   env.PayloadChecksum,
 		Producer:          cat.Producer,
 	}
 	return cat, prov, nil

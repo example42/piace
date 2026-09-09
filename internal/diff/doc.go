@@ -15,6 +15,9 @@
 // parameter to be masked. Normalization rejects malformed sensitivity metadata
 // and Sensitive wrappers without __pvalue before comparison.
 //
+// Source-backed content is evaluated even when references are unchanged. Each
+// catalog supplies its own explicit content context; historical sides cannot
+// use live retrieval. Exclusions do not cancel requested evidence resolution.
 // File content, source, checksum and checksum_value changes collapse into one
 // content evidence entry. Wrapped inline values are unwrapped only for evidence
 // resolution. Sensitivity or selectors on any content-bearing parameter suppress

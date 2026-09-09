@@ -4,6 +4,7 @@
 package normalize
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -22,6 +23,13 @@ import (
 // malformed catalog and fact data is an operational normalization
 // failure, never an empty catalog or factset.
 func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) {
+	var metadata map[string]model.StaticFileMetadata
+	var recursive map[string]json.RawMessage
+	if (len(raw.Metadata) > 0 && json.Unmarshal(raw.Metadata, &metadata) != nil) ||
+		(len(raw.RecursiveMetadata) > 0 && json.Unmarshal(raw.RecursiveMetadata, &recursive) != nil) {
+		diag := normalizeDiagnostic(raw.Certname, "malformed static catalog metadata")
+		return model.NormalizedCatalog{}, &diag
+	}
 	resourceWires, err := extractResources(raw.Resources)
 	if err != nil {
 		diag := normalizeDiagnostic(raw.Certname, err.Error())
@@ -61,11 +69,21 @@ func Catalog(raw puppetdb.Catalog) (model.NormalizedCatalog, *model.Diagnostic) 
 			return model.NormalizedCatalog{}, &diag
 		}
 
-		resources = append(resources, model.Resource{
+		resource := model.Resource{
 			Identity:            identity,
 			Parameters:          params,
 			SensitiveParameters: sensitivity,
-		})
+		}
+		if identity.Type == "File" {
+			if m, ok := metadata[identity.Title]; ok {
+				resource.StaticContent = &m
+			}
+			if d, ok := raw.CapturedContent[identity.Title]; ok {
+				resource.CapturedContent = &d
+			}
+			_, resource.RecursiveContent = recursive[identity.Title]
+		}
+		resources = append(resources, resource)
 	}
 	sort.Slice(resources, func(i, j int) bool {
 		return resourceLess(resources[i].Identity, resources[j].Identity)

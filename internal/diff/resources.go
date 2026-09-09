@@ -43,7 +43,8 @@ var fileContentBearingParameters = map[string]bool{
 // catalogs.
 func diffResources(
 	ctx context.Context,
-	certname, candidateEnvironment string,
+	certname string,
+	beforeContext, afterContext model.ContentContext,
 	beforeResources, afterResources map[model.ResourceIdentity]model.Resource,
 	retriever filecontent.ContentRetriever,
 ) ([]rawResourceChange, []model.Diagnostic) {
@@ -67,8 +68,8 @@ func diffResources(
 				Identity: identity,
 			})
 		default:
-			paramChanges, diags := diffParameters(ctx, certname, candidateEnvironment, identity,
-				beforeRes.Parameters, afterRes.Parameters, retriever)
+			paramChanges, diags := diffParameters(ctx, certname, identity,
+				filecontent.Side{Resource: beforeRes, Context: beforeContext}, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever)
 			changes = append(changes, paramChanges...)
 			diagnostics = append(diagnostics, diags...)
 		}
@@ -87,13 +88,14 @@ func diffResources(
 // recursively canonical maps/slices).
 func diffParameters(
 	ctx context.Context,
-	certname, candidateEnvironment string,
+	certname string,
 	identity model.ResourceIdentity,
-	before, after map[string]model.Value,
+	beforeSide, afterSide filecontent.Side,
 	retriever filecontent.ContentRetriever,
 ) ([]rawResourceChange, []model.Diagnostic) {
 	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
+	before, after := beforeSide.Resource.Parameters, afterSide.Resource.Parameters
 
 	isFile := identity.Type == fileResourceType
 	fileContentDiffers := false
@@ -130,9 +132,9 @@ func diffParameters(
 		})
 	}
 
-	if isFile && fileContentDiffers {
-		evidence, diag := filecontent.ResolveFileContentEvidence(ctx, certname, candidateEnvironment,
-			identity, unwrapContentParameters(before), unwrapContentParameters(after), retriever)
+	if isFile && (fileContentDiffers || filecontent.NeedsEvidence(beforeSide.Resource) || filecontent.NeedsEvidence(afterSide.Resource)) {
+		evidence, diag := filecontent.ResolveFileContentEvidence(ctx, certname,
+			identity, beforeSide, afterSide, retriever)
 		if diag != nil {
 			diagnostics = append(diagnostics, *diag)
 		}
@@ -209,25 +211,6 @@ func indexResources(resources []model.Resource) map[model.ResourceIdentity]model
 	out := make(map[model.ResourceIdentity]model.Resource, len(resources))
 	for _, r := range resources {
 		out[r.Identity] = r
-	}
-	return out
-}
-
-// File evidence resolves the managed value while publication retains the
-// original sensitivity declaration and suppresses derived digests.
-func unwrapContentParameters(params map[string]model.Value) map[string]model.Value {
-	out := make(map[string]model.Value, len(params))
-	for name, value := range params {
-		if fileContentBearingParameters[name] {
-			for {
-				wrapper, ok := value.(map[string]model.Value)
-				if !ok || !isSensitiveWrapper(wrapper) {
-					break
-				}
-				value = wrapper["__pvalue"]
-			}
-		}
-		out[name] = value
 	}
 	return out
 }

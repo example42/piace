@@ -240,11 +240,11 @@ prepended to per-target ones rather than replaced.
 | `version` | yes | `1` | |
 | `candidate.environment` | yes, unless `--candidate-environment` is passed | string | The deployed environment to compile against. The flag overrides it for every target |
 | `candidate.catalog_api` | yes | `v4` \| `v3` | No default. See [Choosing the catalog API](#choosing-the-catalog-api) |
-| `candidate.allow_v3_fallback` | no | bool (`false`) | v4 only. Permits falling back to v3 when the compiler lacks v4. Opt-in, never implicit |
+| `candidate.allow_v3_fallback` | no | bool (`false`) | v4 only. Permits v3 only after an empty-body or literal `Not Found` v4 HTTP 404. This ambiguous signal is opt-in, not proof that v4 is unsupported |
 | `candidate.trusted_facts_compiler_lookup` | no | bool (`false`) | v4 only. Asserts the compiler is configured to fetch the target's trusted facts from PuppetDB when the request omits them. PIACE never assumes this |
 | `facts.source` | yes | `puppetdb` \| `file` | Where the factset submitted for compilation comes from |
 | `facts.file` | with `source: file` | path | Must be unset with `source: puppetdb` |
-| `baseline.source` | yes | `puppetdb` \| `file` | Must be `file` with `catalog_api: v3`, and [not enforced](#if-you-must-use-v3-compare-against-a-captured-file) |
+| `baseline.source` | yes | `puppetdb` \| `file` | Comparison requires `file` with direct v3 or `allow_v3_fallback: true`; enforced before network activity |
 | `baseline.environment` | yes | string | A PuppetDB baseline in a different environment fails the target before diffing |
 | `baseline.file` | with `source: file` | path | Must be unset with `source: puppetdb` |
 | `exclude[].type` | | string | Exact, case-sensitive Puppet resource type |
@@ -399,13 +399,11 @@ both honour the v4 `persistence` field.
 
 ### If you must use v3, compare against a captured file
 
-> **PIACE does not currently refuse `catalog_api: v3` with
-> `baseline.source: puppetdb`.** It should, and config validation does not yet
-> enforce it. The configuration loads, the first comparison looks normal, and
-> the run corrupts the baseline it just read; the symptom on the next run is an
-> operational error naming a baseline-environment mismatch against the candidate
-> environment. **Set `baseline.source: file` yourself; nothing will do it for
-> you.**
+> Comparison rejects a PuppetDB baseline before any network activity whenever
+> direct v3 or permitted fallback could execute. A generic v4 HTTP 404 is
+> ambiguous: only an empty body or literal `Not Found` is fallback-eligible,
+> and only with explicit opt-in. Structured errors, HTTP 501, authentication,
+> malformed successful responses, and transport failures never trigger fallback.
 
 ```yaml
 defaults:
@@ -418,20 +416,48 @@ defaults:
     file: snapshots/catalogs/{certname}.json
 ```
 
-`capture catalog` compiles through the target's own `catalog_api`, so a v3
-capture stores what it compiled, but it compiled the *baseline* environment,
-which is what an agent run would have stored anyway. Capturing with
-`catalog_api: v4` avoids even that.
+`capture catalog` uses the configured API and reports the effective API and
+warnings, including failed v3 attempts. Its snapshot records the effective API.
+Capture is allowed to use v3, but its trusted identity is still the reader's,
+not an agent's. v3 can persist submitted facts and catalogs even if the request
+ultimately fails. Prefer v4 capture to disable both persistence operations.
 
 ---
 
 ## What the reports mean literally
 
+File-content evidence is resolved independently for each catalog, even when
+`source` is unchanged. Reports identify each side's environment, evidence source,
+historical status, and verification status. Inline content, validated compiled
+checksums, static-catalog metadata, and captured digests can establish historical
+evidence. Neither a PuppetDB baseline nor a file snapshot is verified by fetching
+today's environment bytes. Missing historical evidence is an operational error,
+not a clean comparison.
+
+Catalog capture retains source-content digests inside the checksummed payload.
+Keep the environment stable during capture: compilation and file retrieval are
+not an atomic observation. Static metadata is retained without mutable retrieval.
+Snapshots are validated PIACE projections, not complete original service responses.
+
+Live single-file retrieval supports authority-free `puppet:///` references only.
+Ordered source lists advance only after a recognized missing-file response, never
+after authentication, transport, or generic HTTP errors. Digests require full
+hexadecimal MD5, SHA-224, SHA-256, SHA-384, or SHA-512 values; matching Puppet
+`{algorithm}` prefixes are accepted. Unsupported or malformed checksums cannot
+become verified evidence. Different digest algorithms remain incomparable.
+
+Directory and recursive-source byte comparison is unsupported, including recursive
+`sourceselect` behavior. Changed references remain explicit reference-only evidence;
+unchanged references are indeterminate. Exclusions suppress differences but do not
+cancel content resolution or hide its diagnostics. Capture warns about unsupported
+trees, but retrieval or checksum errors prevent publishing the snapshot.
+
 **The v3 warning.** With `catalog_api: v3`, or any permitted v4-to-v3 fallback,
 `$trusted` in the compiled catalog can reflect the catalog-reader certificate
 rather than the target. The warning is non-suppressible, appears in all three
 formats, and does not change the exit status; it makes the trust semantics
-reviewable. v4 sends the target's own trusted facts, and fails compilation
+reviewable. It also describes v3 persistence consequences, including on failed
+requests. A file baseline protects input, not other PuppetDB consumers. v4 sends the target's own trusted facts, and fails compilation
 rather than inventing them when neither a validated input nor a configured
 compiler lookup is available. Supplied factset and trusted certnames must match
 the requested target. Trusted `authenticated` must be `"remote"` or `"local"`;

@@ -12,46 +12,13 @@ import (
 	"github.com/example42/piace/internal/transport"
 )
 
-// isVerifiedUnsupportedV4 implements this package's
-// verified-unsupported-v4-response detection rule, the judgment call
-// left to the adapter: a v4 request may fall back only for a documented
-// unsupported-endpoint or unsupported-version response.
-//
-// Rule: exactly HTTP 404 (Not Found) or 501 (Not Implemented) on the v4
-// request, decided from the status code alone, before any response body
-// is inspected.
-//
-//   - 404 is the literal, unambiguous signal that `POST
-//     /puppet/v4/catalog` is not a registered route at all, the case a
-//     Puppet Server or OpenVox build predating the v4 catalog endpoint
-//     would produce, since such a server has no route bound to that
-//     path. This is exactly "unsupported-endpoint." Current builds of
-//     both serve v4, so this signal means "too old", not "wrong
-//     product".
-//   - 501 is the standard HTTP status a server uses to say "the server
-//     does not support the functionality required to fulfill the
-//     request", the natural status for a server that recognizes the
-//     path/method but has deliberately not implemented it (e.g. a
-//     feature-flagged or version-gated v4 handler that responds rather
-//     than 404ing). This is "unsupported-version" in the absence of any
-//     publicly documented, fixture-verified alternative status/body
-//     convention for that exact case.
-//
-// This rule is deliberately status-code-only and independent of response
-// body content. Fallback must not happen after authentication,
-// authorization, timeout, malformed response, or candidate identity or
-// environment mismatch, and none of those conditions can produce a 404
-// or 501 by definition: 401 or 403 for auth and authz, a transport.Error
-// with no HTTP status at all for a timeout or a malformed response below
-// the HTTP layer, and a 2xx response body for an identity or environment
-// mismatch. So a status-code-only rule cannot accidentally satisfy that
-// prohibition list. A body-shape-based rule was deliberately rejected:
-// there is no publicly documented, fixture-verified "unsupported" error
-// body shape to check, and requiring one would make this rule silently
-// inert against a real server that signals unsupported via status code
-// alone, which is the common case for an unregistered route.
-func isVerifiedUnsupportedV4(statusCode int) bool {
-	return statusCode == http.StatusNotFound || statusCode == http.StatusNotImplemented
+// A generic 404 is an opt-in fallback signal, not proof of API support.
+// Bodies describing errors, malformed JSON and HTML are refused. There is no
+// verified Puppet Server contract for 501. A proxy can still mimic a generic
+// 404, so callers always report this ambiguity and the v3 persistence effects.
+func isFallbackEligibleV4(resp *transport.Response) bool {
+	return resp.StatusCode == http.StatusNotFound &&
+		(len(bytes.TrimSpace(resp.Body)) == 0 || string(bytes.TrimSpace(resp.Body)) == "Not Found")
 }
 
 // processResponse implements the response validation contract for a
@@ -120,14 +87,16 @@ func processResponse(resp *transport.Response, host, certname, environment strin
 	}
 
 	return puppetdb.Catalog{
-		Certname:        wc.Name,
-		Version:         string(wc.Version),
-		Environment:     wc.Environment,
-		TransactionUUID: derefOrEmpty(wc.TransactionUUID),
-		CatalogUUID:     derefOrEmpty(wc.CatalogUUID),
-		CodeID:          derefOrEmpty(wc.CodeID),
-		Resources:       wc.Resources,
-		Edges:           wc.Edges,
+		Certname:          wc.Name,
+		Version:           string(wc.Version),
+		Environment:       wc.Environment,
+		TransactionUUID:   derefOrEmpty(wc.TransactionUUID),
+		CatalogUUID:       derefOrEmpty(wc.CatalogUUID),
+		CodeID:            derefOrEmpty(wc.CodeID),
+		Resources:         wc.Resources,
+		Edges:             wc.Edges,
+		Metadata:          wc.Metadata,
+		RecursiveMetadata: wc.RecursiveMetadata,
 	}, nil
 }
 

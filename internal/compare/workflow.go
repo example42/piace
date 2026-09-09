@@ -64,6 +64,11 @@ type Workflow struct {
 func (w *Workflow) Run(ctx context.Context, cfg resolve.Config) model.Result {
 	result := model.NewResult(w.ToolVersion, w.now())
 	result.Invocation.Services = serviceProvenance(cfg.Services)
+	if err := resolve.ValidateComparisonTargets(cfg.Targets); err != nil {
+		result.Diagnostics = []model.Diagnostic{{Severity: model.SeverityError, Operation: model.OperationConfigure, Message: err.Error()}}
+		result.Reduce()
+		return result
+	}
 
 	result.Targets = make([]model.TargetResult, 0, len(cfg.Targets))
 	nodeDiffs := make([]model.NodeDiff, 0, len(cfg.Targets))
@@ -137,13 +142,12 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		tr.Diagnostics = append(tr.Diagnostics, *diag)
 		return tr
 	}
+	baseline.ContentContext = model.ContentContext{Source: string(target.Baseline.Source), Environment: baseline.Environment, Historical: true, CatalogIdentity: baselineProvenance.CatalogIdentity}
 
 	candidateCatalog, candidateProvenance, warnings, diag := w.Compiler.RequestCandidate(ctx, target, facts)
-	if diag != nil {
-		tr.Diagnostics = append(tr.Diagnostics, *diag)
-		return tr
+	if candidateProvenance.EffectiveAPI != "" {
+		tr.Candidate = &candidateProvenance
 	}
-	tr.Candidate = &candidateProvenance
 	// Compiler warnings, a permitted v4-to-v3 fallback notice, become
 	// warning-severity diagnostics so there is one channel a renderer and
 	// the reducer both read. The non-suppressible v3 trusted-fact warning
@@ -160,6 +164,11 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		})
 	}
 
+	if diag != nil {
+		tr.Diagnostics = append(tr.Diagnostics, *diag)
+		return tr
+	}
+
 	if candidateCatalog.Certname != target.Certname || candidateCatalog.Environment != target.Candidate.Environment {
 		tr.Diagnostics = append(tr.Diagnostics, inputDiagnostic(target.Certname, model.OperationRequestCandidate, "candidate identity or environment does not match the requested target"))
 		return tr
@@ -169,6 +178,7 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 		tr.Diagnostics = append(tr.Diagnostics, *diag)
 		return tr
 	}
+	candidate.ContentContext = model.ContentContext{Source: "compiler", Environment: candidate.Environment, CatalogIdentity: candidateCatalog.CodeID}
 
 	nodeDiff, diagnostics := diff.Diff(ctx, target, baseline, candidate, w.ContentRetriever)
 	tr.NodeDiff = &nodeDiff

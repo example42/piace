@@ -9,7 +9,7 @@ import (
 )
 
 // v3Defaults selects the v3 catalog API for every target.
-var v3Defaults = strings.Replace(defaultDefaults, "catalog_api: v4", "catalog_api: v3", 1)
+var v3Defaults = strings.Replace(fileBaselineDefaults(), "catalog_api: v4", "catalog_api: v3", 1)
 
 // TestAcceptance_V3WarningAppearsInEveryFormat: a v3 request emits a
 // prominent trusted-fact compatibility warning in text, JSON, and HTML,
@@ -18,6 +18,7 @@ func TestAcceptance_V3WarningAppearsInEveryFormat(t *testing.T) {
 	h := newHarness(t)
 	h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
 	h.writeConfigs(t, targetsYAML(v3Defaults, target("web-01.example.test")))
+	freezeBaseline(t, h, "web-01.example.test")
 
 	textOut := h.path("report.txt")
 	got := h.compare(t, "--text-out", textOut)
@@ -56,7 +57,7 @@ func TestAcceptance_V4ToV3Fallback(t *testing.T) {
 		wantFellBack  bool
 	}{
 		{"404 with fallback enabled falls back to v3", 404, true, exitcode.Success, true},
-		{"501 with fallback enabled falls back to v3", 501, true, exitcode.Success, true},
+		{"501 never falls back", 501, true, exitcode.CompilationFailure, false},
 		{"404 without opt-in is a compilation failure", 404, false, exitcode.CompilationFailure, false},
 		{"500 never falls back even with the opt-in", 500, true, exitcode.CompilationFailure, false},
 	}
@@ -67,12 +68,13 @@ func TestAcceptance_V4ToV3Fallback(t *testing.T) {
 			h.seedTarget("web-01.example.test", baseResources(), baseResources(), baseEdges())
 			h.compiler.v4Status = tc.v4Status
 
-			defaults := defaultDefaults
+			defaults := fileBaselineDefaults()
 			if tc.allowFallback {
 				defaults = strings.Replace(defaults, "    catalog_api: v4",
 					"    catalog_api: v4\n    allow_v3_fallback: true", 1)
 			}
 			h.writeConfigs(t, targetsYAML(defaults, target("web-01.example.test")))
+			freezeBaseline(t, h, "web-01.example.test")
 
 			got := h.compare(t)
 			if got.code != tc.wantCode {

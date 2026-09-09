@@ -57,22 +57,24 @@ type v4CatalogEnvelope struct {
 // Unlike internal/puppetdb's query-API Catalog carrier, the identity
 // field here is `name`, not `certname`, and resources and edges are
 // plain JSON arrays rather than a `{href, data}` expansion. Fields this
-// package does not consume (tags, classes, catalog_format, metadata,
-// recursive_metadata) are intentionally not declared and are dropped by
+// package does not consume (tags, classes, catalog_format) are intentionally not declared and are dropped by
 // encoding/json on unmarshal, the same lossy typed-struct round trip
 // internal/puppetdb's Factset and Catalog carriers already use for
 // snapshot payload construction (see internal/capture/workflow.go's
 // buildCatalogEnvelope, which marshals the typed puppetdb.Catalog rather
-// than raw response bytes).
+// than raw response bytes). Static metadata and recursive_metadata are retained
+// because content evidence depends on them.
 type wireCatalog struct {
-	Name            string          `json:"name"`
-	Version         wireVersion     `json:"version"`
-	Environment     string          `json:"environment"`
-	CodeID          *string         `json:"code_id"`
-	CatalogUUID     *string         `json:"catalog_uuid"`
-	TransactionUUID *string         `json:"transaction_uuid"`
-	Resources       json.RawMessage `json:"resources"`
-	Edges           json.RawMessage `json:"edges"`
+	Name              string          `json:"name"`
+	Version           wireVersion     `json:"version"`
+	Environment       string          `json:"environment"`
+	CodeID            *string         `json:"code_id"`
+	CatalogUUID       *string         `json:"catalog_uuid"`
+	TransactionUUID   *string         `json:"transaction_uuid"`
+	Resources         json.RawMessage `json:"resources"`
+	Edges             json.RawMessage `json:"edges"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
+	RecursiveMetadata json.RawMessage `json:"recursive_metadata,omitempty"`
 }
 
 func derefOrEmpty(s *string) string {

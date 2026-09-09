@@ -17,8 +17,8 @@ go test -race -count=1 ./...
 
 ## Project status
 
-The fixture-driven acceptance suite covers the behaviour end to end, except
-for three confirmations that need real infrastructure. Each is recorded as a
+The fixture-driven acceptance suite exercises the command path with local TLS
+services. Three original confirmations needing real infrastructure are recorded as
 skipped test carrying its confirmation procedure in
 [`cmd/piace/acceptance_assumptions_test.go`](../cmd/piace/acceptance_assumptions_test.go).
 
@@ -42,6 +42,16 @@ skipped test carrying its confirmation procedure in
   wrapped in a code fence.
 
 ## Continuous integration
+
+Phase 2 of 0.5.0 adds independent File-content contexts, historical capture
+digests, ordered source fallback, checksum validation, and comparison-only v3
+guards. Its end-to-end cases are in `cmd/piace/acceptance_phase2_test.go`.
+The static-catalog fixture in `internal/compiler/testdata/` is reduced from
+Puppet's published example, not a live capture; its README records the source.
+Source selection follows Puppet's File source implementation, while generic v4
+HTTP 404 fallback remains explicitly ambiguous and opt-in. Supported-version
+wire conformance is still required by steps 2.2 and 5.1 of
+[the 0.5.0 plan](plan-0.5.0.md).
 
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every pull
 request, on every push to `main`, and on every `v*` tag.

@@ -103,6 +103,14 @@ func fileContentSummary(e model.FileContentEvidence) string {
 	if e.EvidenceSource != "" {
 		summary += " (via " + string(e.EvidenceSource) + ")"
 	}
+	if e.Before != nil && e.After != nil {
+		summary += fmt.Sprintf(" [baseline %s/%s historical=%t verified=%t; candidate %s/%s historical=%t verified=%t]",
+			e.Before.Context.Environment, e.Before.Source, e.Before.Context.Historical, e.Before.Verified,
+			e.After.Context.Environment, e.After.Source, e.After.Context.Historical, e.After.Verified)
+	}
+	if e.ReferenceChanged {
+		summary += " [source reference changed]"
+	}
 	if e.Redacted {
 		return summary + " [redacted]"
 	}

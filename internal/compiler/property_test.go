@@ -156,27 +156,26 @@ func TestProperty_V3WarningAlwaysEmitted(t *testing.T) {
 	}
 }
 
-// TestProperty_FallbackOnlyOnVerifiedUnsupportedV4 is a property-based
+// TestProperty_FallbackOnlyOnEligibleV4Response is a property-based
 // test over randomly generated v4 failure status codes: a v4-to-v3
 // fallback must occur if and only if AllowV3Fallback is true AND the v4
-// response status is a verified-unsupported signal (404 or 501). Every
+// response is an empty-body 404 eligible under explicit policy. Every
 // other status is a forbidden fallback trigger: authentication,
 // authorization, timeout, malformed response, and identity or
 // environment mismatch. This iterates every status code in a
 // representative set combined with both AllowV3Fallback settings.
-func TestProperty_FallbackOnlyOnVerifiedUnsupportedV4(t *testing.T) {
+func TestProperty_FallbackOnlyOnEligibleV4Response(t *testing.T) {
 	statusCodes := []int{
 		http.StatusBadRequest,          // 400 - malformed request, never fallback
 		http.StatusUnauthorized,        // 401 - authentication, never fallback
 		http.StatusForbidden,           // 403 - authorization, never fallback
-		http.StatusNotFound,            // 404 - verified unsupported-v4
+		http.StatusNotFound,            // 404 - empty-body fallback candidate
 		http.StatusInternalServerError, // 500 - generic server error, never fallback
-		http.StatusNotImplemented,      // 501 - verified unsupported-v4
+		http.StatusNotImplemented,      // 501 - not a supported fallback signal
 		http.StatusServiceUnavailable,  // 503 - never fallback
 	}
 	unsupported := map[int]bool{
-		http.StatusNotFound:       true,
-		http.StatusNotImplemented: true,
+		http.StatusNotFound: true,
 	}
 
 	rng := rand.New(rand.NewSource(3))

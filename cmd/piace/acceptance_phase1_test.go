@@ -131,7 +131,7 @@ func TestAcceptance_ChecksummedWrongSnapshotIdentityStopsCompilation(t *testing.
 func TestAcceptance_SensitiveFileSourceStaysOutOfDebug(t *testing.T) {
 	h := newHarness(t)
 	certname := "web-01.example.test"
-	before := []resourceSpec{{Type: "File", Title: "/config", Parameters: map[string]any{"source": "puppet:///modules/app/private-before"}}}
+	before := []resourceSpec{{Type: "File", Title: "/config", Parameters: map[string]any{"source": "puppet:///modules/app/private-before", "checksum_value": contentHash("secret-file-before")}}}
 	after := []resourceSpec{{Type: "File", Title: "/config", Parameters: map[string]any{"source": "puppet:///modules/app/private-after"}}}
 	h.pdb.factsets[certname] = pdbFactset(certname, true)
 	h.pdb.catalogs[certname] = pdbCatalog(certname, "production", before, nil)

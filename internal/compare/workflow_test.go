@@ -219,7 +219,10 @@ func TestRun_V3WarningSurvivesToTheResult(t *testing.T) {
 	)
 
 	result := w.Run(context.Background(), resolve.Config{Targets: []resolve.Target{
-		testTarget("web-01.example.test", func(target *resolve.Target) { target.Candidate.CatalogAPI = config.CatalogAPIv3 }),
+		testTarget("web-01.example.test", func(target *resolve.Target) {
+			target.Candidate.CatalogAPI = config.CatalogAPIv3
+			target.Baseline.Source = config.BaselineSourceFile
+		}),
 	}})
 
 	if result.Outcome != exitcode.OutcomeClean {

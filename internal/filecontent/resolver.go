@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -15,10 +16,8 @@ import (
 
 // CompilerContentResolver is the compiler-backed ContentRetriever
 // implementation, built against *transport.Client exactly as
-// internal/puppetdb's and internal/compiler's adapters are. See doc.go's
-// "ContentResolver and its documented, unverified endpoint assumption"
-// section for the exact request shape this type issues and why it is
-// flagged unverified.
+// internal/puppetdb's and internal/compiler's adapters are. See doc.go for
+// source-selection policy and the scope of the endpoint evidence.
 type CompilerContentResolver struct {
 	client  *transport.Client
 	baseURL *url.URL
@@ -58,6 +57,7 @@ func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, 
 
 	u := *r.baseURL
 	u.Path = "/puppet/v3/file_content/" + mountPath
+	u.RawPath = ""
 	q := url.Values{}
 	q.Set("environment", rc.Environment)
 	u.RawQuery = q.Encode()
@@ -83,14 +83,17 @@ func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, 
 		return DigestEvidence{}, fmt.Errorf("filecontent: retrieving referenced content: %s", transport.SafeMessage(err))
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode == http.StatusNotFound && sourceAbsent(resp.Body, mountPath) {
+		return DigestEvidence{}, ErrSourceNotFound
+	}
+	if resp.StatusCode != http.StatusOK {
 		// resp.Body is deliberately never included in the returned error. The
 		// rule that adapters do not preserve raw body text, because a service
 		// error can echo values back, applies here exactly as it does everywhere
 		// else in this codebase, and this package's stricter rule that retrieved
 		// content bytes never cross into any returned or logged string makes it
 		// doubly true for a file-content endpoint response.
-		return DigestEvidence{}, fmt.Errorf("filecontent: compiler returned a non-2xx status (%d) retrieving referenced content", resp.StatusCode)
+		return DigestEvidence{}, fmt.Errorf("filecontent: compiler returned status %d instead of 200 retrieving referenced content", resp.StatusCode)
 	}
 
 	sum := sha256.Sum256(resp.Body)
@@ -101,11 +104,9 @@ func (r *CompilerContentResolver) Digest(ctx context.Context, reference string, 
 // documented form `puppet:///<mount-point>/<name>` (see doc.go) and
 // returns the `<mount-point>/<name>` path segment the compiler's
 // file_content endpoint expects, with its leading slash trimmed. Puppet's
-// documented form also permits an explicit server authority
-// (`puppet://<server>/<mount-point>/<name>`); PIACE always retrieves
-// through its own configured compiler endpoint regardless of any server
-// name embedded in the reference, so an authority component (if present)
-// is accepted but ignored rather than rejected.
+// documented form also permits explicit authorities, but PIACE supports only
+// authority-free references through its configured compiler. Explicit source
+// authorities fail without a request.
 //
 // The returned path is the one value in this package that a caller
 // concatenates onto a request path, and a `source` value is not operator
@@ -138,12 +139,26 @@ func parsePuppetSourceURI(reference string) (mountPath string, err error) {
 	if idx < 0 {
 		return "", errUnsupportedSourceScheme
 	}
+	if rest[:idx] != "" {
+		return "", errUnsupportedSourceAuthority
+	}
 	path := strings.TrimPrefix(rest[idx:], "/")
 	if path == "" {
 		return "", errUnsupportedSourceScheme
 	}
-	if strings.ContainsRune(path, 0) {
+	if strings.ContainsAny(path, "\x00\\?#") {
 		return "", errUnsafeSourcePath
+	}
+	// Reject encoded separators and traversal too. Puppet escapes source paths
+	// for transport, so a literal percent sequence must not bypass validation.
+	decoded, err := url.PathUnescape(path)
+	if err != nil || strings.ContainsAny(decoded, "\x00\\%") {
+		return "", errUnsafeSourcePath
+	}
+	for _, seg := range strings.Split(strings.TrimSuffix(decoded, "/"), "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return "", errUnsafeSourcePath
+		}
 	}
 	// A trailing "/" is a directory reference the endpoint serves nothing
 	// for, but it is already handled upstream (see doc.go's "Sources that
@@ -155,7 +170,21 @@ func parsePuppetSourceURI(reference string) (mountPath string, err error) {
 			return "", errUnsafeSourcePath
 		}
 	}
-	return path, nil
+	return decoded, nil
+}
+
+// A router's generic 404 is not evidence that one source is absent. Match
+// Puppet's file-content error contract without printing its echoed path.
+func sourceAbsent(body []byte, mountPath string) bool {
+	var response struct {
+		IssueKind string `json:"issue_kind"`
+	}
+	if json.Unmarshal(body, &response) == nil && response.IssueKind == "RESOURCE_NOT_FOUND" {
+		return true
+	}
+	return strings.TrimSpace(string(body)) == "Not Found: Could not find file_content "+mountPath
 }
 
 var _ ContentRetriever = (*CompilerContentResolver)(nil)
+
+var errUnsupportedSourceAuthority = errors.New("filecontent: explicit source authorities are unsupported; use the configured compiler with an authority-free puppet source")
