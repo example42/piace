@@ -50,8 +50,26 @@ import "testing"
 // PuppetDB version with more matching resources than the configured
 // result limit, and check that (a) it returns 200 with certname rows, and
 // (b) two runs return the same first `result_limit` certnames.
+//
+// CONFIRMED against PuppetDB 8.15.0 on 2026-09-09. Both hold. The root
+// endpoint accepts the PQL text, and `order_by` is honoured
+// server-side: the same nine-row query returned different three-row
+// samples under `asc` and `desc`, and the unlimited query returned its
+// rows in neither order, so the ordering is PuppetDB's rather than a
+// local sort of whatever arrived. The measurement also turned up two
+// things this condition did not ask about: an empty result is `[]` with
+// HTTP 200, never `null` (internal/impact's parseCertnames now refuses
+// `null` rather than reading it as an empty estimate), and a malformed
+// PQL is HTTP 400 with a text/plain body quoting the query back, which
+// is never echoed into a diagnostic. internal/impact/doc.go records the
+// full measurement.
+//
+// It stays here, skipped, because the confirmation is a record rather
+// than a test: nothing in CI can re-run it, and deleting it would leave
+// the next reader unable to tell a verified assumption from an
+// unexamined one.
 func TestOutstanding_PuppetDBImpactEndpointAssumptions(t *testing.T) {
-	t.Skip("requires a deployed PuppetDB; see this test's doc comment for the exact confirmation procedure")
+	t.Skip("confirmed against PuppetDB 8.15.0 on 2026-09-09; see this test's doc comment")
 }
 
 // TestOutstanding_SensitiveWireShape is another.
@@ -76,8 +94,39 @@ func TestOutstanding_PuppetDBImpactEndpointAssumptions(t *testing.T) {
 // against the deployed compiler with rich data enabled, capture the
 // response with `piace capture catalog`, and inspect the stored payload
 // for the parameter's encoding.
+//
+// PARTLY ANSWERED on 2026-09-09, against a deployed OpenVox 8.15.2
+// installation, and the half that was answered changes what the other
+// half is about.
+//
+// A PuppetDB baseline carries no sensitivity metadata of any encoding.
+// Puppet's PuppetDB terminus deletes every parameter named in
+// `sensitive_parameters`, and that key with it, before a catalog is
+// stored: `redact_sensitive_params` in
+// puppet/indirector/catalog/puppetdb.rb. So there is nothing on the
+// baseline side to recognize or to fail to recognize, and the disclosure
+// risk this condition describes does not exist there. The cost is
+// different and is a fidelity problem rather than a disclosure one: a
+// sensitive parameter cannot be compared against a PuppetDB baseline at
+// all.
+//
+// The compiler side is still open, and is now the whole of the
+// condition. Neither catalog in that lab contained a sensitive parameter,
+// so `sensitive_parameters` appeared zero times in both the stored
+// baseline and the v4 compiler response, and whether a v4 response
+// carries the key at all remains unmeasured. What is measured is that
+// the same lab's compiler emits Pcore rich data for other types: a
+// `Regexp` parameter arrived as
+// `{"__ptype":"Regexp","__pvalue":"..."}` while the stored baseline held
+// the stringified form, which is the finding internal/model/pcore.go
+// exists for. That establishes the generic-data encoding is in use,
+// which is evidence about the mechanism and not about `Sensitive`
+// itself.
+//
+// Closing it needs a fixture manifest declaring a sensitive parameter,
+// compiled through v4 and inspected. That is step 5.1 of the 0.5.0 plan.
 func TestOutstanding_SensitiveWireShape(t *testing.T) {
-	t.Skip("requires a rich-data-enabled compiler; see this test's doc comment for the exact confirmation procedure")
+	t.Skip("partly answered on 2026-09-09; the compiler side is still open, see this test's doc comment")
 }
 
 // TestOutstanding_StructuredOutputWireShape is v0.2.0's addition to this

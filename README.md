@@ -142,16 +142,29 @@ disagree. Only the text report omits anything.
   options, and names only the first few certnames per estimate.
   `--impact-nodes` names all of them, up to the configured `result_limit`.
 - **JSON** (`--json-out`): complete, `schema_version`-tagged, canonically
-  encoded. Identical inputs produce byte-identical bytes.
+  encoded. One result always encodes to the same bytes. Two runs over the same
+  catalogs and configuration reach the same comparison, but not the same
+  bytes: each stamps its own `invocation.timestamp_utc`. Compare
+  `jq -S 'del(.invocation)'` of two documents to check the comparison
+  reproduced.
 - **HTML** (`--html-out`): complete. One self-contained file with inline CSS,
   no JavaScript, no webfonts and no external assets, so `file://` is all it
   needs. You land on an index of the run; every list of rows is a `<details>`
   section whose heading counts what it holds. Failures, the v3 warning and
   outcome badges never collapse. Printing expands everything.
 
-A target whose *only* differences are edges is still reported as changed: the
-text report prints a count in place of the list. A run that exits non-zero never
-reads as if nothing changed.
+The text report drops edge changes because a run's edge differences usually
+outnumber its resource differences and are usually connected to them, so a
+linear CI log reads better without them. Usually, not always: an edge can
+change with neither of its endpoints changing, when a `require` or `before`
+moves between two resources that are otherwise identical. A target whose *only*
+differences are edges is still reported as changed, and the text report prints
+a count in place of the list rather than nothing. A run that exits non-zero
+never reads as if nothing changed.
+
+Edge groups reach the change assessment too, sharing one budget with resource
+groups, so an edge-only comparison is assessed rather than silently skipped.
+JSON and HTML carry every edge change in full.
 
 ### Debugging a request
 
@@ -204,6 +217,15 @@ directory of the file that names it. `facts.file` and `baseline.file` resolve
 against the target file; the TLS paths, `token_file` and `policy_notes_file`
 resolve against the services file. Nothing resolves against the working
 directory.
+
+Snapshot paths carry one restriction the others do not: `facts.file` and
+`baseline.file` must resolve *inside* the target file's directory. A value that
+climbs out of it with `..`, or an absolute path pointing elsewhere, is refused
+rather than resolved, and a certname carrying a path separator, a `..` or a NUL
+byte is refused before it can be substituted into one. A snapshot path is
+built partly from a certname, which comes from configuration but names a
+machine, so the containment check is what keeps the expansion from choosing the
+directory as well as the file.
 
 ### `targets.yaml`
 
@@ -263,7 +285,11 @@ prepended to per-target ones rather than replaced.
 | `impact_estimate.result_limit` | with `enabled: true` | int > 0 | Required. Bounds the certnames retained per estimate |
 | `fail_on_diff` | no | bool (`false`) | A non-excluded difference on such a target exits `10` |
 
-`{certname}` may appear in a snapshot path only as a whole path component.
+`{certname}` may appear in a snapshot path as a whole path component, optionally
+carrying a file extension: `snapshots/catalogs/{certname}.json` and
+`snapshots/{certname}` are both valid, and the token must start the component
+with only a `.`-prefixed suffix allowed to follow it. `snapshots/{certname}-catalog.json`
+is refused, as is any component naming the token twice.
 
 ### `services.yaml`
 
@@ -604,15 +630,28 @@ File summaries retain state, sources and verification without digests or
 target-specific provenance. Individual target changes retain that provenance.
 The result document uses `schema_version: 3`; `explain` requires this version.
 
-Malformed sensitivity lists and wrappers fail normalization. Synthetic tests
-cover compiler arrays and PuppetDB expanded containers, reports, normal debug
-output and inference. These tests do not establish which sensitivity metadata
-each deployed PuppetDB version retains. Other encodings need wire conformance
-verification; see [docs/development.md](docs/development.md#project-status).
+Malformed sensitivity lists and wrappers fail normalization.
+
+**What is verified, and what is not.** Two sensitivity representations are
+recognized: a resource-level `sensitive_parameters` list, and a recursive Pcore
+`Sensitive` wrapper. Synthetic tests cover both across compiler arrays and
+PuppetDB expanded containers, all three report formats, normal debug output and
+the inference request.
+
+What is now measured, on a deployed OpenVox 8.15.2 installation, is that a
+PuppetDB baseline carries neither. Puppet's own PuppetDB terminus deletes every
+parameter named in `sensitive_parameters`, and that key with them, before a
+catalog is stored, so a sensitive parameter is simply absent from a stored
+catalog rather than present in some other encoding. Whether a compiler's v4
+catalog response carries `sensitive_parameters` at all has not been measured on
+any deployment: no catalog in that lab had a sensitive parameter, so the
+question is open, and until it is settled the "marked sensitive by either
+catalog" rule is exercised by synthetic fixtures only. Both are tracked in
+[the 0.5.0 plan](docs/plan-0.5.0.md); see also
+[docs/development.md](docs/development.md#project-status).
 
 `--debug-dump-dir` remains an explicit raw-body disclosure outside normal debug
-output. Cross-target aggregation disclosure policy is tracked separately in
-phase 3 of [the 0.5.0 plan](docs/plan-0.5.0.md).
+output.
 
 ## Snapshots
 

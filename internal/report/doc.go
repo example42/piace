@@ -65,7 +65,7 @@
 //   - Text is the only format that omits, because a CI log is a linear
 //     read with no way to skip a section and no way to expand one. It
 //     drops edge changes (a run's edge differences routinely outnumber
-//     its resource differences, being a consequence of them), an
+//     its resource differences and are usually connected to them), an
 //     estimate's PQL and request options (identical in shape on every
 //     line of a section that can run to hundreds of entries), and an
 //     estimate's certnames past Options.inlineCertnameCap unless

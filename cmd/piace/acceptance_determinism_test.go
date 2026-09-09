@@ -1,16 +1,29 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/example42/piace/internal/exitcode"
+	"github.com/example42/piace/internal/model"
+	"github.com/example42/piace/internal/report"
 )
 
 // TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs checks
 // determinism at the level that matters: identical input catalogs and
 // configuration produce identical bytes, not merely a deterministic
 // re-render of one in-memory result.
+//
+// The clock is frozen here, as it is for every case in this suite, so
+// what this establishes is that nothing *except* the invocation
+// timestamp can differ between two runs over the same inputs. A
+// production run stamps a real timestamp and two runs are never at the
+// same instant, so this is not on its own the claim that a comparison
+// reproduces:
+// TestAcceptance_TheComparisonIsReproducibleAcrossClocks below is, and
+// it runs under two different clocks deliberately.
 //
 // The whole pipeline runs twice, and the second run serves the same
 // catalogs with a different resource, parameter, and edge *insertion
@@ -110,4 +123,69 @@ func TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs(t *testing.T) {
 				format.name, format.a, format.b)
 		}
 	}
+}
+
+// The claim the byte-identical test above cannot make.
+//
+// That test freezes the clock, because the harness does, and every
+// artifact then matches to the byte. Production does not freeze the
+// clock: two runs are never at the same instant, so the documentation's
+// old promise that identical catalogs produce identical artifact bytes
+// was true only of the test harness. What is actually reproducible is
+// the comparison, and this runs the whole pipeline twice under two
+// different clocks to say so: the artifacts differ, and everything in
+// them except the invocation metadata does not.
+func TestAcceptance_TheComparisonIsReproducibleAcrossClocks(t *testing.T) {
+	h := newHarness(t)
+	certname := "web-01.example.test"
+	h.seedTarget(certname,
+		[]resourceSpec{{Type: "Service", Title: "nginx", Parameters: map[string]any{"ensure": "running"}}},
+		[]resourceSpec{{Type: "Service", Title: "nginx", Parameters: map[string]any{"ensure": "stopped"}}},
+		baseEdges())
+	h.writeConfigs(t, targetsYAML(defaultDefaults, target(certname)))
+
+	run := func(at time.Time) artifacts {
+		t.Helper()
+		previous := clock
+		clock = func() time.Time { return at }
+		defer func() { clock = previous }()
+		got := h.compare(t)
+		if got.code != exitcode.Success {
+			t.Fatalf("exit = %d:\n%s", got.code, got.stderr)
+		}
+		return got
+	}
+
+	first := run(time.Date(2026, 9, 10, 8, 0, 0, 0, time.UTC))
+	second := run(time.Date(2026, 11, 2, 17, 43, 11, 0, time.UTC))
+
+	if first.json == second.json {
+		t.Fatal("two runs at different instants produced identical documents, so this asserts nothing")
+	}
+
+	firstSemantic := semanticProjection(t, first.json)
+	secondSemantic := semanticProjection(t, second.json)
+	if firstSemantic != secondSemantic {
+		t.Errorf("the comparison did not reproduce across two clocks:\n%s\n%s", firstSemantic, secondSemantic)
+	}
+	if !strings.Contains(firstSemantic, `"ensure"`) {
+		t.Fatalf("the projection kept no comparison to compare:\n%s", firstSemantic)
+	}
+}
+
+// semanticProjection decodes a stored document and re-encodes it without
+// its invocation metadata, which is what report.SemanticProjection does
+// for a live result and what `jq -S 'del(.invocation)'` does for a
+// reader with two files.
+func semanticProjection(t *testing.T, document string) string {
+	t.Helper()
+	var decoded model.Result
+	if err := json.Unmarshal([]byte(document), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	projected, err := report.SemanticProjection(decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(projected)
 }

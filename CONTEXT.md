@@ -122,8 +122,11 @@ PIACE reads it, never invokes git, and treats its free text as untrusted data.
 _Avoid_: git diff, commit info, PR metadata
 
 **Pseudonymized identity**:
-A stable per-run substitute for a certname or service authority used only in an
-inference request body. It never appears in a change assessment or any report.
+A stable per-run substitute for a certname, used only in the two structured
+identity fields of an inference request body: a target's node and a group's
+node list. It never appears in a change assessment or any report, and it does
+not reach free text, so a certname written into a resource title, a parameter
+value or a change context travels as itself.
 _Avoid_: anonymized, masked, redacted
 
 ## Design
@@ -176,11 +179,17 @@ would misdescribe its own contents for the rest of its life.
 
 ### The change assessment stays out of the result document
 
-The result document is canonically encoded and `schema_version`-tagged so that
-identical input catalogs and configuration produce byte-identical artifacts,
-and the acceptance suite asserts exactly that. A model-generated change
-assessment cannot hold that property: even with sampling pinned, a
-provider-side model revision changes the bytes.
+The result document is canonically encoded and `schema_version`-tagged, so one
+result always encodes to the same bytes and two runs over the same catalogs and
+configuration reach the same comparison. Those are two claims, not one: a
+production run stamps its own `invocation.timestamp_utc`, so what reproduces
+across runs is the document with its invocation metadata removed, which
+`report.SemanticProjection` defines and a reader can compute with
+`jq -S 'del(.invocation)'`. The acceptance suite asserts both, the second by
+running the pipeline twice under two different clocks.
+
+A model-generated change assessment holds neither property: even with sampling
+pinned, a provider-side model revision changes the prose.
 
 Rather than weaken the invariant to accommodate an advisory feature, the
 assessment is a separate artifact with its own `ai_schema_version`, carrying a

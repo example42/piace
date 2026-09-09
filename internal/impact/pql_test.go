@@ -7,7 +7,7 @@ import (
 	"github.com/example42/piace/internal/model"
 )
 
-func TestBuildPQL_MatchesDesignSection8Verbatim(t *testing.T) {
+func TestBuildPQL_MatchesTheSpecifiedTextVerbatim(t *testing.T) {
 	got, err := BuildPQL(model.ResourceIdentity{Type: "Package", Title: "nginx"})
 	if err != nil {
 		t.Fatalf("BuildPQL: %v", err)
