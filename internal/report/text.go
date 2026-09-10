@@ -246,18 +246,37 @@ func candidateProvenanceLine(p model.CandidateProvenance) string {
 // it gets an explicit note rather than an empty list: a report that
 // printed nothing here would read as "no changes" on a run that exits
 // non-zero, which is exactly the stdout/exit-code contradiction
-// writeReports in cmd/piace is ordered to prevent.
+// writeReports in cmd/piace is ordered to prevent. The same applies when
+// the only resource rows are content_indeterminate: those stay out of
+// the change list (they are verify_content notices) but still set
+// HasDifference, so the section must not read as "changes: none".
 func writeTextNodeDiff(b *bytes.Buffer, nd model.NodeDiff) {
+	displayed := displayedResourceChanges(nd.ResourceChanges)
+	var indeterminate int
+	for _, c := range nd.ResourceChanges {
+		if indeterminateParameterChange(c) {
+			indeterminate++
+		}
+	}
 	switch {
 	case !nd.HasDifference:
 		textf(b, "    changes: none\n")
-	case len(nd.ResourceChanges) == 0:
-		textf(b, "    changes: %d dependency-edge difference(s) only, not shown in the text report\n", len(nd.EdgeChanges))
-	default:
-		textf(b, "    changes (%d):\n", len(nd.ResourceChanges))
-		for _, c := range nd.ResourceChanges {
+	case len(displayed) > 0:
+		textf(b, "    changes (%d):\n", len(displayed))
+		for _, c := range displayed {
 			textf(b, "      %s\n", changeSummary(c))
 		}
+	case len(nd.EdgeChanges) > 0 && indeterminate > 0:
+		textf(b, "    changes: %d dependency-edge difference(s) only, not shown in the text report; %d unverifiable File content comparison(s) in verify_content notices\n", len(nd.EdgeChanges), indeterminate)
+	case len(nd.EdgeChanges) > 0:
+		textf(b, "    changes: %d dependency-edge difference(s) only, not shown in the text report\n", len(nd.EdgeChanges))
+	case indeterminate > 0:
+		textf(b, "    changes: %d unverifiable File content comparison(s); see verify_content notices\n", indeterminate)
+	default:
+		// HasDifference with neither displayed resources, edges, nor
+		// indeterminate parameter rows should not occur; keep a visible
+		// mark rather than "none".
+		textf(b, "    changes: differences present but not shown in the text report\n")
 	}
 	for _, e := range nd.Exclusions {
 		textf(b, "    excluded: %s\n", exclusionSummary(e))

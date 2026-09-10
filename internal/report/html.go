@@ -37,7 +37,10 @@ import (
 // disclosure is a failure: the per-target error banners, the v3 warning,
 // the run diagnostics and the outcome badges stay in the scanning path,
 // because a mark a reader has to go looking for is not a visible mark.
-// See doc.go.
+// Warning-severity target diagnostics collapse into a counted Notices
+// chip; their count stays in the scanning path. content_indeterminate
+// File parameter rows are omitted from Resource changes for the same
+// reason those notices exist (see displayedResourceChange). See doc.go.
 //
 // Everything variable is interpolated through html/template, whose
 // contextual escaping is what makes an attacker-shaped resource title or
@@ -182,9 +185,13 @@ type htmlTarget struct {
 	// capture: those are the bytes being compared, whatever API this
 	// run used.
 	BaselineV3Warning string
-	Failures          []htmlDiagnostic
-	Warnings          []htmlDiagnostic
-	Compared          bool
+	Failures []htmlDiagnostic
+	// Warnings are warning-severity target diagnostics (verify_content and
+	// similar). They render as a closed Notices chip with a count, not as
+	// always-open banners: a real catalog can emit many of them, and the
+	// scanning path only needs the count.
+	Warnings []htmlDiagnostic
+	Compared bool
 	// Changes and EdgeChanges are the target's differences, split because
 	// the page discloses them separately: a run's edge differences
 	// routinely outnumber its resource differences and are usually
@@ -285,7 +292,7 @@ func buildHTMLView(r model.Result, a *assess.Assessment, canonicalJSON string) h
 	for _, t := range r.Targets {
 		view.Targets = append(view.Targets, buildHTMLTarget(t))
 		if t.NodeDiff != nil {
-			changes += len(t.NodeDiff.ResourceChanges)
+			changes += len(displayedResourceChanges(t.NodeDiff.ResourceChanges))
 			edges += len(t.NodeDiff.EdgeChanges)
 		}
 	}
@@ -296,6 +303,9 @@ func buildHTMLView(r model.Result, a *assess.Assessment, canonicalJSON string) h
 			view.EdgeAggregate = append(view.EdgeAggregate, htmlEdgeGroup{
 				htmlEdge: edgeKeyParts(g.Key), Targets: targets,
 			})
+			continue
+		}
+		if !displayedAggregateGroup(g) {
 			continue
 		}
 		view.Aggregate = append(view.Aggregate, htmlGroup{
@@ -464,7 +474,7 @@ func buildHTMLTarget(t model.TargetResult) htmlTarget {
 
 	if t.NodeDiff != nil {
 		out.HasDifference = t.NodeDiff.HasDifference
-		for _, c := range t.NodeDiff.ResourceChanges {
+		for _, c := range displayedResourceChanges(t.NodeDiff.ResourceChanges) {
 			out.Changes = append(out.Changes, changeParts(c))
 		}
 		for _, c := range t.NodeDiff.EdgeChanges {

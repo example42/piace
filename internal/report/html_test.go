@@ -172,10 +172,14 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 		"Dependency-graph edge groups", // aggregate edge groups
 		"Queried resources",            // the estimate list
 		"Excluded differences",         // visibly marked, not disclosed
+		"Notices",                      // verify_content and similar warnings
 	} {
 		if !strings.Contains(visible, summary) {
 			t.Errorf("HTML report has no disclosure headed %q", summary)
 		}
+	}
+	if !strings.Contains(visible, `Notices <span class="count">2</span>`) {
+		t.Error("the closed Notices chip does not carry the warning count")
 	}
 	// ...and no list of rows is in the scanning path: a section left open
 	// buries every section after it, which on a real run means four
@@ -189,7 +193,9 @@ func TestHTML_KeepsEverythingBehindDisclosure(t *testing.T) {
 // Catalog retrieval failure, compilation failure and the v3 trusted-fact
 // warning have to be *visibly* marked, and a mark inside a closed
 // <details> is not visible. Everything else on a target may collapse;
-// these may not.
+// these may not. Warning-severity diagnostics are the opposite: they
+// belong behind the Notices chip, with only the count in the scanning
+// path.
 //
 // TestHTML_VisiblyMarksRequiredStates cannot catch this: it substring
 // searches, and collapsed content still matches.
@@ -219,6 +225,25 @@ func TestHTML_KeepsFailuresOutOfDisclosure(t *testing.T) {
 		}
 		if strings.Contains(out[card:at], "<details") {
 			t.Errorf("%q is inside a disclosure; it has to be visibly marked", mark)
+		}
+	}
+
+	for _, notice := range []string{
+		"historical catalog has no retained content digest",
+		"directory, recursive or non-file source",
+	} {
+		at := strings.Index(out, notice)
+		if at < 0 {
+			t.Errorf("HTML report does not show notice %q at all", notice)
+			continue
+		}
+		card := strings.LastIndex(out[:at], `<section class="card">`)
+		if card < 0 {
+			t.Errorf("notice %q is not inside a target card", notice)
+			continue
+		}
+		if !strings.Contains(out[card:at], "<details") {
+			t.Errorf("notice %q is outside a disclosure; warning-severity diagnostics collapse into Notices", notice)
 		}
 	}
 }

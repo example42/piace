@@ -9,8 +9,9 @@ import (
 // sampleResult is one result document exercising every element the three
 // renderers have to handle: a clean target, a failed target, a target
 // with resource/parameter/edge changes, File-content evidence, a redacted
-// value, an exclusion, the v3 warning, an aggregate group of each shape,
-// and both a completed and a failed impact estimate.
+// value, an exclusion, verify_content notices, the v3 warning, an
+// aggregate group of each shape, and both a completed and a failed
+// impact estimate.
 func sampleResult() model.Result {
 	r := model.NewResult("test", "2026-08-25T12:00:00Z")
 
@@ -27,6 +28,18 @@ func sampleResult() model.Result {
 				RequestedAPI: config.CatalogAPIv3, EffectiveAPI: config.CatalogAPIv3,
 				Environment: "feature-123", FactSource: model.SourceKindPuppetDB,
 				V3Warning: model.V3TrustedFactWarning,
+			},
+			Diagnostics: []model.Diagnostic{
+				{
+					Severity: model.SeverityWarning, Operation: model.OperationVerifyContent,
+					Certname: "web-01.example.test",
+					Message:  "File[/opt/pabawi/certs/puppetdb/ca.pem]: historical catalog has no retained content digest; current environment bytes cannot verify historical content",
+				},
+				{
+					Severity: model.SeverityWarning, Operation: model.OperationVerifyContent,
+					Certname: "web-01.example.test",
+					Message:  "File[debug scripts]: directory, recursive or non-file source: byte-level content comparison is unsupported; recursive sourceselect rules are not evaluated",
+				},
 			},
 			NodeDiff: &model.NodeDiff{
 				Certname:      "web-01.example.test",
