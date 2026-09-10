@@ -222,18 +222,66 @@ func targetCountList(certnames []string) string {
 	return fmt.Sprintf("%d %s: %s", len(certnames), noun, strings.Join(certnames, ", "))
 }
 
+// displayedResourceChange reports whether a resource change belongs in
+// the text and HTML change lists. A parameter_changed row whose File
+// content is content_indeterminate does not: that state means the bytes
+// could not be compared, not that they differ, and the same resources
+// already appear as verify_content notices. Outcome, HasDifference, and
+// the JSON document still carry the row.
+func displayedResourceChange(c model.ResourceChange) bool {
+	if c.Kind == model.ChangeParameterChanged && c.FileContent != nil && c.FileContent.State == model.FileContentIndeterminate {
+		return false
+	}
+	return true
+}
+
+// displayedResourceChanges is the resource-change list text and HTML
+// actually print. Counts that header those lists must use this, not
+// len(NodeDiff.ResourceChanges).
+func displayedResourceChanges(changes []model.ResourceChange) []model.ResourceChange {
+	displayed := make([]model.ResourceChange, 0, len(changes))
+	for _, c := range changes {
+		if displayedResourceChange(c) {
+			displayed = append(displayed, c)
+		}
+	}
+	return displayed
+}
+
+// indeterminateParameterChange reports a content_indeterminate
+// parameter_changed row that displayedResourceChange omits.
+func indeterminateParameterChange(c model.ResourceChange) bool {
+	return !displayedResourceChange(c)
+}
+
+// displayedAggregateGroup reports whether an aggregate group belongs in
+// a human-facing resource-change list. content_indeterminate parameter
+// groups are omitted for the same reason as per-target rows; edge groups
+// are handled by the caller (text drops them, HTML discloses them).
+func displayedAggregateGroup(g model.AggregateGroup) bool {
+	if g.Key.Kind != model.ChangeParameterChanged {
+		return true
+	}
+	return g.FileContent == nil || g.FileContent.State != model.FileContentIndeterminate
+}
+
 // displayedGroups filters an aggregate diff down to the groups the text
 // report shows. Edge groups are dropped: a CI log is a linear read with
 // no way to skip a section, and a run's edge groups routinely outnumber
-// its resource groups.
+// its resource groups. content_indeterminate parameter groups are
+// dropped for the same reason as per-target rows (see
+// displayedResourceChange).
 //
-// HTML does not use this, since it renders edge groups behind their own
-// disclosure, and the underlying model.AggregateDiff is untouched: edge
-// changes survive aggregation as a distinct kind, and they do here too.
+// HTML uses displayedAggregateGroup for resource groups and keeps edge
+// groups behind their own disclosure. The underlying
+// model.AggregateDiff is untouched either way.
 func displayedGroups(groups []model.AggregateGroup) []model.AggregateGroup {
 	displayed := make([]model.AggregateGroup, 0, len(groups))
 	for _, g := range groups {
 		if g.Key.Kind == model.ChangeEdgeAdded || g.Key.Kind == model.ChangeEdgeRemoved {
+			continue
+		}
+		if !displayedAggregateGroup(g) {
 			continue
 		}
 		displayed = append(displayed, g)

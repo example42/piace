@@ -153,11 +153,19 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 		"~ File[/inline] content: changed (via inline_content)",
 		"~ File[/checksum] content: changed (via compiled_checksum)",
 		"~ File[/retrieved] content: changed (via mixed)",
-		"~ File[/indeterminate] content: content_indeterminate",
 	} {
 		if !strings.Contains(got.stdout, want) {
 			t.Errorf("the report is missing the evidence line %q\n%s", want, got.stdout)
 		}
+	}
+	// content_indeterminate stays in the JSON document and still drives
+	// HasDifference, but text omits it from the change list: the same
+	// resource is already named by the verify_content notice.
+	if strings.Contains(got.stdout, "~ File[/indeterminate] content: content_indeterminate") {
+		t.Errorf("content_indeterminate must not appear under the text change list\n%s", got.stdout)
+	}
+	if !strings.Contains(got.stdout, "File[/indeterminate]") || !strings.Contains(got.stdout, "verify_content") {
+		t.Errorf("content_indeterminate must still surface as a verify_content notice\n%s", got.stdout)
 	}
 	// No format renders managed content bytes.
 	for artifactName, artifact := range got.all() {

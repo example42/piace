@@ -244,6 +244,88 @@ func TestText_EdgeOnlyTargetIsNotReportedAsUnchanged(t *testing.T) {
 	}
 }
 
+// TestText_IndeterminateContentIsNotListedAsAChange is the display half
+// of the never-clean contract. content_indeterminate still sets
+// HasDifference and still reaches JSON, but the text change list must
+// not present it as a verified delta: the verify_content notice already
+// names the resource.
+func TestText_IndeterminateContentIsNotListedAsAChange(t *testing.T) {
+	r := indeterminateOnlyResult()
+	data, err := Text(r, nil, Options{})
+	if err != nil {
+		t.Fatalf("Text: %v", err)
+	}
+	out := string(data)
+
+	if strings.Contains(out, "changes: none") {
+		t.Errorf("indeterminate-only difference was reported as no changes\n---\n%s", out)
+	}
+	if strings.Contains(out, "~ File[/etc/motd] content: content_indeterminate") {
+		t.Errorf("content_indeterminate appears under the change list\n---\n%s", out)
+	}
+	if !strings.Contains(out, "unverifiable File content comparison(s); see verify_content notices") {
+		t.Errorf("the indeterminate-only note is missing\n---\n%s", out)
+	}
+	if !strings.Contains(out, "WARNING [verify_content]") || !strings.Contains(out, "File[/etc/motd]") {
+		t.Errorf("the verify_content notice is missing\n---\n%s", out)
+	}
+}
+
+// TestHTML_IndeterminateContentIsNotListedAsAChange mirrors the text
+// policy: Notices carry the resource; Resource changes do not.
+func TestHTML_IndeterminateContentIsNotListedAsAChange(t *testing.T) {
+	r := indeterminateOnlyResult()
+	data, err := HTML(r, nil)
+	if err != nil {
+		t.Fatalf("HTML: %v", err)
+	}
+	visible := string(data)[:strings.Index(string(data), "<h2>Result document</h2>")]
+
+	if strings.Contains(visible, "No non-excluded differences") {
+		t.Errorf("indeterminate-only difference was reported as no changes\n---\n%s", visible)
+	}
+	if strings.Contains(visible, "Resource changes") {
+		t.Errorf("content_indeterminate appears under Resource changes\n---\n%s", visible)
+	}
+	if !strings.Contains(visible, `Notices <span class="count">1</span>`) {
+		t.Errorf("the Notices chip is missing\n---\n%s", visible)
+	}
+	if !strings.Contains(visible, "File[/etc/motd]") || !strings.Contains(visible, "verify_content") {
+		t.Errorf("the verify_content notice is missing\n---\n%s", visible)
+	}
+	// JSON embedded at the bottom still holds the row (html-escaped).
+	if !strings.Contains(string(data), "content_indeterminate") {
+		t.Error("the JSON document dropped content_indeterminate")
+	}
+}
+
+func indeterminateOnlyResult() model.Result {
+	r := model.NewResult("test", "2026-08-25T12:00:00Z")
+	r.Targets = []model.TargetResult{{
+		Certname: "web-01.example.test",
+		Config:   &model.ConfigProvenance{},
+		Diagnostics: []model.Diagnostic{{
+			Severity: model.SeverityWarning, Operation: model.OperationVerifyContent,
+			Certname: "web-01.example.test",
+			Message:  "File[/etc/motd]: historical catalog has no retained content digest; current environment bytes cannot verify historical content",
+		}},
+		NodeDiff: &model.NodeDiff{
+			Certname:      "web-01.example.test",
+			HasDifference: true,
+			ResourceChanges: []model.ResourceChange{{
+				Kind:      model.ChangeParameterChanged,
+				Identity:  model.ResourceIdentity{Type: "File", Title: "/etc/motd"},
+				Parameter: "content",
+				FileContent: &model.FileContentEvidence{
+					State: model.FileContentIndeterminate, Redacted: true,
+				},
+			}},
+		},
+	}}
+	r.Reduce()
+	return r
+}
+
 // TestJSON_KeepsWhatTextAndHTMLOmit is where edges, suppression counts,
 // complete node diffs and the exact generated PQL are actually
 // discharged. Trimming the two human-facing formats is only defensible

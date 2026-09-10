@@ -32,7 +32,9 @@ package report
 // they belong to, because catalog retrieval failure and compilation
 // failure have to be visibly marked and a mark a reader has to go
 // looking for is not one. Same for the impact-estimate label and note
-// above the estimates.
+// above the estimates. Warning-severity diagnostics (verify_content and
+// similar) are a counted Notices chip: high-volume on real catalogs, and
+// the closed summary keeps them in the index without burying the page.
 //
 // A target's disclosures are laid out as a wrapping row of chips that
 // expand to full width when opened (.disclosures), which is what keeps a
@@ -505,10 +507,6 @@ pre {
   <div class="banner banner-error"><strong>{{.Operation}} failed.</strong> {{.Message}}</div>
   {{end}}
 
-  {{range .Warnings}}
-  <div class="banner banner-warn"><strong>{{.Operation}}.</strong> {{.Message}}</div>
-  {{end}}
-
   {{if not .Compared}}
   <p class="empty">No node diff was produced for this target.</p>
   {{else if not .HasDifference}}
@@ -553,6 +551,17 @@ pre {
       <summary>Excluded differences <span class="count">{{len .Exclusions}}</span></summary>
       <div class="disclosed">
         <ul class="plain">{{range .Exclusions}}<li>{{.}}</li>{{end}}</ul>
+      </div>
+    </details>
+    {{end}}
+
+    {{if .Warnings}}
+    <details>
+      <summary>Notices <span class="count">{{len .Warnings}}</span></summary>
+      <div class="disclosed">
+        {{range .Warnings}}
+        <div class="banner banner-warn"><strong>{{.Operation}}.</strong> {{.Message}}</div>
+        {{end}}
       </div>
     </details>
     {{end}}

@@ -59,9 +59,14 @@
 //     line per target with a counted chip per section, and one click
 //     reaches any of it. Nothing is capped, because a closed disclosure
 //     already keeps a thousand certnames out of the reading path without
-//     dropping a name. What stays outside every disclosure is everything
-//     that has to be visibly marked (see below), plus the estimate label
-//     and note.
+//     reaches any of it. Nothing is capped, because a closed disclosure
+//     already keeps a thousand certnames out of the reading path without
+//     dropping a name. Warning-severity target diagnostics (verify_content
+//     and similar) use the same counted-chip pattern. content_indeterminate
+//     File parameter rows are omitted from Resource changes for the same
+//     reason (they remain in JSON and still set HasDifference). What stays
+//     outside every disclosure is everything that has to be visibly marked
+//     (see below), plus the estimate label and note.
 //   - Text is the only format that omits, because a CI log is a linear
 //     read with no way to skip a section and no way to expand one. It
 //     drops edge changes (a run's edge differences routinely outnumber
@@ -113,9 +118,13 @@
 // and exit code. HTML renders those edges, so nothing is needed there;
 // the text report prints a note instead of an empty change list, because
 // a report that showed nothing would read as "no changes" on a run that
-// exits non-zero, contradicting its own stated outcome. For the same
-// reason every section header in both formats counts what it actually
-// displays rather than what the document holds.
+// exits non-zero, contradicting its own stated outcome. The same applies
+// to content_indeterminate File parameter rows: they remain in the JSON
+// document and still set HasDifference, but text and HTML omit them from
+// "Resource changes" because verify_content notices already name those
+// resources, and listing them as changes reads as a verified delta. For
+// the same reason every section header in both formats counts what it
+// actually displays rather than what the document holds.
 //
 // # A light page, and nothing to fetch
 //
