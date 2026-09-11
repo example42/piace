@@ -159,11 +159,14 @@ func diffParameters(
 		if diag != nil {
 			diagnostics = append(diagnostics, *diag)
 		}
-		// FileContentNotManaged is as much a "nothing to report" answer
-		// as FileContentUnchanged: neither side asks Puppet to place
-		// bytes at this path, so a content row would describe a
-		// difference that does not exist.
-		if evidence.State != model.FileContentUnchanged && evidence.State != model.FileContentNotManaged {
+		// FileContentUnchanged and FileContentNotManaged are "nothing to
+		// report" answers. FileContentIndeterminate is also omitted from
+		// the change list: content could not be verified, which is not the
+		// same as a verified difference. The verify_content diagnostic
+		// already records that the comparison was unverified. A changed
+		// source with unverifiable bytes is reference_changed instead
+		// (see ResolveFileContentEvidence) and still emits a row.
+		if evidence.State != model.FileContentUnchanged && evidence.State != model.FileContentNotManaged && evidence.State != model.FileContentIndeterminate {
 			change := rawResourceChange{
 				Kind:        model.ChangeParameterChanged,
 				Identity:    identity,

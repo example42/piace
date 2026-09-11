@@ -116,48 +116,15 @@ func TestTargetResult_ClassifyOutcome(t *testing.T) {
 			want:   exitcode.OutcomeOperationalError,
 		},
 		{
-			// A File whose content could not be verified may have
-			// changed, so it is reported as a difference and the
-			// target's policy decides the rest.
-			name: "indeterminate file content is a difference",
-			target: TargetResult{
-				Config: &ConfigProvenance{},
-				NodeDiff: &NodeDiff{
-					HasDifference: true,
-					ResourceChanges: []ResourceChange{{
-						Kind:        ChangeParameterChanged,
-						Identity:    ResourceIdentity{Type: "File", Title: "/etc/motd"},
-						Parameter:   "content",
-						FileContent: &FileContentEvidence{State: FileContentIndeterminate},
-					}},
-				},
-			},
-			want: exitcode.OutcomeDifferencesAllowed,
-		},
-		{
-			name: "indeterminate file content under fail_on_diff",
+			// Unverifiable File content is a verify_content notice, not a
+			// resource difference. A stale ResourceChange carrying
+			// content_indeterminate without HasDifference (for example an
+			// older stored document) must not force a non-clean outcome:
+			// warning diagnostics do not contribute, and HasDifference is
+			// what fail_on_diff consults.
+			name: "indeterminate file content without HasDifference is clean",
 			target: TargetResult{
 				Config: &ConfigProvenance{FailOnDiff: true},
-				NodeDiff: &NodeDiff{
-					HasDifference: true,
-					ResourceChanges: []ResourceChange{{
-						Kind:        ChangeParameterChanged,
-						Identity:    ResourceIdentity{Type: "File", Title: "/etc/motd"},
-						Parameter:   "content",
-						FileContent: &FileContentEvidence{State: FileContentIndeterminate},
-					}},
-				},
-			},
-			want: exitcode.OutcomePolicyDisallowedDifference,
-		},
-		{
-			// The invariant the old mapping existed to protect: a
-			// differ that produced indeterminate evidence for a change
-			// it did not report has contradicted itself, and that is
-			// not a comparison result.
-			name: "indeterminate file content can never be clean",
-			target: TargetResult{
-				Config: &ConfigProvenance{},
 				NodeDiff: &NodeDiff{
 					HasDifference: false,
 					ResourceChanges: []ResourceChange{{
@@ -168,7 +135,19 @@ func TestTargetResult_ClassifyOutcome(t *testing.T) {
 					}},
 				},
 			},
-			want: exitcode.OutcomeOperationalError,
+			want: exitcode.OutcomeClean,
+		},
+		{
+			name: "indeterminate file content does not trigger fail_on_diff alone",
+			target: TargetResult{
+				Config: &ConfigProvenance{FailOnDiff: true},
+				Diagnostics: []Diagnostic{{
+					Severity: SeverityWarning, Operation: OperationVerifyContent,
+					Message: "File[/etc/motd]: historical catalog has no retained content digest",
+				}},
+				NodeDiff: &NodeDiff{HasDifference: false},
+			},
+			want: exitcode.OutcomeClean,
 		},
 	}
 

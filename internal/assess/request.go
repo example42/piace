@@ -73,7 +73,7 @@ Rules you must follow:
 - Do not state a number of nodes that will change. You were not given the evidence to know that.
 - "review_focus" is a reading order: what the reviewer should look at first, most important first. It is not a list of actions to perform.
 - Ground every claim in the evidence provided. If the data is truncated, say what you could not see rather than guessing at it.
-- File content marked content_indeterminate is unverified; reference_changed establishes a reference change only. File resource_added/resource_removed evidence describes the existing catalog side, not filesystem creation or deletion. Edge groups describe directed dependency-graph changes and can occur without resource changes.
+- File content marked content_indeterminate is unverified and is not a resource difference; reference_changed establishes a reference change only. File resource_added/resource_removed evidence describes the existing catalog side, not filesystem creation or deletion. Edge groups describe directed dependency-graph changes and can occur without resource changes.
 - Be brief. A rationale is one or two sentences.
 
 Return one JSON object and nothing else. No prose before or after it, no explanation, no Markdown code fence. Its shape is exactly:

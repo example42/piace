@@ -171,7 +171,20 @@ func TestFileContentSummarySurvivesStoredAssessment(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, output := range [][]byte{text, html} {
-				if !strings.Contains(string(output), string(state)) || !strings.Contains(string(output), "captured_digest") {
+				doc := string(output)
+				if i := strings.Index(doc, "<h2>Result document</h2>"); i >= 0 {
+					doc = doc[:i]
+				}
+				shown := strings.Contains(doc, string(state)) && strings.Contains(doc, "captured_digest")
+				if state == model.FileContentIndeterminate {
+					// Unverifiable parameter rows are omitted from human-facing
+					// change lists; JSON and the inference request still carry them.
+					if shown {
+						t.Fatal("content_indeterminate must not appear under aggregate resource changes")
+					}
+					continue
+				}
+				if !shown {
 					t.Fatal("aggregate rendering lost content evidence")
 				}
 			}

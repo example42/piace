@@ -46,10 +46,12 @@
 //
 // Directory, recursive and non-file sources are not byte-comparable. Their
 // source changes are reference_changed with a visible limitation warning;
-// unchanged references are indeterminate with an error, never claimed equal.
-// Recursive sourceselect first/all is not approximated by single-file fallback.
-// Capture may retain these catalogs with a limitation warning; later comparison
-// still reports the missing byte evidence.
+// unchanged references are content_indeterminate with a warning (not a
+// resource difference): byte equality is never claimed, and fail_on_diff
+// does not treat the unverified comparison as a change. Recursive
+// sourceselect first/all is not approximated by single-file fallback.
+// Capture may retain these catalogs with a limitation warning; later
+// comparison still reports the missing byte evidence as a notice.
 //
 // Diff evaluates content even when the source URL is unchanged. Its exclusions
 // run after evidence resolution: they suppress matching changes and connected

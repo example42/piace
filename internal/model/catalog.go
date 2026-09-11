@@ -140,7 +140,10 @@ const (
 	FileContentReferenceChanged FileContentState = "reference_changed"
 	// FileContentIndeterminate means content retrieval or comparison
 	// could not establish the evidence required for a verified
-	// comparison; it must never be reported as a clean/unchanged result.
+	// comparison. It is recorded as a verify_content diagnostic and is
+	// not emitted as a resource difference: unverified is not the same
+	// as changed. A changed source whose bytes remain unverifiable is
+	// FileContentReferenceChanged instead.
 	FileContentIndeterminate FileContentState = "content_indeterminate"
 	// FileContentNotManaged means the catalog manages no bytes for this
 	// File on at least one of the sides being compared, because its
