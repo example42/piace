@@ -735,7 +735,39 @@ func TestDiff_FileContentUnchangedIsNotReported(t *testing.T) {
 	}
 }
 
-func TestDiff_FileContentIndeterminateIsReportedWithDiagnostic(t *testing.T) {
+func TestDiff_FileContentIndeterminateIsDiagnosticOnly(t *testing.T) {
+	before := catalog([]model.Resource{
+		resource("File", "/etc/app.conf", map[string]model.Value{
+			"source": "puppet:///modules/app/config.conf",
+		}),
+	}, nil)
+	after := catalog([]model.Resource{
+		resource("File", "/etc/app.conf", map[string]model.Value{
+			"source": "puppet:///modules/app/config.conf",
+		}),
+	}, nil)
+
+	retriever := stubRetriever{err: errors.New("retrieval refused")}
+	nd, diags := run(t, target(nil, nil), before, after, retriever)
+
+	if nd.HasDifference {
+		t.Fatalf("unverifiable same-source content must not set HasDifference: %+v", nd.ResourceChanges)
+	}
+	if len(nd.ResourceChanges) != 0 {
+		t.Fatalf("unverifiable content must not appear as a resource change: %+v", nd.ResourceChanges)
+	}
+	if len(diags) != 1 {
+		t.Fatalf("got %d diagnostics, want 1: %+v", len(diags), diags)
+	}
+	if diags[0].Operation != model.OperationVerifyContent {
+		t.Errorf("diagnostic operation = %s, want verify_content", diags[0].Operation)
+	}
+	if diags[0].Certname != testCertname {
+		t.Errorf("diagnostic certname = %q, want %q", diags[0].Certname, testCertname)
+	}
+}
+
+func TestDiff_FileContentReferenceChangedWhenSourceChangesAndRetrievalFails(t *testing.T) {
 	before := catalog([]model.Resource{
 		resource("File", "/etc/app.conf", map[string]model.Value{
 			"source": "puppet:///modules/app/old.conf",
@@ -751,20 +783,14 @@ func TestDiff_FileContentIndeterminateIsReportedWithDiagnostic(t *testing.T) {
 	nd, diags := run(t, target(nil, nil), before, after, retriever)
 
 	if !nd.HasDifference {
-		t.Fatal("an unresolved content comparison must never be clean")
+		t.Fatal("a changed source must still be a difference when bytes are unverifiable")
 	}
 	content := findChange(t, nd, "File", "/etc/app.conf", "content")
-	if content.FileContent == nil || content.FileContent.State != model.FileContentIndeterminate {
-		t.Errorf("state = %+v, want content_indeterminate", content.FileContent)
+	if content.FileContent == nil || content.FileContent.State != model.FileContentReferenceChanged {
+		t.Errorf("state = %+v, want reference_changed", content.FileContent)
 	}
-	if len(diags) != 1 {
-		t.Fatalf("got %d diagnostics, want 1: %+v", len(diags), diags)
-	}
-	if diags[0].Operation != model.OperationVerifyContent {
-		t.Errorf("diagnostic operation = %s, want verify_content", diags[0].Operation)
-	}
-	if diags[0].Certname != testCertname {
-		t.Errorf("diagnostic certname = %q, want %q", diags[0].Certname, testCertname)
+	if len(diags) != 1 || diags[0].Operation != model.OperationVerifyContent {
+		t.Fatalf("diagnostics = %+v, want one verify_content entry", diags)
 	}
 }
 
@@ -910,11 +936,9 @@ func TestDiff_EmptyCatalogsProduceCleanResult(t *testing.T) {
 // Exclusion suppresses differences, never diagnostics. A File whose
 // content resolution failed is resolved in pass 1, before pass 2 can
 // know it is excluded, so the verify_content diagnostic survives even
-// though the change itself does not. That deliberately keeps the run
-// from being reported as clean: an unreported content-verification
-// failure is exactly what a clean outcome must never hide, and an
-// exclusion rule is a statement about which differences are interesting,
-// not a licence to suppress a failure to look.
+// though the change itself does not. An exclusion rule is a statement
+// about which differences are interesting, not a licence to suppress a
+// failure to look.
 func TestDiff_ExclusionSuppressesDifferencesButNotDiagnostics(t *testing.T) {
 	before := catalog([]model.Resource{
 		resource("File", "/var/cache/x", map[string]model.Value{

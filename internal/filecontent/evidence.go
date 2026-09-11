@@ -111,7 +111,11 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 		}
 		return e, nil
 	}
-	if referenceChanged && retriever == nil {
+	// A changed source reference is itself a difference even when bytes
+	// cannot be compared. Promote before attaching the diagnostic so the
+	// differ emits reference_changed rather than an unverifiable
+	// content_indeterminate row.
+	if referenceChanged {
 		e.State = model.FileContentReferenceChanged
 	}
 	// Both sides are classified and the more severe answer wins: one
@@ -177,10 +181,11 @@ func EvidenceDiagnostic(certname string, identity model.ResourceIdentity, err er
 // wrong, and all of them are ordinary in a real catalog: the first live
 // run against a deployed OpenVox installation on 2026-09-09 produced
 // nine of them comparing an environment with itself, and one of them
-// stopped a capture from writing a snapshot. They still leave the
-// comparison indeterminate, and an indeterminate comparison is still a
-// difference that cannot be ruled out, which is where the outcome comes
-// from; see model.ClassifyOutcome.
+// stopped a capture from writing a snapshot. They leave the comparison
+// unverified (content_indeterminate) and surface as verify_content
+// notices; they are not reported as resource differences and do not
+// drive fail_on_diff. See internal/diff's handling of
+// FileContentIndeterminate and model.ClassifyOutcome.
 //
 // The second is an error. An invalid checksum in a compiled catalog, a
 // source path refused as unsafe, a retrieval that failed against a

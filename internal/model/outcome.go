@@ -67,26 +67,14 @@ func OutcomeForDiagnostic(d Diagnostic) (exitcode.Outcome, bool) {
 //     silently; that is reported as an operational error rather than
 //     folded into a clean run.
 //
-//   - A surviving FileContentIndeterminate classification means content
-//     evidence was never established, so a File that may have changed
-//     cannot be said not to have. That is a difference PIACE cannot rule
-//     out, and it reaches the outcome as one: the change is in the node
-//     diff, so HasDifference is set and fail_on_diff decides the rest.
-//     Reaching this point with an indeterminate classification and no
-//     difference recorded would mean the differ produced evidence for a
-//     change it did not report, and that is an internal inconsistency
-//     rather than a comparison result, so it is an operational error.
-//
-//     Until 2026-09-09 an indeterminate classification was itself an
-//     operational error. The first live run against a deployed OpenVox
-//     installation is what changed it: a historical baseline retains no
-//     digest for a source-backed File, which is the ordinary case rather
-//     than an exceptional one, so every real comparison exited 30 and
-//     the exit code stopped distinguishing a broken run from a normal
-//     one. The invariant that motivated the old mapping, that an
-//     indeterminate comparison must never collapse into a clean result,
-//     is preserved: it needs a non-clean outcome, not that particular
-//     one.
+// FileContentIndeterminate on a parameter comparison is not a difference:
+// it means content could not be verified, and the differ records that as
+// a verify_content diagnostic without a ResourceChange. Warning-severity
+// diagnostics do not change exit status. A changed source whose bytes
+// remain unverifiable is FileContentReferenceChanged and does set
+// HasDifference. Membership rows may still carry indeterminate content
+// evidence for the existing catalog side; those rows are real add/remove
+// differences.
 func (t *TargetResult) ClassifyOutcome() {
 	worst := exitcode.Outcome("")
 	for _, d := range t.Diagnostics {
@@ -109,10 +97,6 @@ func (t *TargetResult) ClassifyOutcome() {
 		t.Outcome = exitcode.OutcomeOperationalError
 		return
 	}
-	if hasIndeterminateContent(*t.NodeDiff) && !t.NodeDiff.HasDifference {
-		t.Outcome = exitcode.OutcomeOperationalError
-		return
-	}
 
 	if !t.NodeDiff.HasDifference {
 		t.Outcome = exitcode.OutcomeClean
@@ -123,18 +107,6 @@ func (t *TargetResult) ClassifyOutcome() {
 		return
 	}
 	t.Outcome = exitcode.OutcomeDifferencesAllowed
-}
-
-// hasIndeterminateContent reports whether any surviving (non-excluded)
-// change in nd carries File-content evidence that never established a
-// comparison.
-func hasIndeterminateContent(nd NodeDiff) bool {
-	for _, change := range nd.ResourceChanges {
-		if change.FileContent != nil && change.FileContent.State == FileContentIndeterminate {
-			return true
-		}
-	}
-	return false
 }
 
 // Reduce classifies every target, folds in run-level diagnostics, and
@@ -241,8 +213,8 @@ func (r *Result) buildReasons() []string {
 // earliest. With one target carrying both a compilation failure and an
 // operational error, quoting the earliest would name a failure that is
 // not the one the outcome reports. It falls back to any error message,
-// then to a fixed explanation for the two cases ClassifyOutcome treats as
-// non-clean without a diagnostic of their own.
+// then to a fixed explanation for a nil NodeDiff (ClassifyOutcome's
+// remaining non-clean case without a diagnostic of its own).
 //
 // Only the message is quoted: a diagnostic never carries raw response
 // bodies, credentials, or unredacted values (see Diagnostic's doc
@@ -268,5 +240,5 @@ func outcomeMessage(t TargetResult) string {
 	if t.NodeDiff == nil {
 		return "no node diff was produced for this target"
 	}
-	return "managed File content could not be compared (content_indeterminate)"
+	return "non-excluded difference"
 }

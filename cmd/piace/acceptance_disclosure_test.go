@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -144,9 +145,11 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 	h.writeConfigs(t, targetsYAML(defaultDefaults, target("web-01.example.test")))
 	got := h.compare(t)
 
-	// An indeterminate content comparison can never be reported clean.
+	// An error-severity verify_content diagnostic (retrieval of a missing
+	// source) still fails the run. content_indeterminate itself is not a
+	// resource difference.
 	if got.code != exitcode.OperationalError {
-		t.Fatalf("exit = %d, want 30: an indeterminate File content comparison must not be clean\nstdout:\n%s", got.code, got.stdout)
+		t.Fatalf("exit = %d, want 30: a verify_content error must fail the run\nstdout:\n%s", got.code, got.stdout)
 	}
 
 	for _, want := range []string{
@@ -158,14 +161,25 @@ func TestAcceptance_FileContentEvidenceStates(t *testing.T) {
 			t.Errorf("the report is missing the evidence line %q\n%s", want, got.stdout)
 		}
 	}
-	// content_indeterminate stays in the JSON document and still drives
-	// HasDifference, but text omits it from the change list: the same
-	// resource is already named by the verify_content notice.
+	// Unverifiable content is a notice, not a change row, and must not
+	// appear under the text change list.
 	if strings.Contains(got.stdout, "~ File[/indeterminate] content: content_indeterminate") {
 		t.Errorf("content_indeterminate must not appear under the text change list\n%s", got.stdout)
 	}
 	if !strings.Contains(got.stdout, "File[/indeterminate]") || !strings.Contains(got.stdout, "verify_content") {
 		t.Errorf("content_indeterminate must still surface as a verify_content notice\n%s", got.stdout)
+	}
+	if strings.Contains(got.json, `"title":"/indeterminate"`) && strings.Contains(got.json, `"state":"content_indeterminate"`) {
+		// The indeterminate File must not be published as a resource change.
+		var report model.Result
+		if err := json.Unmarshal([]byte(got.json), &report); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range report.Targets[0].NodeDiff.ResourceChanges {
+			if c.Identity.Title == "/indeterminate" {
+				t.Errorf("unverifiable File published as a resource change: %+v", c)
+			}
+		}
 	}
 	// No format renders managed content bytes.
 	for artifactName, artifact := range got.all() {

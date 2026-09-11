@@ -225,9 +225,9 @@ func targetCountList(certnames []string) string {
 // displayedResourceChange reports whether a resource change belongs in
 // the text and HTML change lists. A parameter_changed row whose File
 // content is content_indeterminate does not: that state means the bytes
-// could not be compared, not that they differ, and the same resources
-// already appear as verify_content notices. Outcome, HasDifference, and
-// the JSON document still carry the row.
+// could not be compared, not that they differ, and verify_content
+// notices already name those resources. The live differ no longer emits
+// such rows; this filter also covers older stored documents.
 func displayedResourceChange(c model.ResourceChange) bool {
 	if c.Kind == model.ChangeParameterChanged && c.FileContent != nil && c.FileContent.State == model.FileContentIndeterminate {
 		return false

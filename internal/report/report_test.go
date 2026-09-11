@@ -244,11 +244,11 @@ func TestText_EdgeOnlyTargetIsNotReportedAsUnchanged(t *testing.T) {
 	}
 }
 
-// TestText_IndeterminateContentIsNotListedAsAChange is the display half
-// of the never-clean contract. content_indeterminate still sets
-// HasDifference and still reaches JSON, but the text change list must
-// not present it as a verified delta: the verify_content notice already
-// names the resource.
+// TestText_IndeterminateContentIsNotListedAsAChange covers older stored
+// documents that still carry a content_indeterminate ResourceChange.
+// Live compares no longer emit those rows; when one is present, text must
+// not present it as a verified delta. The verify_content notice names the
+// resource instead.
 func TestText_IndeterminateContentIsNotListedAsAChange(t *testing.T) {
 	r := indeterminateOnlyResult()
 	data, err := Text(r, nil, Options{})
