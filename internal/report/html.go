@@ -185,7 +185,7 @@ type htmlTarget struct {
 	// capture: those are the bytes being compared, whatever API this
 	// run used.
 	BaselineV3Warning string
-	Failures []htmlDiagnostic
+	Failures          []htmlDiagnostic
 	// Warnings are warning-severity target diagnostics (verify_content and
 	// similar). They render as a closed Notices chip with a count, not as
 	// always-open banners: a real catalog can emit many of them, and the
