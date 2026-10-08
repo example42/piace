@@ -10,7 +10,7 @@ import (
 func TestMembershipEvidenceResolvesOnlyExistingSide(t *testing.T) {
 	for _, kind := range []model.ChangeKind{model.ChangeResourceAdded, model.ChangeResourceRemoved} {
 		side := Side{Resource: model.Resource{Identity: model.ResourceIdentity{Type: "File", Title: "/app"}, Parameters: map[string]any{"content": "bytes"}}}
-		e, d := ResolveMembershipEvidence(context.Background(), "node", kind, side, nil)
+		e, d := ResolveMembershipEvidence(context.Background(), "node", kind, side, nil, Options{})
 		if d != nil || e.Algorithm != "sha256" {
 			t.Fatalf("resolution failed: %+v %+v", e, d)
 		}
@@ -37,7 +37,7 @@ func TestMembershipEvidenceDisclosesMissingOrUnsupportedEvidence(t *testing.T) {
 		{map[string]any{"checksum_value": "invalid-secret"}, model.SeverityError},
 	} {
 		side := Side{Resource: model.Resource{Identity: model.ResourceIdentity{Type: "File", Title: "/app"}, Parameters: tc.params}, Context: model.ContentContext{Historical: true}}
-		e, d := ResolveMembershipEvidence(context.Background(), "node", model.ChangeResourceRemoved, side, nil)
+		e, d := ResolveMembershipEvidence(context.Background(), "node", model.ChangeResourceRemoved, side, nil, Options{})
 		if d == nil || d.Severity != tc.want || e.State != model.FileContentIndeterminate || e.Before.Verified || e.BeforeDigest != "" || e.After != nil {
 			t.Fatalf("unsupported evidence claimed verified: %+v %+v", e, d)
 		}

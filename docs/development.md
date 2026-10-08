@@ -102,7 +102,7 @@ internal/diff/        Node diffing, exclusions, redaction (fixed ordering)
 internal/aggregate/   Cross-target grouping
 internal/impact/      Bounded PQL estimates
 internal/compare/     The compare pipeline
-internal/report/      Text, JSON, and HTML renderers; reading a report back
+internal/report/      Text, JSON, HTML, and JUnit renderers; reading a report back
 internal/model/       Shared result document and the outcome reducer
 internal/exitcode/    The stable exit codes and the outcome precedence order
 internal/assess/      Change assessment: what may leave, and what came back
@@ -124,7 +124,7 @@ send it, and is reviewable with no knowledge of catalogs: it does not import
 
 ## Invariants the test suite enforces
 
-- **Disclosure**: no report in any of the three formats carries credentials,
+- **Disclosure**: no report in any of the four formats carries credentials,
   private key material, managed file content bytes, or unredacted sensitive
   values (`cmd/piace/acceptance_disclosure_test.go`). The same assertion is made
   at the inference request seam (`internal/assess/request_test.go`).

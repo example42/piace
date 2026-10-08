@@ -91,13 +91,14 @@ type artifacts struct {
 	stderr string
 	json   string
 	html   string
+	junit  string
 	text   string
 }
 
 // all returns every rendered artifact as one slice, for scans that must
-// cover all three formats.
+// cover all report formats.
 func (a artifacts) all() map[string]string {
-	out := map[string]string{"stdout": a.stdout, "json": a.json, "html": a.html}
+	out := map[string]string{"stdout": a.stdout, "json": a.json, "html": a.html, "junit": a.junit}
 	if a.text != "" {
 		out["text"] = a.text
 	}
@@ -105,7 +106,7 @@ func (a artifacts) all() map[string]string {
 }
 
 // compare runs `piace compare` through the CLI entry point, always
-// requesting the JSON and HTML artifacts, and returns everything the run
+// requesting the JSON, HTML, and JUnit artifacts, and returns everything the run
 // produced. Driving run() rather than compare.Workflow is the point of
 // this suite: it exercises PEM loading, real mTLS handshakes, HTTP status
 // and JSON decoding in the adapters, artifact writing, and the process
@@ -115,6 +116,7 @@ func (h *harness) compare(t *testing.T, extra ...string) artifacts {
 	suffix := fmt.Sprintf("%d", h.pdb.count())
 	jsonOut := h.path("report" + suffix + ".json")
 	htmlOut := h.path("report" + suffix + ".html")
+	junitOut := h.path("report" + suffix + ".xml")
 
 	args := append([]string{
 		"compare",
@@ -122,6 +124,7 @@ func (h *harness) compare(t *testing.T, extra ...string) artifacts {
 		"--services", h.path("services.yaml"),
 		"--json-out", jsonOut,
 		"--html-out", htmlOut,
+		"--junit-out", junitOut,
 	}, extra...)
 
 	stdout, stderr, code := captureRun(t, args)
@@ -129,6 +132,7 @@ func (h *harness) compare(t *testing.T, extra ...string) artifacts {
 	result := artifacts{code: code, stdout: stdout, stderr: stderr}
 	result.json = readIfExists(t, jsonOut)
 	result.html = readIfExists(t, htmlOut)
+	result.junit = readIfExists(t, junitOut)
 	for i, arg := range extra {
 		if arg == "--text-out" && i+1 < len(extra) {
 			result.text = readIfExists(t, extra[i+1])

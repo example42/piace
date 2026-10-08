@@ -11,6 +11,7 @@ import (
 	"github.com/example42/piace/internal/config"
 	"github.com/example42/piace/internal/config/resolve"
 	"github.com/example42/piace/internal/diff"
+	"github.com/example42/piace/internal/filecontent"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/report"
 )
@@ -36,7 +37,7 @@ func TestGroupDisclosureFromDifferThroughConsumers(t *testing.T) {
 					if name == protectedName && (policy == "selector" || policy == "wrapper_and_selector") {
 						target.Redact = []config.RedactionSelector{{Type: "User", Parameter: "password"}}
 					}
-					nd, diagnostics := diff.Diff(context.Background(), target, catalog("old-secret", true), catalog("new-secret", false), nil)
+					nd, diagnostics := diff.Diff(context.Background(), target, catalog("old-secret", true), catalog("new-secret", false), nil, filecontent.Options{})
 					if len(diagnostics) != 0 || len(nd.ResourceChanges) != 1 {
 						t.Fatalf("comparison failed: %+v, %+v", nd, diagnostics)
 					}

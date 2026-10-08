@@ -73,7 +73,7 @@ func (s stubRetriever) Digest(_ context.Context, reference string, _ filecontent
 
 func run(t *testing.T, tgt resolve.Target, before, after model.NormalizedCatalog, retriever filecontent.ContentRetriever) (model.NodeDiff, []model.Diagnostic) {
 	t.Helper()
-	return Diff(context.Background(), tgt, before, after, retriever)
+	return Diff(context.Background(), tgt, before, after, retriever, filecontent.Options{})
 }
 
 func findChange(t *testing.T, nd model.NodeDiff, resourceType, title, parameter string) model.ResourceChange {
@@ -1007,7 +1007,7 @@ func BenchmarkDiff_LargeCatalog(b *testing.B) {
 
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		nd, _ := Diff(context.Background(), target, before, after, nil)
+		nd, _ := Diff(context.Background(), target, before, after, nil, filecontent.Options{})
 		if !nd.HasDifference {
 			b.Fatal("the fixture produced no difference")
 		}

@@ -1,11 +1,10 @@
 // Package report renders the shared result document (model.Result) into
-// the three output formats internal/report owns: concise CI text, the versioned
-// canonical JSON report, and a single self-contained `file://` HTML
-// artifact.
+// four output formats: concise CI text, versioned canonical JSON,
+// self-contained HTML, and JUnit XML for CI test results.
 //
-// # One projection, three formats
+// # One projection, four formats
 //
-// HTML, text, and JSON derive from the same redacted projection, which
+// HTML, text, JSON, and JUnit derive from the same redacted projection, which
 // prevents format drift and secret exposure. That projection is
 // model.Result itself. Redaction has already happened upstream, inside
 // internal/diff's pass 3, strictly before serialization, and the
@@ -13,8 +12,9 @@
 // model.ResourceChange.Fingerprint is `json:"-"` and the raw canonical
 // values are gone by the time a Result exists. No renderer in this
 // package can therefore disclose a sensitive value, because none of them
-// has access to one. Nothing here re-derives, re-orders, or re-computes
-// anything: the three functions differ only in encoding.
+// has access to one. Renderers use the classified target outcomes rather
+// than deciding whether a difference is allowed themselves. JUnit also
+// reduces run diagnostics alone for its separate diagnostic case.
 //
 // The shared formatting helpers in render.go exist for the same reason.
 // A value rendered one way in text and another way in HTML is format
@@ -40,11 +40,11 @@
 // been in a file. Redaction markers are not omissions and stay readable:
 // a redacted entry is present, marked, and carries no digest.
 //
-// # Three formats, three amounts of detail
+// # Report detail
 //
-// The three formats show the same document at three levels of detail.
-// This is display policy, not a second projection: nothing here filters
-// or recomputes what a comparison found, and every format decides through
+// The formats show the same document at different levels of detail.
+// This is display policy, not a second projection: renderers do not
+// recompute what a comparison found, and every format decides through
 // the same shared helpers (formatValue, changeSummary/changeParts,
 // estimateCount, targetCountList), so they cannot drift apart in what a
 // value says.
@@ -69,7 +69,13 @@
 //     stored documents that still contain such rows. What stays outside
 //     every disclosure is everything that has to be visibly marked
 //     (see below), plus the estimate label and note.
-//   - Text is the only format that omits, because a CI log is a linear
+//   - JUnit maps each target to a test case, with a separate case for run
+//     diagnostics. Allowed differences pass, policy differences fail,
+//     and compilation or operational failures are errors. Case output uses
+//     the text helpers and adds edge changes. Suite output summarizes the
+//     run, aggregate resource changes, and labelled impact estimates with
+//     all returned certnames, omitting PQL and request options.
+//   - Text omits detail because a CI log is a linear
 //     read with no way to skip a section and no way to expand one. It
 //     drops edge changes (a run's edge differences routinely outnumber
 //     its resource differences and are usually connected to them), an
@@ -148,7 +154,7 @@
 // deliberately emits no such wording, since model.ImpactEstimate carries
 // state rather than prose, so the obligation is discharged here, in
 // every format, via ImpactEstimateLabel and ImpactEstimateNote. Both are
-// package constants rather than per-format literals so the three formats
+// package constants rather than per-format literals so the formats
 // cannot drift into saying different things, and neither ever describes
 // a returned certname as a node that will change: the estimate says only
 // that a node's latest stored catalog contains the resource.

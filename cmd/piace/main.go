@@ -109,7 +109,8 @@ func run(args []string, stdout, stderr *os.File) exitcode.Code {
 func usage() string {
 	return `piace compare --targets TARGETS.yaml --services SERVICES.yaml \
   [--candidate-environment ENVIRONMENT] \
-  [--text-out PATH] [--json-out PATH] [--html-out PATH] [--impact-nodes]
+  [--text-out PATH] [--json-out PATH] [--html-out PATH] [--junit-out PATH]
+  [--impact-nodes] [--suppress-source-content-warnings]
 piace capture facts --targets TARGETS.yaml --services SERVICES.yaml
 piace capture catalog --targets TARGETS.yaml --services SERVICES.yaml \
   --environment ENVIRONMENT
@@ -205,10 +206,12 @@ type compareFlags struct {
 	// file before resolution: it is configuration, not display policy,
 	// and the report's provenance must record what was actually
 	// compiled. See resolve.Overrides.
-	candidateEnvironment string
-	textOut              string
-	jsonOut              string
-	htmlOut              string
+	candidateEnvironment          string
+	textOut                       string
+	jsonOut                       string
+	htmlOut                       string
+	junitOut                      string
+	suppressSourceContentWarnings bool
 	// impactNodes is display policy for the text report only; it never
 	// reaches resolve.Config, because what PIACE queries and what PIACE
 	// prints are separate concerns and an estimate's certname sample is
@@ -227,7 +230,9 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	fs.StringVar(&f.textOut, "text-out", "", "path to write the text report (default: stdout)")
 	fs.StringVar(&f.jsonOut, "json-out", "", "path to write the versioned JSON report")
 	fs.StringVar(&f.htmlOut, "html-out", "", "path to write the static HTML report")
+	fs.StringVar(&f.junitOut, "junit-out", "", "path to write the JUnit XML report")
 	fs.BoolVar(&f.impactNodes, "impact-nodes", false, "list every certname an impact estimate returned instead of a capped sample (text report only)")
+	fs.BoolVar(&f.suppressSourceContentWarnings, "suppress-source-content-warnings", false, "silence verify_content warnings for source-backed files with unavailable byte evidence (all report formats)")
 	f.debug.register(fs)
 	if err := fs.Parse(args); err != nil {
 		return exitcode.OperationalError
@@ -252,6 +257,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 	if err := artifact.ValidateDestinations(comparisonInputs(f, cfg), []artifact.File{
 		{Role: "--json-out", Path: f.jsonOut},
 		{Role: "--html-out", Path: f.htmlOut},
+		{Role: "--junit-out", Path: f.junitOut},
 		{Role: "--text-out", Path: f.textOut},
 	}); err != nil {
 		fmt.Fprintf(stderr, "piace compare: %s\n", err)
@@ -269,6 +275,7 @@ func runCompare(args []string, stdout, stderr *os.File) exitcode.Code {
 		return exitcode.OperationalError
 	}
 
+	workflow.ContentOptions = filecontent.Options{SuppressSourceContentWarnings: f.suppressSourceContentWarnings}
 	result := workflow.Run(context.Background(), cfg)
 
 	if err := writeReports(f, result, stdout); err != nil {
@@ -378,7 +385,7 @@ func newCompareWorkflow(cfg resolve.Config, debugOpts []transport.Option) (*comp
 }
 
 // writeReports emits the requested artifacts. Text goes to stdout when
-// --text-out is omitted; JSON and HTML are written only when explicitly
+// --text-out is omitted; JSON, HTML, and JUnit are written only when explicitly
 // requested.
 //
 // The file artifacts are written before the text report, and the stdout
@@ -422,6 +429,13 @@ func writeReports(f compareFlags, result model.Result, stdout *os.File) error {
 			return err
 		}
 		pending = append(pending, pendingArtifact{role: "HTML report", path: f.htmlOut, data: data})
+	}
+	if f.junitOut != "" {
+		data, err := report.JUnit(result)
+		if err != nil {
+			return err
+		}
+		pending = append(pending, pendingArtifact{role: "JUnit report", path: f.junitOut, data: data})
 	}
 	text, err := report.Text(result, nil, opts)
 	if err != nil {

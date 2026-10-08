@@ -124,6 +124,40 @@ creates nothing and has nothing to clean up.
 Produced by the run, in the workspace, uploaded as job artifacts:
 `report.json`, `report.html`, `assessment.json`.
 
+### JUnit test results
+
+With a build supporting `--junit-out`, add `--junit-out report.xml` to the
+comparison command alongside the JSON and HTML outputs. The shipped pipeline
+examples pin release 0.4.0, which predates this flag; update the binary before
+using it.
+
+For GitLab, add the XML file to the comparison job's existing artifact block:
+
+```yaml
+artifacts:
+  when: always
+  access: 'developer'
+  paths:
+    - report.json
+    - report.html
+    - report.xml
+  reports:
+    junit: report.xml
+```
+
+GitLab displays cases in the pipeline Tests tab and merge-request test summary.
+It reads evidence from each case's `system-out`; suite-level output remains in
+the downloadable XML. JUnit reports do not decide job status: PIACE's exit
+code still controls the job, including its existing `allow_failure` policy.
+See [GitLab's JUnit documentation](https://docs.gitlab.com/ci/testing/unit_test_reports/).
+
+Each target certname is a case in `piace.target`. Allowed differences pass and
+retain their redacted details; policy-disallowed differences fail. Compilation
+and operational errors are errors. A separate `piace.run` case appears when
+run-level diagnostics exist, so an impact-query error remains visible even
+when all target cases pass. Warnings alone pass. Configuration errors before
+the comparison starts do not produce an XML report.
+
 ### Why nothing is rendered
 
 Every relative path in a config file resolves against the directory of the

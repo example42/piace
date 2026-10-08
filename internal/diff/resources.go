@@ -45,6 +45,7 @@ func diffResources(
 	beforeResources, afterResources map[model.ResourceIdentity]model.Resource,
 	retriever filecontent.ContentRetriever,
 	f fidelity,
+	contentOptions filecontent.Options,
 ) ([]rawResourceChange, []model.Diagnostic) {
 	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
@@ -56,20 +57,20 @@ func diffResources(
 
 		switch {
 		case inBefore && !inAfter:
-			change, diag := membershipChange(ctx, certname, model.ChangeResourceRemoved, filecontent.Side{Resource: beforeRes, Context: beforeContext}, retriever)
+			change, diag := membershipChange(ctx, certname, model.ChangeResourceRemoved, filecontent.Side{Resource: beforeRes, Context: beforeContext}, retriever, contentOptions)
 			changes = append(changes, change)
 			if diag != nil {
 				diagnostics = append(diagnostics, *diag)
 			}
 		case !inBefore && inAfter:
-			change, diag := membershipChange(ctx, certname, model.ChangeResourceAdded, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever)
+			change, diag := membershipChange(ctx, certname, model.ChangeResourceAdded, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever, contentOptions)
 			changes = append(changes, change)
 			if diag != nil {
 				diagnostics = append(diagnostics, *diag)
 			}
 		default:
 			paramChanges, diags := diffParameters(ctx, certname, identity,
-				filecontent.Side{Resource: beforeRes, Context: beforeContext}, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever, f)
+				filecontent.Side{Resource: beforeRes, Context: beforeContext}, filecontent.Side{Resource: afterRes, Context: afterContext}, retriever, f, contentOptions)
 			changes = append(changes, paramChanges...)
 			diagnostics = append(diagnostics, diags...)
 		}
@@ -78,7 +79,7 @@ func diffResources(
 	return changes, diagnostics
 }
 
-func membershipChange(ctx context.Context, certname string, kind model.ChangeKind, side filecontent.Side, retriever filecontent.ContentRetriever) (rawResourceChange, *model.Diagnostic) {
+func membershipChange(ctx context.Context, certname string, kind model.ChangeKind, side filecontent.Side, retriever filecontent.ContentRetriever, contentOptions filecontent.Options) (rawResourceChange, *model.Diagnostic) {
 	change := rawResourceChange{Kind: kind, Identity: side.Resource.Identity}
 	if kind == model.ChangeResourceAdded {
 		change.After = side.Resource.Parameters
@@ -88,7 +89,7 @@ func membershipChange(ctx context.Context, certname string, kind model.ChangeKin
 	if !filecontent.NeedsEvidence(side.Resource) {
 		return change, nil
 	}
-	evidence, diag := filecontent.ResolveMembershipEvidence(ctx, certname, kind, side, retriever)
+	evidence, diag := filecontent.ResolveMembershipEvidence(ctx, certname, kind, side, retriever, contentOptions)
 	change.FileContent = &evidence
 	return change, diag
 }
@@ -108,6 +109,7 @@ func diffParameters(
 	beforeSide, afterSide filecontent.Side,
 	retriever filecontent.ContentRetriever,
 	f fidelity,
+	contentOptions filecontent.Options,
 ) ([]rawResourceChange, []model.Diagnostic) {
 	var changes []rawResourceChange
 	var diagnostics []model.Diagnostic
@@ -155,7 +157,7 @@ func diffParameters(
 
 	if isFile && (fileContentDiffers || filecontent.NeedsEvidence(beforeSide.Resource) || filecontent.NeedsEvidence(afterSide.Resource)) {
 		evidence, diag := filecontent.ResolveFileContentEvidence(ctx, certname,
-			identity, beforeSide, afterSide, retriever)
+			identity, beforeSide, afterSide, retriever, contentOptions)
 		if diag != nil {
 			diagnostics = append(diagnostics, *diag)
 		}

@@ -551,5 +551,5 @@ func TestIsDirectoryOrRecursive(t *testing.T) {
 
 func resolveEvidenceTest(ctx context.Context, certname, environment string, identity model.ResourceIdentity, before, after map[string]model.Value, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
 	c := model.ContentContext{Source: "compiler", Environment: environment}
-	return ResolveFileContentEvidence(ctx, certname, identity, Side{Resource: model.Resource{Identity: identity, Parameters: before}, Context: c}, Side{Resource: model.Resource{Identity: identity, Parameters: after}, Context: c}, retriever)
+	return ResolveFileContentEvidence(ctx, certname, identity, Side{Resource: model.Resource{Identity: identity, Parameters: before}, Context: c}, Side{Resource: model.Resource{Identity: identity, Parameters: after}, Context: c}, retriever, Options{})
 }

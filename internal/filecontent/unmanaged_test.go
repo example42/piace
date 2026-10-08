@@ -34,7 +34,7 @@ func TestUnmanagedContentIsNotAFailedComparison(t *testing.T) {
 	before := Side{Resource: absentFile(map[string]any{"ensure": "absent", "content": "one"})}
 	after := Side{Resource: absentFile(map[string]any{"ensure": "absent", "content": "two"})}
 
-	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil)
+	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil, Options{})
 	if d != nil {
 		t.Errorf("an unmanaged File produced a diagnostic: %+v", d)
 	}
@@ -56,7 +56,7 @@ func TestUnmanagedOnEitherSideAloneIsEnough(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, sides := range [][2]Side{{managed, unmanaged}, {unmanaged, managed}} {
-				e, d := ResolveFileContentEvidence(context.Background(), "node", managed.Resource.Identity, sides[0], sides[1], nil)
+				e, d := ResolveFileContentEvidence(context.Background(), "node", managed.Resource.Identity, sides[0], sides[1], nil, Options{})
 				if d != nil {
 					t.Errorf("diagnostic for a side that manages no bytes: %+v", d)
 				}
@@ -74,7 +74,7 @@ func TestUnmanagedMembershipChangeReportsNoContentEvidence(t *testing.T) {
 			Resource: absentFile(map[string]any{"ensure": "absent", "content": "one"}),
 			Context:  model.ContentContext{Historical: true},
 		}
-		e, d := ResolveMembershipEvidence(context.Background(), "node", kind, side, nil)
+		e, d := ResolveMembershipEvidence(context.Background(), "node", kind, side, nil, Options{})
 		if d != nil {
 			t.Errorf("%s: diagnostic for a resource managing no bytes: %+v", kind, d)
 		}
@@ -95,7 +95,7 @@ func TestUnsupportedByteComparisonsStillAre(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			side := Side{Resource: absentFile(params), Context: model.ContentContext{Historical: true}}
-			e, d := ResolveMembershipEvidence(context.Background(), "node", model.ChangeResourceRemoved, side, nil)
+			e, d := ResolveMembershipEvidence(context.Background(), "node", model.ChangeResourceRemoved, side, nil, Options{})
 			if d == nil || e.State != model.FileContentIndeterminate {
 				t.Fatalf("unsupported byte evidence was not reported: %+v %+v", e, d)
 			}
@@ -119,7 +119,7 @@ func TestMismatchedDigestAlgorithmsAreAWarning(t *testing.T) {
 		Parameters: map[string]any{"content": "bytes"},
 	}}
 
-	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil)
+	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil, Options{})
 	if e.State != model.FileContentIndeterminate {
 		t.Errorf("state = %q, want %q", e.State, model.FileContentIndeterminate)
 	}

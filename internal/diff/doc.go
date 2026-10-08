@@ -35,6 +35,8 @@
 // side's parameter map with the same sensitivity and selector rules. All File
 // content-bearing parameters become markers; separate one-sided evidence
 // records verified content or an indeterminate state with a diagnostic.
+// Content options can silence missing-evidence warnings for source-backed
+// resources without suppressing errors or changing any evidence state.
 //
 // Fingerprints cover raw canonical evidence before publication, including File
 // content parameters and resolved evidence. Distinct sensitive changes therefore

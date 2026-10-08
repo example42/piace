@@ -10,7 +10,7 @@ import (
 
 // Diff compares one target's baseline and candidate normalized catalogs
 // and returns that target's complete model.NodeDiff plus every
-// diagnostic produced while resolving File-content evidence. It is this
+// unsuppressed diagnostic produced while resolving File-content evidence. It is this
 // package's only entry point; see doc.go for the fixed three-pass
 // ordering it implements and why that ordering is required.
 //
@@ -33,6 +33,7 @@ func Diff(
 	target resolve.Target,
 	before, after model.NormalizedCatalog,
 	retriever filecontent.ContentRetriever,
+	contentOptions filecontent.Options,
 ) (model.NodeDiff, []model.Diagnostic) {
 	beforeResources := indexResources(before.Resources)
 	afterResources := indexResources(after.Resources)
@@ -40,7 +41,7 @@ func Diff(
 	// Pass 1: full graph diff, computed with no knowledge of exclusion
 	// or redaction configuration.
 	resourceChanges, diagnostics := diffResources(ctx, target.Certname, before.ContentContext, after.ContentContext,
-		beforeResources, afterResources, retriever, fidelity{before: before.StringifiedRich, after: after.StringifiedRich})
+		beforeResources, afterResources, retriever, fidelity{before: before.StringifiedRich, after: after.StringifiedRich}, contentOptions)
 	edgeChanges := diffEdges(before.Edges, after.Edges)
 
 	// Fingerprints digest the unredacted evidence and must therefore be

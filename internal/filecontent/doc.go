@@ -77,6 +77,12 @@
 // that reaches the exit code. In capture the same split decides whether a
 // snapshot is published at all.
 //
+// Comparison may opt into SuppressSourceContentWarnings. It omits warning
+// diagnostics for resources carrying source when byte evidence is unavailable,
+// including resource membership evidence. Resolution and evidence states are
+// unchanged. Errors, non-source warnings, and incompatible verified digest
+// algorithms remain diagnostics. Capture uses the default diagnostic policy.
+//
 // Wire provenance: compiler/testdata/static-catalog.json is reduced from
 // Puppet's published static catalog example, not a live capture. Source-array
 // behavior follows lib/puppet/type/file/source.rb. Existing repository notes

@@ -4,6 +4,106 @@ All notable changes to PIACE are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-08
+
+### Added
+
+- `piace compare --suppress-source-content-warnings` silences expected
+  `verify_content` warnings for source-backed files with unavailable byte
+  evidence across all report formats, preserving comparison evidence,
+  source-reference differences, and operational errors.
+
+- `piace compare --junit-out PATH` writes JUnit XML test results from the
+  shared redacted result. Each target becomes a test case; run diagnostics
+  get a separate case. Allowed differences pass, policy-disallowed
+  differences fail, and compilation or operational failures are errors.
+
+## [0.5.0] - 2026-09-11
+
+### Added
+
+- Catalog snapshots retain captured single-file content digests and static
+  compiler metadata inside the checksummed payload. Capture provenance records
+  the requested and effective compiler APIs, fallback, trusted-fact source,
+  and fact source. Comparisons against file baselines expose that provenance
+  and any capture-time v3 trust warning.
+- Resource additions and removals carry the existing side's redacted parameter
+  map and one-sided File-content evidence. Aggregate groups and change
+  assessments retain content state, evidence sources, and verification status.
+  Dependency-graph edge groups participate in the assessment budget.
+- Service endpoints accept an optional `timeout`. Request deadlines use the
+  caller's timeout, then the service timeout, then the transport default,
+  without an additional fixed client timeout shortening the request.
+
+### Changed
+
+- **Artifact formats are incompatible with earlier releases.** Result documents
+  use `schema_version: 3`, and `explain` requires that version. Snapshots use
+  `format_version: 2`, replacing `compiler_api` with structured capture
+  provenance. Version-1 snapshots must be recaptured.
+- File-content evidence is resolved independently for baseline and candidate,
+  even when the source reference is unchanged. Historical baselines use retained
+  evidence only. Source lists preserve order and try the next source only after
+  a recognized missing-file response. Checksums require a supported algorithm
+  and a full hexadecimal digest.
+- Unverifiable File content produces a `verify_content` diagnostic rather than
+  a resource difference and does not drive `fail_on_diff`. Missing historical
+  digests, local paths, directory or recursive sources, and incompatible digest
+  algorithms produce warnings; failed retrievals and invalid checksums remain
+  errors. Changed source references remain differences even when their bytes
+  cannot be verified. Catalog capture can publish snapshots with limitation
+  warnings.
+- Configuration requirements follow the command and selected sources.
+  `capture facts` no longer requires candidate or baseline configuration, and
+  file-only comparisons with impact estimation disabled need no PuppetDB
+  endpoint or credentials.
+- Warning diagnostics appear in a counted, collapsed Notices section in HTML.
+  Documentation distinguishes byte-identical rendering of one result from
+  reproducible comparisons across different invocation timestamps.
+
+### Fixed
+
+- Relationship arrays compare without treating order as a change. Missing
+  compiler edges are no longer reconstructed from relationship parameters.
+- Regular expressions compare against PuppetDB's measured stringified form
+  when the catalogs have different fidelities. Other unmeasured rich types
+  retain a warning when a difference may be representational.
+- Files with `ensure: absent` or `ensure: link` manage no content bytes and
+  no longer trigger unsupported-content diagnostics.
+- V4 catalog requests prefer the requested environment rather than allowing
+  the classifier's environment assignment to redirect compilation.
+- Reports and assessments publish through atomic replacement; snapshot
+  no-clobber publication is atomic. Conflicting output destinations and outputs
+  that alias input files are rejected before service requests. Publication
+  failures identify which artifacts were written.
+- Inference request size and omission accounting include the serialized
+  request, with deterministic evidence reduction when the byte budget is
+  exceeded.
+
+### Security
+
+- Resource-level `sensitive_parameters` and recursive Sensitive wrappers
+  survive normalization. Either catalog's sensitivity protects both values,
+  aggregate disclosure respects every member, and malformed sensitivity
+  metadata is rejected. Raw evidence and grouping fingerprints stay outside
+  the published projection.
+- Endpoint URL credentials are rejected, compiler/PuppetDB requests are
+  restricted to the configured HTTPS authority, and untrusted debug metadata
+  is bounded and escaped.
+- Requested targets, response certnames, snapshot envelopes and payloads,
+  and supplied trusted facts must agree. Malformed factsets and trusted-fact
+  structures fail validation before compilation.
+- Comparisons reject PuppetDB baselines when direct v3 or permitted v3
+  fallback could overwrite them. Fallback requires explicit opt-in and is
+  limited to an ambiguous empty-body or literal `Not Found` HTTP 404;
+  HTTP 501 no longer triggers it.
+- Stored reports are validated for outcome consistency, aggregate references,
+  identity, and disclosure before rendering or inference. Local reads, JSON
+  nesting, numeric expansion, git subprocess output and duration, and inference
+  request sizes are bounded.
+- CI examples execute Sigstore signature verification before checksum
+  verification and fetch explicit refs for change-context generation.
+
 ## [0.4.0] - 2026-09-04
 
 ### Changed
@@ -357,6 +457,8 @@ than what changed.
 The last two are recorded as skipped tests carrying their confirmation
 procedures in `cmd/piace/acceptance_assumptions_test.go`.
 
+[0.6.0]: https://github.com/example42/piace/releases/tag/v0.6.0
+[0.5.0]: https://github.com/example42/piace/releases/tag/v0.5.0
 [0.4.0]: https://github.com/example42/piace/releases/tag/v0.4.0
 [0.3.0]: https://github.com/example42/piace/releases/tag/v0.3.0
 [0.2.1]: https://github.com/example42/piace/releases/tag/v0.2.1

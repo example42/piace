@@ -29,6 +29,7 @@ coverage.*
 *.report.json
 *.report.html
 *.report.txt
+*.report.xml
 
 # macOS / editors
 .DS_Store
@@ -38,3 +39,5 @@ coverage.*
 
 # Local files test snapshots
 local/
+
+COMMAND_HISTORY.md
