@@ -117,6 +117,7 @@ func TestAcceptance_ReportsAreByteIdenticalForIdenticalInputs(t *testing.T) {
 		{"text", first.text, second.text},
 		{"json", first.json, second.json},
 		{"html", first.html, second.html},
+		{"junit", first.junit, second.junit},
 	} {
 		if format.a != format.b {
 			t.Errorf("the %s artifact is not byte-identical across two runs over identical inputs\nfirst:\n%s\nsecond:\n%s",

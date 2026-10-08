@@ -47,6 +47,7 @@ type Workflow struct {
 	// content_indeterminate with a diagnostic rather than claiming a
 	// verified comparison.
 	ContentRetriever filecontent.ContentRetriever
+	ContentOptions   filecontent.Options
 	// ImpactQuerier issues the bounded PQL estimates. See doc.go for why
 	// a nil querier is reported rather than skipped.
 	ImpactQuerier impact.ImpactQuerier
@@ -180,7 +181,7 @@ func (w *Workflow) compareTarget(ctx context.Context, target resolve.Target) mod
 	}
 	candidate.ContentContext = model.ContentContext{Source: "compiler", Environment: candidate.Environment, CatalogIdentity: candidateCatalog.CodeID}
 
-	nodeDiff, diagnostics := diff.Diff(ctx, target, baseline, candidate, w.ContentRetriever)
+	nodeDiff, diagnostics := diff.Diff(ctx, target, baseline, candidate, w.ContentRetriever, w.ContentOptions)
 	tr.NodeDiff = &nodeDiff
 	tr.Diagnostics = append(tr.Diagnostics, diagnostics...)
 	return tr

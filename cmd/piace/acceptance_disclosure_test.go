@@ -104,6 +104,9 @@ func TestAcceptance_NoReportDisclosesSecretsOrManagedBytes(t *testing.T) {
 	if got.text == "" {
 		t.Fatal("the text artifact was not produced, so it was not scanned")
 	}
+	if got.junit == "" {
+		t.Fatal("the JUnit artifact was not produced, so it was not scanned")
+	}
 }
 
 // TestAcceptance_FileContentEvidenceStates covers the file-content

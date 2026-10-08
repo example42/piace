@@ -32,18 +32,18 @@ func TestIndependentEnvironmentAndHistoricalEvidence(t *testing.T) {
 	r := &recordingRetriever{get: func(_ string, rc RetrievalContext) (DigestEvidence, error) {
 		return DigestEvidence{Algorithm: "sha256", Digest: hashLocalContent(rc.Environment)}, nil
 	}}
-	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, r)
+	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, r, Options{})
 	if d != nil || e.State != model.FileContentChanged || len(r.calls) != 2 || r.calls[0] == r.calls[1] {
 		t.Fatalf("independent environments lost: %+v, %+v, %v", e, d, r.calls)
 	}
 	before.Context.Historical = true
 	r.calls = nil
-	e, d = ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, r)
+	e, d = ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, r, Options{})
 	if d == nil || e.State != model.FileContentIndeterminate || len(r.calls) != 1 || !strings.HasPrefix(r.calls[0], "candidate:") {
 		t.Fatalf("historical source fetched from current environment: %+v, %+v, %v", e, d, r.calls)
 	}
 	before.Resource.CapturedContent = &model.ContentDigest{Algorithm: "sha256", Digest: hashLocalContent("production")}
-	e, d = ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, r)
+	e, d = ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, r, Options{})
 	if d != nil || e.State != model.FileContentChanged || e.Before.Source != model.FileContentEvidenceCaptured || !e.Before.Verified {
 		t.Fatalf("captured evidence not used: %+v, %+v", e, d)
 	}
@@ -81,7 +81,7 @@ func TestChecksumValidationAndEquivalentForms(t *testing.T) {
 	}
 	for _, value := range []string{"audit-new-secret", "", strings.Repeat("g", 64), strings.Repeat("a", 63), "{md5}" + strings.Repeat("a", 64), "{sha256}", strings.Repeat("a", 64) + "\n"} {
 		s := evidenceSide("candidate", false, map[string]any{"checksum": "sha256", "checksum_value": value})
-		e, d := ResolveFileContentEvidence(context.Background(), "node", s.Resource.Identity, s, s, nil)
+		e, d := ResolveFileContentEvidence(context.Background(), "node", s.Resource.Identity, s, s, nil, Options{})
 		if d == nil || e.State == model.FileContentUnchanged || e.BeforeDigest != "" || e.AfterDigest != "" {
 			t.Fatal("invalid checksum published")
 		}
@@ -103,12 +103,12 @@ func TestStaticMetadataAndMixedEvidence(t *testing.T) {
 	before.Resource.StaticContent.Checksum.Type = "sha256"
 	before.Resource.StaticContent.Checksum.Value = "{sha256}" + hashLocalContent("inline")
 	after := evidenceSide("candidate", false, map[string]any{"content": "inline"})
-	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil)
+	e, d := ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil, Options{})
 	if d != nil || e.State != model.FileContentUnchanged || e.Before.Source != model.FileContentEvidenceStaticMetadata || e.After.Source != model.FileContentEvidenceInline {
 		t.Fatalf("static/inline mismatch: %+v %+v", e, d)
 	}
 	before.Resource.StaticContent.Checksum.Value = "audit-new-secret"
-	e, d = ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil)
+	e, d = ResolveFileContentEvidence(context.Background(), "node", before.Resource.Identity, before, after, nil, Options{})
 	if d == nil || e.State != model.FileContentReferenceChanged || e.BeforeDigest != "" {
 		t.Fatal("bad static metadata accepted")
 	}
@@ -123,7 +123,7 @@ func TestRecursiveMetadataNeverBecomesASingleFileDigest(t *testing.T) {
 			t.Fatal("recursive content retrieved as one file")
 			return DigestEvidence{}, nil
 		}}
-		e, d := ResolveFileContentEvidence(context.Background(), "node", s.Resource.Identity, s, s, r)
+		e, d := ResolveFileContentEvidence(context.Background(), "node", s.Resource.Identity, s, s, r, Options{})
 		if d == nil || e.State != model.FileContentIndeterminate || len(r.calls) != 0 {
 			t.Fatal("recursive comparison appears verified")
 		}

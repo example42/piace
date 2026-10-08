@@ -87,7 +87,8 @@ is that shape.
 ```
 piace compare --targets TARGETS.yaml --services SERVICES.yaml \
   [--candidate-environment ENVIRONMENT] \
-  [--text-out PATH] [--json-out PATH] [--html-out PATH] [--impact-nodes]
+  [--text-out PATH] [--json-out PATH] [--html-out PATH] [--junit-out PATH]
+  [--impact-nodes] [--suppress-source-content-warnings]
 
 piace capture facts   --targets TARGETS.yaml --services SERVICES.yaml [--replace]
 
@@ -112,7 +113,9 @@ piace change-context (--base-ref REF | --base-ref-env VAR) \
 | `--text-out` | compare | Text report path; default stdout |
 | `--json-out` | compare | Versioned, canonically encoded JSON report |
 | `--html-out` | compare, explain | Self-contained static HTML report |
+| `--junit-out` | compare | JUnit XML with one test case per target and a separate case for run diagnostics |
 | `--impact-nodes` | compare | Name every certname an impact estimate returned, not a capped sample (text report only) |
+| `--suppress-source-content-warnings` | compare | Silence `verify_content` warnings for source-backed files with unavailable byte evidence in every report format |
 | `--environment` | capture catalog | Environment to compile the snapshot from (required) |
 | `--replace` | capture | Overwrite an existing snapshot |
 | `--json-in` | explain | Stored result document; `-` reads stdin (required) |
@@ -134,8 +137,8 @@ the production baseline, and never overrides `candidate.environment`.
 
 ### Reports
 
-All three formats render from one redacted result document, so they cannot
-disagree. Only the text report omits anything.
+All four formats render from one redacted result document and use the same
+outcomes. Text and JUnit summarize evidence; JSON and HTML are complete.
 
 - **Text** (stdout by default): summarizes for a linear CI log. Omits
   dependency-graph edge changes and each impact estimate's PQL and request
@@ -152,6 +155,26 @@ disagree. Only the text report omits anything.
   needs. You land on an index of the run; every list of rows is a `<details>`
   section whose heading counts what it holds. Failures, the v3 warning and
   outcome badges never collapse. Printing expands everything.
+- **JUnit XML** (`--junit-out`): one test case per target certname. Clean and
+  allowed differences pass; policy-disallowed differences produce `<failure>`;
+  compilation and operational failures produce `<error>`. Run diagnostics get
+  a separate case, with warnings passing and errors failing. Each case carries
+  redacted evidence and warnings in `<system-out>`, including edge changes.
+  Suite output carries the run outcome, aggregate resource summary, and
+  labelled impact estimates with all returned certnames. Aggregate edge groups,
+  impact PQL, and request options are omitted. Exit codes are unchanged.
+  Errors before the comparison starts, such as invalid configuration, do not
+  produce a report. See [CI integration](docs/ci.md#junit-test-results).
+
+`--suppress-source-content-warnings` silences expected `verify_content`
+notices for File resources with a `source` parameter when historical digests
+are missing, sources are recursive or directories, or source bytes cannot be
+served by the compiler (for example, a local path). It applies to all four
+formats, including JSON. Evidence resolution still runs; changed source
+references and resource membership remain differences. The option does not
+assert byte equality. Retrieval errors, invalid checksums, warnings for
+resources without a source, and incompatible digest algorithms remain visible.
+`capture` keeps its existing diagnostics.
 
 The text report drops edge changes because a run's edge differences usually
 outnumber its resource differences and are usually connected to them, so a
@@ -539,7 +562,7 @@ against a PuppetDB baseline at all, because the baseline does not contain it.
 
 **The v3 warning.** With `catalog_api: v3`, or any permitted v4-to-v3 fallback,
 `$trusted` in the compiled catalog can reflect the catalog-reader certificate
-rather than the target. The warning is non-suppressible, appears in all three
+rather than the target. The warning is non-suppressible, appears in all four
 formats, and does not change the exit status; it makes the trust semantics
 reviewable. It also describes v3 persistence consequences, including on failed
 requests. A file baseline protects input, not other PuppetDB consumers. v4 sends the target's own trusted facts, and fails compilation
@@ -635,7 +658,7 @@ Malformed sensitivity lists and wrappers fail normalization.
 **What is verified, and what is not.** Two sensitivity representations are
 recognized: a resource-level `sensitive_parameters` list, and a recursive Pcore
 `Sensitive` wrapper. Synthetic tests cover both across compiler arrays and
-PuppetDB expanded containers, all three report formats, normal debug output and
+PuppetDB expanded containers, all four report formats, normal debug output and
 the inference request.
 
 What is now measured, on a deployed OpenVox 8.15.2 installation, is that a

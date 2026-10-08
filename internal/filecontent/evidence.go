@@ -19,6 +19,28 @@ type Side struct {
 	Context  model.ContentContext
 }
 
+// Options controls notices without changing evidence resolution or its state.
+type Options struct {
+	SuppressSourceContentWarnings bool
+}
+
+func (o Options) suppressSourceWarning(severity model.DiagnosticSeverity, evidence model.FileContentEvidence, sides ...Side) bool {
+	if !o.SuppressSourceContentWarnings || severity != model.SeverityWarning {
+		return false
+	}
+	// Two verified digests with different algorithms are a distinct warning,
+	// even when the resource also carries a source parameter.
+	if (evidence.Before == nil || evidence.Before.Verified) && (evidence.After == nil || evidence.After.Verified) {
+		return false
+	}
+	for _, side := range sides {
+		if side.Resource.Parameters["source"] != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidateContentDigest reports whether d is a digest this package could
 // have produced: a supported algorithm and a full hexadecimal value of
 // that algorithm's length, optionally carrying Puppet's matching
@@ -46,7 +68,7 @@ func NeedsEvidence(r model.Resource) bool {
 
 // Membership evidence describes only the catalog side that exists. Removing a
 // resource from a catalog does not assert that Puppet will delete its file.
-func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.ChangeKind, side Side, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
+func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.ChangeKind, side Side, retriever ContentRetriever, opts Options) (model.FileContentEvidence, *model.Diagnostic) {
 	if !managesContent(parameters(side.Resource)) {
 		return model.FileContentEvidence{State: model.FileContentNotManaged}, nil
 	}
@@ -61,6 +83,9 @@ func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.
 	if err != nil {
 		e.State = model.FileContentIndeterminate
 		reason, severity := classifyEvidenceError(err)
+		if opts.suppressSourceWarning(severity, e, side) {
+			return e, nil
+		}
 		d := verifyContentDiagnostic(severity, certname, side.Resource.Identity, "resource membership changed; "+reason)
 		return e, &d
 	}
@@ -73,7 +98,7 @@ func ResolveMembershipEvidence(ctx context.Context, certname string, kind model.
 	return e, nil
 }
 
-func ResolveFileContentEvidence(ctx context.Context, certname string, identity model.ResourceIdentity, before, after Side, retriever ContentRetriever) (model.FileContentEvidence, *model.Diagnostic) {
+func ResolveFileContentEvidence(ctx context.Context, certname string, identity model.ResourceIdentity, before, after Side, retriever ContentRetriever, opts Options) (model.FileContentEvidence, *model.Diagnostic) {
 	bp, ap := parameters(before.Resource), parameters(after.Resource)
 	// Checked before any evidence resolution: a side that manages no
 	// bytes has no desired content for the other side to be compared
@@ -94,6 +119,9 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 	if nonByteComparable(before.Resource, bp) || nonByteComparable(after.Resource, ap) {
 		if referenceChanged {
 			e.State = model.FileContentReferenceChanged
+		}
+		if opts.suppressSourceWarning(model.SeverityWarning, e, before, after) {
+			return e, nil
 		}
 		d := verifyContentDiagnostic(model.SeverityWarning, certname, identity, "directory, recursive or non-file source: byte-level content comparison is unsupported; recursive sourceselect rules are not evaluated")
 		return e, &d
@@ -143,6 +171,9 @@ func ResolveFileContentEvidence(ctx context.Context, certname string, identity m
 		// this is a warning: it is the same class as a directory that
 		// has no single set of bytes.
 		reason, severity = "the two catalogs carry content digests of different algorithms, which cannot be compared", model.SeverityWarning
+	}
+	if opts.suppressSourceWarning(severity, e, before, after) {
+		return e, nil
 	}
 	d := verifyContentDiagnostic(severity, certname, identity, reason)
 	return e, &d

@@ -12,6 +12,7 @@ import (
 	"github.com/example42/piace/internal/config/resolve"
 	"github.com/example42/piace/internal/diff"
 	"github.com/example42/piace/internal/exitcode"
+	"github.com/example42/piace/internal/filecontent"
 	"github.com/example42/piace/internal/model"
 	"github.com/example42/piace/internal/report"
 )
@@ -40,7 +41,7 @@ func TestMembershipEvidenceGroupingAndDisclosure(t *testing.T) {
 					if removed {
 						before, after = after, before
 					}
-					nd, ds := diff.Diff(context.Background(), resolve.Target{Certname: spec.name, Redact: []config.RedactionSelector{{Type: resourceType, Parameter: "token"}}}, before, after, nil)
+					nd, ds := diff.Diff(context.Background(), resolve.Target{Certname: spec.name, Redact: []config.RedactionSelector{{Type: resourceType, Parameter: "token"}}}, before, after, nil, filecontent.Options{})
 					if len(ds) != 0 || len(nd.ResourceChanges) != 1 {
 						t.Fatalf("diff failed: %+v %+v", nd, ds)
 					}
@@ -206,7 +207,7 @@ func TestDistinctSensitiveMembershipEvidenceNeverMerges(t *testing.T) {
 				if removed {
 					before, after = after, before
 				}
-				nd, ds := diff.Diff(context.Background(), resolve.Target{Certname: secret[:1]}, before, after, nil)
+				nd, ds := diff.Diff(context.Background(), resolve.Target{Certname: secret[:1]}, before, after, nil, filecontent.Options{})
 				if len(ds) != 0 {
 					t.Fatal(ds)
 				}
